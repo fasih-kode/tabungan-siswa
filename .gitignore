@@ -1,0 +1,27 @@
+# Binaries
+/tabungan-siswa
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Go test / coverage
+*.test
+*.out
+coverage.html
+
+# Environment / secrets
+.env
+.env.*
+!.env.example
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/
+
+# Temporary files
+*.tmp
+*.log
+/tmp/
