@@ -306,6 +306,52 @@ func TestTransactionServiceDepositAdmin(t *testing.T) {
 	}
 }
 
+func TestTransactionServiceDepositReusesOuterTransaction(t *testing.T) {
+	account := newTransactionTestAccount(t)
+	accountRepo := &transactionServiceFakeSavingsAccountRepository{
+		getByIDForUpdateFn: func(context.Context, uuid.UUID) (domain.SavingsAccount, error) {
+			return account, nil
+		},
+	}
+	transactionRepo := &transactionServiceFakeTransactionRepository{}
+	auditRepo := &transactionServiceFakeAuditRepository{}
+	uow := &transactionServiceFakeUnitOfWork{
+		repos: newTransactionTestRepositories(accountRepo, transactionRepo, nil, nil, nil, auditRepo),
+	}
+	manager := &transactionServiceFakeUnitOfWorkManager{uow: uow}
+	svc := newTransactionServiceForTest(t, uow.repos, manager)
+
+	err := WithinTransaction(
+		context.Background(),
+		manager,
+		func(ctx context.Context, _ repository.RepositorySet) error {
+			_, err := svc.Deposit(ctx, DepositInput{
+				Actor:            Actor{UserID: uuid.New(), Role: domain.RoleAdmin},
+				SavingsAccountID: account.ID,
+				Amount:           100_000,
+				TransactionDate:  time.Date(2026, 10, 1, 0, 0, 0, 0, time.UTC),
+			})
+			return err
+		},
+	)
+	if err != nil {
+		t.Fatalf("WithinTransaction() error = %v", err)
+	}
+
+	if manager.beginCalls != 1 {
+		t.Fatalf("Begin calls = %d, want 1", manager.beginCalls)
+	}
+	if uow.commitCalls != 1 {
+		t.Fatalf("Commit calls = %d, want 1", uow.commitCalls)
+	}
+	if uow.rollbackCalls != 0 {
+		t.Fatalf("Rollback calls = %d, want 0", uow.rollbackCalls)
+	}
+	if transactionRepo.createCalls != 1 || auditRepo.createCalls != 1 {
+		t.Fatalf("calls = transaction create %d audit create %d, want 1 1", transactionRepo.createCalls, auditRepo.createCalls)
+	}
+}
+
 func TestTransactionServiceWithdrawalRejectsInsufficientBalance(t *testing.T) {
 	account := newTransactionTestAccount(t)
 	transactionRepo := &transactionServiceFakeTransactionRepository{

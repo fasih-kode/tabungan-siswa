@@ -47,7 +47,7 @@ func (s *savingsAccountService) Create(
 		return CreateSavingsAccountOutput{}, err
 	}
 
-	uow, err := s.deps.UOW.Begin(ctx)
+	uow, repos, txCtx, ownsTransaction, err := beginTransaction(ctx, s.deps.UOW)
 	if err != nil {
 		return CreateSavingsAccountOutput{}, fmt.Errorf(
 			"begin create savings account transaction: %w",
@@ -55,14 +55,13 @@ func (s *savingsAccountService) Create(
 		)
 	}
 
+	ctx = txCtx
 	committed := false
 	defer func() {
-		if !committed {
+		if ownsTransaction && !committed {
 			_ = uow.Rollback()
 		}
 	}()
-
-	repos := uow.Repositories()
 
 	if err := repos.SavingsAccounts.Create(ctx, account); err != nil {
 		return CreateSavingsAccountOutput{}, err
@@ -86,14 +85,16 @@ func (s *savingsAccountService) Create(
 		return CreateSavingsAccountOutput{}, err
 	}
 
-	if err := uow.Commit(); err != nil {
-		return CreateSavingsAccountOutput{}, fmt.Errorf(
-			"commit create savings account transaction: %w",
-			err,
-		)
-	}
+	if ownsTransaction {
+		if err := uow.Commit(); err != nil {
+			return CreateSavingsAccountOutput{}, fmt.Errorf(
+				"commit create savings account transaction: %w",
+				err,
+			)
+		}
 
-	committed = true
+		committed = true
+	}
 
 	return CreateSavingsAccountOutput{
 		Account: &account,

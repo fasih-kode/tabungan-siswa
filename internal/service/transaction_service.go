@@ -25,19 +25,18 @@ func (s *transactionService) Deposit(
 		return DepositOutput{}, ErrScopeViolation
 	}
 
-	uow, err := s.deps.UOW.Begin(ctx)
+	uow, repos, txCtx, ownsTransaction, err := beginTransaction(ctx, s.deps.UOW)
 	if err != nil {
 		return DepositOutput{}, fmt.Errorf("begin deposit transaction: %w", err)
 	}
 
+	ctx = txCtx
 	committed := false
 	defer func() {
-		if !committed {
+		if ownsTransaction && !committed {
 			_ = uow.Rollback()
 		}
 	}()
-
-	repos := uow.Repositories()
 
 	account, err := repos.SavingsAccounts.GetByIDForUpdate(ctx, input.SavingsAccountID)
 	if err != nil {
@@ -77,11 +76,13 @@ func (s *transactionService) Deposit(
 		return DepositOutput{}, err
 	}
 
-	if err := uow.Commit(); err != nil {
-		return DepositOutput{}, fmt.Errorf("commit deposit transaction: %w", err)
-	}
+	if ownsTransaction {
+		if err := uow.Commit(); err != nil {
+			return DepositOutput{}, fmt.Errorf("commit deposit transaction: %w", err)
+		}
 
-	committed = true
+		committed = true
+	}
 
 	return DepositOutput{Transaction: &transaction}, nil
 }
@@ -98,19 +99,18 @@ func (s *transactionService) Withdrawal(
 		return WithdrawalOutput{}, ErrScopeViolation
 	}
 
-	uow, err := s.deps.UOW.Begin(ctx)
+	uow, repos, txCtx, ownsTransaction, err := beginTransaction(ctx, s.deps.UOW)
 	if err != nil {
 		return WithdrawalOutput{}, fmt.Errorf("begin withdrawal transaction: %w", err)
 	}
 
+	ctx = txCtx
 	committed := false
 	defer func() {
-		if !committed {
+		if ownsTransaction && !committed {
 			_ = uow.Rollback()
 		}
 	}()
-
-	repos := uow.Repositories()
 
 	account, err := repos.SavingsAccounts.GetByIDForUpdate(ctx, input.SavingsAccountID)
 	if err != nil {
@@ -164,11 +164,13 @@ func (s *transactionService) Withdrawal(
 		return WithdrawalOutput{}, err
 	}
 
-	if err := uow.Commit(); err != nil {
-		return WithdrawalOutput{}, fmt.Errorf("commit withdrawal transaction: %w", err)
-	}
+	if ownsTransaction {
+		if err := uow.Commit(); err != nil {
+			return WithdrawalOutput{}, fmt.Errorf("commit withdrawal transaction: %w", err)
+		}
 
-	committed = true
+		committed = true
+	}
 
 	return WithdrawalOutput{Transaction: &withdrawal}, nil
 }
@@ -250,19 +252,18 @@ func (s *transactionService) Edit(
 		return EditTransactionOutput{}, ErrScopeViolation
 	}
 
-	uow, err := s.deps.UOW.Begin(ctx)
+	uow, repos, txCtx, ownsTransaction, err := beginTransaction(ctx, s.deps.UOW)
 	if err != nil {
 		return EditTransactionOutput{}, fmt.Errorf("begin edit transaction: %w", err)
 	}
 
+	ctx = txCtx
 	committed := false
 	defer func() {
-		if !committed {
+		if ownsTransaction && !committed {
 			_ = uow.Rollback()
 		}
 	}()
-
-	repos := uow.Repositories()
 
 	existing, err := repos.Transactions.GetByID(ctx, input.TransactionID)
 	if err != nil {
@@ -338,11 +339,13 @@ func (s *transactionService) Edit(
 		return EditTransactionOutput{}, err
 	}
 
-	if err := uow.Commit(); err != nil {
-		return EditTransactionOutput{}, fmt.Errorf("commit edit transaction: %w", err)
-	}
+	if ownsTransaction {
+		if err := uow.Commit(); err != nil {
+			return EditTransactionOutput{}, fmt.Errorf("commit edit transaction: %w", err)
+		}
 
-	committed = true
+		committed = true
+	}
 
 	return EditTransactionOutput{Transaction: &updated}, nil
 }
@@ -359,19 +362,18 @@ func (s *transactionService) Cancel(
 		return CancelTransactionOutput{}, ErrScopeViolation
 	}
 
-	uow, err := s.deps.UOW.Begin(ctx)
+	uow, repos, txCtx, ownsTransaction, err := beginTransaction(ctx, s.deps.UOW)
 	if err != nil {
 		return CancelTransactionOutput{}, fmt.Errorf("begin cancel transaction: %w", err)
 	}
 
+	ctx = txCtx
 	committed := false
 	defer func() {
-		if !committed {
+		if ownsTransaction && !committed {
 			_ = uow.Rollback()
 		}
 	}()
-
-	repos := uow.Repositories()
 
 	existing, err := repos.Transactions.GetByID(ctx, input.TransactionID)
 	if err != nil {
@@ -412,11 +414,13 @@ func (s *transactionService) Cancel(
 		return CancelTransactionOutput{}, err
 	}
 
-	if err := uow.Commit(); err != nil {
-		return CancelTransactionOutput{}, fmt.Errorf("commit cancel transaction: %w", err)
-	}
+	if ownsTransaction {
+		if err := uow.Commit(); err != nil {
+			return CancelTransactionOutput{}, fmt.Errorf("commit cancel transaction: %w", err)
+		}
 
-	committed = true
+		committed = true
+	}
 
 	return CancelTransactionOutput{Transaction: &existing}, nil
 }

@@ -25,19 +25,18 @@ func (s *settlementService) SettleYearEnd(
 		return SettleYearEndOutput{}, domain.ErrInvalidID
 	}
 
-	uow, err := s.deps.UOW.Begin(ctx)
+	uow, repos, txCtx, ownsTransaction, err := beginTransaction(ctx, s.deps.UOW)
 	if err != nil {
 		return SettleYearEndOutput{}, fmt.Errorf("begin settle year end transaction: %w", err)
 	}
 
+	ctx = txCtx
 	committed := false
 	defer func() {
-		if !committed {
+		if ownsTransaction && !committed {
 			_ = uow.Rollback()
 		}
 	}()
-
-	repos := uow.Repositories()
 
 	account, err := repos.SavingsAccounts.GetByIDForUpdate(ctx, input.SavingsAccountID)
 	if err != nil {
@@ -105,11 +104,13 @@ func (s *settlementService) SettleYearEnd(
 		return SettleYearEndOutput{}, err
 	}
 
-	if err := uow.Commit(); err != nil {
-		return SettleYearEndOutput{}, fmt.Errorf("commit settle year end transaction: %w", err)
-	}
+	if ownsTransaction {
+		if err := uow.Commit(); err != nil {
+			return SettleYearEndOutput{}, fmt.Errorf("commit settle year end transaction: %w", err)
+		}
 
-	committed = true
+		committed = true
+	}
 
 	return SettleYearEndOutput{
 		Settlement: &settlement,
@@ -129,19 +130,18 @@ func (s *settlementService) SettleStudentLeaving(
 		return SettleStudentLeavingOutput{}, domain.ErrInvalidID
 	}
 
-	uow, err := s.deps.UOW.Begin(ctx)
+	uow, repos, txCtx, ownsTransaction, err := beginTransaction(ctx, s.deps.UOW)
 	if err != nil {
 		return SettleStudentLeavingOutput{}, fmt.Errorf("begin settle student leaving transaction: %w", err)
 	}
 
+	ctx = txCtx
 	committed := false
 	defer func() {
-		if !committed {
+		if ownsTransaction && !committed {
 			_ = uow.Rollback()
 		}
 	}()
-
-	repos := uow.Repositories()
 
 	account, err := repos.SavingsAccounts.GetByIDForUpdate(ctx, input.SavingsAccountID)
 	if err != nil {
@@ -209,11 +209,13 @@ func (s *settlementService) SettleStudentLeaving(
 		return SettleStudentLeavingOutput{}, err
 	}
 
-	if err := uow.Commit(); err != nil {
-		return SettleStudentLeavingOutput{}, fmt.Errorf("commit settle student leaving transaction: %w", err)
-	}
+	if ownsTransaction {
+		if err := uow.Commit(); err != nil {
+			return SettleStudentLeavingOutput{}, fmt.Errorf("commit settle student leaving transaction: %w", err)
+		}
 
-	committed = true
+		committed = true
+	}
 
 	return SettleStudentLeavingOutput{
 		Settlement: &settlement,
@@ -299,19 +301,18 @@ func (s *settlementService) Reopen(
 		return ReopenSettlementOutput{}, domain.ErrInvalidID
 	}
 
-	uow, err := s.deps.UOW.Begin(ctx)
+	uow, repos, txCtx, ownsTransaction, err := beginTransaction(ctx, s.deps.UOW)
 	if err != nil {
 		return ReopenSettlementOutput{}, fmt.Errorf("begin reopen settlement transaction: %w", err)
 	}
 
+	ctx = txCtx
 	committed := false
 	defer func() {
-		if !committed {
+		if ownsTransaction && !committed {
 			_ = uow.Rollback()
 		}
 	}()
-
-	repos := uow.Repositories()
 
 	settlement, err := repos.Settlements.GetByID(ctx, input.SettlementID)
 	if err != nil {
@@ -362,11 +363,13 @@ func (s *settlementService) Reopen(
 		return ReopenSettlementOutput{}, err
 	}
 
-	if err := uow.Commit(); err != nil {
-		return ReopenSettlementOutput{}, fmt.Errorf("commit reopen settlement transaction: %w", err)
-	}
+	if ownsTransaction {
+		if err := uow.Commit(); err != nil {
+			return ReopenSettlementOutput{}, fmt.Errorf("commit reopen settlement transaction: %w", err)
+		}
 
-	committed = true
+		committed = true
+	}
 
 	return ReopenSettlementOutput{
 		PreviousSettlement: &settlement,
