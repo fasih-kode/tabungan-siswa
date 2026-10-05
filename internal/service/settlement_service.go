@@ -430,20 +430,15 @@ func (s *settlementService) createSettlementAudit(
 		return fmt.Errorf("marshal settlement audit after data: %w", err)
 	}
 
-	auditLog, err := domain.NewAuditLog(
-		&actor.UserID,
-		action,
-		domain.AuditEntitySavingsSettlement,
-		settlement.ID,
-		beforeData,
-		afterData,
-		settlement.ExecutedAt,
-	)
-	if err != nil {
-		return err
-	}
-
-	return repos.AuditLogs.Create(ctx, auditLog)
+	_, err = recordAudit(ctx, repos, RecordAuditInput{
+		Actor:      actor,
+		Action:     action,
+		EntityType: domain.AuditEntitySavingsSettlement,
+		EntityID:   settlement.ID,
+		Before:     beforeData,
+		After:      afterData,
+	})
+	return err
 }
 
 func (s *settlementService) createSavingsAccountAudit(
@@ -468,20 +463,15 @@ func (s *settlementService) createSavingsAccountAudit(
 		return fmt.Errorf("marshal savings account audit after data: %w", err)
 	}
 
-	auditLog, err := domain.NewAuditLog(
-		&actor.UserID,
-		action,
-		domain.AuditEntitySavingsAccount,
-		account.ID,
-		beforeData,
-		afterData,
-		account.UpdatedAt,
-	)
-	if err != nil {
-		return err
-	}
-
-	return repos.AuditLogs.Create(ctx, auditLog)
+	_, err = recordAudit(ctx, repos, RecordAuditInput{
+		Actor:      actor,
+		Action:     action,
+		EntityType: domain.AuditEntitySavingsAccount,
+		EntityID:   account.ID,
+		Before:     beforeData,
+		After:      afterData,
+	})
+	return err
 }
 
 func settlementPointers(settlements []domain.SavingsSettlement) []*domain.SavingsSettlement {

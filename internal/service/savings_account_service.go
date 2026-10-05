@@ -76,21 +76,13 @@ func (s *savingsAccountService) Create(
 		)
 	}
 
-	actorUserID := input.Actor.UserID
-	auditLog, err := domain.NewAuditLog(
-		&actorUserID,
-		"CREATE",
-		domain.AuditEntitySavingsAccount,
-		account.ID,
-		nil,
-		afterData,
-		account.CreatedAt,
-	)
-	if err != nil {
-		return CreateSavingsAccountOutput{}, err
-	}
-
-	if err := repos.AuditLogs.Create(ctx, auditLog); err != nil {
+	if _, err := recordAudit(ctx, repos, RecordAuditInput{
+		Actor:      input.Actor,
+		Action:     "CREATE",
+		EntityType: domain.AuditEntitySavingsAccount,
+		EntityID:   account.ID,
+		After:      afterData,
+	}); err != nil {
 		return CreateSavingsAccountOutput{}, err
 	}
 

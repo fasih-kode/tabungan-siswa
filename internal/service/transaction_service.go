@@ -477,20 +477,15 @@ func (s *transactionService) createTransactionAudit(
 		return fmt.Errorf("marshal transaction audit after data: %w", err)
 	}
 
-	auditLog, err := domain.NewAuditLog(
-		&actor.UserID,
-		action,
-		domain.AuditEntityTransaction,
-		after.ID,
-		beforeData,
-		afterData,
-		after.UpdatedAt,
-	)
-	if err != nil {
-		return err
-	}
-
-	return repos.AuditLogs.Create(ctx, auditLog)
+	_, err = recordAudit(ctx, repos, RecordAuditInput{
+		Actor:      actor,
+		Action:     action,
+		EntityType: domain.AuditEntityTransaction,
+		EntityID:   after.ID,
+		Before:     beforeData,
+		After:      afterData,
+	})
+	return err
 }
 
 func transactionPointers(transactions []domain.Transaction) []*domain.Transaction {
