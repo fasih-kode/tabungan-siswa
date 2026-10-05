@@ -615,7 +615,6 @@ type ReopenSettlementInput struct {
 
 type ReopenSettlementOutput struct {
 	PreviousSettlement *domain.SavingsSettlement
-	NewSettlement      *domain.SavingsSettlement
 	Account            *domain.SavingsAccount
 }
 
