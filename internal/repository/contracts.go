@@ -21,6 +21,12 @@ type UserRepository interface {
 	ExistsByUsername(ctx context.Context, username string) (bool, error)
 }
 
+type SessionRepository interface {
+	Create(ctx context.Context, session domain.Session) error
+	GetByTokenHash(ctx context.Context, tokenHash string) (domain.Session, error)
+	Revoke(ctx context.Context, sessionID uuid.UUID, revokedAt time.Time) error
+}
+
 type AcademicYearRepository interface {
 	Create(ctx context.Context, academicYear domain.AcademicYear) error
 	GetByID(ctx context.Context, id uuid.UUID) (domain.AcademicYear, error)
@@ -262,6 +268,7 @@ type AuditRepository interface {
 // menggunakan RepositorySet yang diperoleh dari UnitOfWork.
 type RepositorySet struct {
 	Users                   UserRepository
+	Sessions                SessionRepository
 	AcademicYears           AcademicYearRepository
 	Classes                 ClassRepository
 	Students                StudentRepository
