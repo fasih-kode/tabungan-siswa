@@ -150,7 +150,7 @@ func (r *TransactionRepository) ListActiveBySavingsAccount(
 		FROM transactions
 		WHERE savings_account_id = $1
 			AND status = $2
-		ORDER BY transaction_date DESC, created_at DESC, id DESC
+		ORDER BY transaction_date ASC, created_at ASC, id ASC
 	`
 
 	return r.listActive(

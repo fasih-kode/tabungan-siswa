@@ -156,6 +156,70 @@ func (r *ClassRepository) List(
 	return classes, nil
 }
 
+func (r *ClassRepository) ListByTeacherAndAcademicYear(
+	ctx context.Context,
+	userID uuid.UUID,
+	academicYearID uuid.UUID,
+	options repository.ListOptions,
+) ([]domain.Class, error) {
+	const query = `
+		SELECT
+			c.id,
+			c.name,
+			c.level,
+			c.created_at,
+			c.updated_at
+		FROM classes c
+		INNER JOIN teacher_class_assignments tca
+			ON tca.class_id = c.id
+			AND tca.academic_year_id = $2
+		WHERE tca.user_id = $1
+		ORDER BY c.level ASC, c.name ASC, c.id ASC
+		LIMIT $3
+		OFFSET $4
+	`
+
+	rows, err := r.db.QueryContext(
+		ctx,
+		query,
+		userID,
+		academicYearID,
+		options.Limit,
+		options.Offset,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("list classes by teacher and academic year: %w", err)
+	}
+	defer rows.Close()
+
+	classes := make([]domain.Class, 0)
+
+	for rows.Next() {
+		var class domain.Class
+
+		if err := rows.Scan(
+			&class.ID,
+			&class.Name,
+			&class.Level,
+			&class.CreatedAt,
+			&class.UpdatedAt,
+		); err != nil {
+			return nil, fmt.Errorf("scan class by teacher and academic year: %w", err)
+		}
+
+		classes = append(classes, class)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf(
+			"iterate classes by teacher and academic year: %w",
+			err,
+		)
+	}
+
+	return classes, nil
+}
+
 func (r *ClassRepository) Update(
 	ctx context.Context,
 	class domain.Class,

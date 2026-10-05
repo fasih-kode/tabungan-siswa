@@ -144,6 +144,70 @@ func (r *StudentClassHistoryRepository) ListByStudentAndAcademicYear(
 	return histories, nil
 }
 
+func (r *StudentClassHistoryRepository) CloseCurrentByStudentAndAcademicYear(
+	ctx context.Context,
+	studentID uuid.UUID,
+	academicYearID uuid.UUID,
+	endDate time.Time,
+) (domain.StudentClassHistory, error) {
+	const query = `
+		UPDATE student_class_histories
+		SET
+			validity = daterange(lower(validity), $3::date, '[)'),
+			updated_at = $4
+		WHERE student_id = $1
+			AND academic_year_id = $2
+			AND upper_inf(validity)
+			AND lower(validity) < $3::date
+		RETURNING
+			id,
+			student_id,
+			academic_year_id,
+			class_id,
+			lower(validity),
+			upper(validity),
+			created_at,
+			updated_at
+	`
+
+	var history domain.StudentClassHistory
+	var upper sql.NullTime
+
+	err := r.db.QueryRowContext(
+		ctx,
+		query,
+		studentID,
+		academicYearID,
+		endDate,
+		time.Now(),
+	).Scan(
+		&history.ID,
+		&history.StudentID,
+		&history.AcademicYearID,
+		&history.ClassID,
+		&history.Period.From,
+		&upper,
+		&history.CreatedAt,
+		&history.UpdatedAt,
+	)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return domain.StudentClassHistory{}, repository.ErrNotFound
+		}
+
+		return domain.StudentClassHistory{}, fmt.Errorf(
+			"close current student class history: %w",
+			err,
+		)
+	}
+
+	if upper.Valid {
+		history.Period.To = &upper.Time
+	}
+
+	return history, nil
+}
+
 func (r *StudentClassHistoryRepository) GetCurrentByStudentAndAcademicYear(
 	ctx context.Context,
 	studentID uuid.UUID,

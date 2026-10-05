@@ -223,6 +223,128 @@ func TestStudentClassHistoryRepository_ListPagination(t *testing.T) {
 	assertStudentClassHistoryEqual(t, got[0], second)
 }
 
+func TestStudentClassHistoryRepository_CloseCurrentByStudentAndAcademicYear(
+	t *testing.T,
+) {
+	db := openTestDatabase(t)
+	repo := postgres.NewStudentClassHistoryRepository(db)
+	ctx := context.Background()
+
+	fixture := newStudentClassHistoryFixture(t, db)
+
+	startDate := time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC)
+	endDate := time.Date(2026, 10, 15, 0, 0, 0, 0, time.UTC)
+
+	history := newTestStudentClassHistoryOpenEnded(
+		t,
+		fixture.student.ID,
+		fixture.academicYear.ID,
+		fixture.class.ID,
+		startDate,
+	)
+
+	if err := repo.Create(ctx, history); err != nil {
+		t.Fatalf("Create() error = %v", err)
+	}
+
+	t.Cleanup(func() {
+		deleteTestStudentClassHistory(t, db, history.ID)
+	})
+
+	got, err := repo.CloseCurrentByStudentAndAcademicYear(
+		ctx,
+		fixture.student.ID,
+		fixture.academicYear.ID,
+		endDate,
+	)
+	if err != nil {
+		t.Fatalf(
+			"CloseCurrentByStudentAndAcademicYear() error = %v",
+			err,
+		)
+	}
+
+	if got.ID != history.ID {
+		t.Fatalf(
+			"ID = %v, want %v",
+			got.ID,
+			history.ID,
+		)
+	}
+
+	if got.StudentID != history.StudentID {
+		t.Fatalf(
+			"StudentID = %v, want %v",
+			got.StudentID,
+			history.StudentID,
+		)
+	}
+
+	if got.AcademicYearID != history.AcademicYearID {
+		t.Fatalf(
+			"AcademicYearID = %v, want %v",
+			got.AcademicYearID,
+			history.AcademicYearID,
+		)
+	}
+
+	if got.ClassID != history.ClassID {
+		t.Fatalf(
+			"ClassID = %v, want %v",
+			got.ClassID,
+			history.ClassID,
+		)
+	}
+
+	if !got.Period.From.Equal(startDate) {
+		t.Fatalf(
+			"Period.From = %v, want %v",
+			got.Period.From,
+			startDate,
+		)
+	}
+
+	if got.Period.To == nil {
+		t.Fatal("Period.To = nil, want closed period")
+	}
+
+	if !got.Period.To.Equal(endDate) {
+		t.Fatalf(
+			"Period.To = %v, want %v",
+			*got.Period.To,
+			endDate,
+		)
+	}
+
+	if !got.UpdatedAt.After(history.UpdatedAt) {
+		t.Fatalf(
+			"UpdatedAt = %v, want after %v",
+			got.UpdatedAt,
+			history.UpdatedAt,
+		)
+	}
+}
+
+func TestStudentClassHistoryRepository_CloseCurrentByStudentAndAcademicYearNotFound(
+	t *testing.T,
+) {
+	db := openTestDatabase(t)
+	repo := postgres.NewStudentClassHistoryRepository(db)
+
+	_, err := repo.CloseCurrentByStudentAndAcademicYear(
+		context.Background(),
+		uuid.New(),
+		uuid.New(),
+		time.Date(2026, 10, 15, 0, 0, 0, 0, time.UTC),
+	)
+	if !errors.Is(err, repository.ErrNotFound) {
+		t.Fatalf(
+			"CloseCurrentByStudentAndAcademicYear() error = %v, want ErrNotFound",
+			err,
+		)
+	}
+}
+
 func TestStudentClassHistoryRepository_GetCurrentByStudentAndAcademicYear(
 	t *testing.T,
 ) {

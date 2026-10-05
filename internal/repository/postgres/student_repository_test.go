@@ -448,6 +448,242 @@ func TestStudentRepository_UpdateDuplicateUniqueField(t *testing.T) {
 	}
 }
 
+func TestStudentRepository_ListByClassAndAcademicYear(t *testing.T) {
+	db := openTestDatabase(t)
+	cleanupScopedRepositoryFixtures(t, db)
+	studentRepo := postgres.NewStudentRepository(db)
+	classRepo := postgres.NewClassRepository(db)
+	academicYearRepo := postgres.NewAcademicYearRepository(db)
+	historyRepo := postgres.NewStudentClassHistoryRepository(db)
+	ctx := context.Background()
+
+	academicYear := newTestAcademicYear(t)
+	if err := academicYearRepo.Create(ctx, academicYear); err != nil {
+		t.Fatalf("Create() academic year error = %v", err)
+	}
+
+	secondAcademicYear := newTestAcademicYearWithDates(
+		t,
+		"2026/2027",
+		time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC),
+		time.Date(2027, 6, 30, 0, 0, 0, 0, time.UTC),
+		domain.AcademicYearClosed,
+	)
+	if err := academicYearRepo.Create(ctx, secondAcademicYear); err != nil {
+		t.Fatalf("Create() second academic year error = %v", err)
+	}
+
+	classA := newTestClass(t, "7A-student-scope", 7)
+	classB := newTestClass(t, "8A-student-scope", 8)
+
+	if err := classRepo.Create(ctx, classA); err != nil {
+		t.Fatalf("Create() classA error = %v", err)
+	}
+	if err := classRepo.Create(ctx, classB); err != nil {
+		t.Fatalf("Create() classB error = %v", err)
+	}
+
+	studentA := newTestStudent(t, "Budi Scope")
+	studentB := newTestStudent(t, "Citra Scope")
+	studentC := newTestStudent(t, "Dedi Scope")
+	studentD := newTestStudent(t, "Eka Scope")
+
+	for _, student := range []domain.Student{
+		studentA,
+		studentB,
+		studentC,
+		studentD,
+	} {
+		if err := studentRepo.Create(ctx, student); err != nil {
+			t.Fatalf("Create() student %q error = %v", student.Name, err)
+		}
+	}
+
+	// Student A has two sequential histories in the same class and
+	// academic year. The scoped student query must still return A once.
+	historyA1 := newTestStudentClassHistory(
+		t,
+		studentA.ID,
+		academicYear.ID,
+		classA.ID,
+		time.Date(2025, 7, 1, 0, 0, 0, 0, time.UTC),
+		time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC),
+	)
+	historyA2 := newTestStudentClassHistory(
+		t,
+		studentA.ID,
+		academicYear.ID,
+		classA.ID,
+		time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC),
+		time.Date(2026, 6, 30, 0, 0, 0, 0, time.UTC),
+	)
+	historyB := newTestStudentClassHistory(
+		t,
+		studentB.ID,
+		academicYear.ID,
+		classA.ID,
+		time.Date(2025, 7, 1, 0, 0, 0, 0, time.UTC),
+		time.Date(2026, 6, 30, 0, 0, 0, 0, time.UTC),
+	)
+	historyC := newTestStudentClassHistory(
+		t,
+		studentC.ID,
+		academicYear.ID,
+		classB.ID,
+		time.Date(2025, 7, 1, 0, 0, 0, 0, time.UTC),
+		time.Date(2026, 6, 30, 0, 0, 0, 0, time.UTC),
+	)
+	historyD := newTestStudentClassHistory(
+		t,
+		studentD.ID,
+		secondAcademicYear.ID,
+		classA.ID,
+		time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC),
+		time.Date(2027, 6, 30, 0, 0, 0, 0, time.UTC),
+	)
+
+	histories := []domain.StudentClassHistory{
+		historyA1,
+		historyA2,
+		historyB,
+		historyC,
+		historyD,
+	}
+
+	for _, history := range histories {
+		if err := historyRepo.Create(ctx, history); err != nil {
+			t.Fatalf("Create() history error = %v", err)
+		}
+	}
+
+	t.Cleanup(func() {
+		deleteTestAcademicYear(t, db, secondAcademicYear.ID)
+		deleteTestAcademicYear(t, db, academicYear.ID)
+
+		deleteTestClass(t, db, classB.ID)
+		deleteTestClass(t, db, classA.ID)
+
+		deleteTestStudent(t, db, studentD.ID)
+		deleteTestStudent(t, db, studentC.ID)
+		deleteTestStudent(t, db, studentB.ID)
+		deleteTestStudent(t, db, studentA.ID)
+	})
+
+	t.Cleanup(func() {
+		for i := len(histories) - 1; i >= 0; i-- {
+			deleteTestStudentClassHistory(t, db, histories[i].ID)
+		}
+	})
+
+	got, err := studentRepo.ListByClassAndAcademicYear(
+		ctx,
+		classA.ID,
+		academicYear.ID,
+		repository.ListOptions{Limit: 10, Offset: 0},
+	)
+	if err != nil {
+		t.Fatalf("ListByClassAndAcademicYear() error = %v", err)
+	}
+
+	if len(got) != 2 {
+		t.Fatalf(
+			"ListByClassAndAcademicYear() returned %d students, want 2",
+			len(got),
+		)
+	}
+
+	if got[0].ID != studentA.ID {
+		t.Errorf("got[0].ID = %v, want %v", got[0].ID, studentA.ID)
+	}
+
+	if got[1].ID != studentB.ID {
+		t.Errorf("got[1].ID = %v, want %v", got[1].ID, studentB.ID)
+	}
+}
+
+func TestStudentRepository_ListByClassAndAcademicYearPagination(t *testing.T) {
+	db := openTestDatabase(t)
+	cleanupScopedRepositoryFixtures(t, db)
+	studentRepo := postgres.NewStudentRepository(db)
+	classRepo := postgres.NewClassRepository(db)
+	academicYearRepo := postgres.NewAcademicYearRepository(db)
+	historyRepo := postgres.NewStudentClassHistoryRepository(db)
+	ctx := context.Background()
+
+	academicYear := newTestAcademicYear(t)
+	if err := academicYearRepo.Create(ctx, academicYear); err != nil {
+		t.Fatalf("Create() academic year error = %v", err)
+	}
+
+	class := newTestClass(t, "7A-student-page", 7)
+	if err := classRepo.Create(ctx, class); err != nil {
+		t.Fatalf("Create() class error = %v", err)
+	}
+
+	first := newTestStudent(t, "Budi Page")
+	second := newTestStudent(t, "Citra Page")
+
+	if err := studentRepo.Create(ctx, first); err != nil {
+		t.Fatalf("Create() first student error = %v", err)
+	}
+	if err := studentRepo.Create(ctx, second); err != nil {
+		t.Fatalf("Create() second student error = %v", err)
+	}
+
+	histories := make([]domain.StudentClassHistory, 0, 2)
+
+	for _, student := range []domain.Student{first, second} {
+		history := newTestStudentClassHistory(
+			t,
+			student.ID,
+			academicYear.ID,
+			class.ID,
+			academicYear.StartDate,
+			academicYear.EndDate,
+		)
+
+		if err := historyRepo.Create(ctx, history); err != nil {
+			t.Fatalf("Create() history error = %v", err)
+		}
+
+		histories = append(histories, history)
+	}
+
+	t.Cleanup(func() {
+		deleteTestAcademicYear(t, db, academicYear.ID)
+		deleteTestClass(t, db, class.ID)
+		deleteTestStudent(t, db, second.ID)
+		deleteTestStudent(t, db, first.ID)
+	})
+
+	t.Cleanup(func() {
+		for i := len(histories) - 1; i >= 0; i-- {
+			deleteTestStudentClassHistory(t, db, histories[i].ID)
+		}
+	})
+
+	got, err := studentRepo.ListByClassAndAcademicYear(
+		ctx,
+		class.ID,
+		academicYear.ID,
+		repository.ListOptions{Limit: 1, Offset: 1},
+	)
+	if err != nil {
+		t.Fatalf("ListByClassAndAcademicYear() error = %v", err)
+	}
+
+	if len(got) != 1 {
+		t.Fatalf(
+			"ListByClassAndAcademicYear() returned %d students, want 1",
+			len(got),
+		)
+	}
+
+	if got[0].ID != second.ID {
+		t.Errorf("got[0].ID = %v, want %v", got[0].ID, second.ID)
+	}
+}
+
 func assertStudentEqual(
 	t *testing.T,
 	got domain.Student,
@@ -542,11 +778,13 @@ func newTestStudent(
 ) domain.Student {
 	t.Helper()
 
+	nis := "NIS-" + uuid.NewString()
+	nisn := "NISN-" + uuid.NewString()
 	student, err := domain.NewStudent(
 		name,
 		nil,
-		nil,
-		nil,
+		&nis,
+		&nisn,
 	)
 	if err != nil {
 		t.Fatalf("NewStudent() error = %v", err)
@@ -562,11 +800,12 @@ func newTestStudentWithNIS(
 ) domain.Student {
 	t.Helper()
 
+	nisn := "NISN-" + uuid.NewString()
 	student, err := domain.NewStudent(
 		name,
 		nil,
 		&nis,
-		nil,
+		&nisn,
 	)
 	if err != nil {
 		t.Fatalf("NewStudent() error = %v", err)
@@ -582,10 +821,11 @@ func newTestStudentWithNISN(
 ) domain.Student {
 	t.Helper()
 
+	nis := "NIS-" + uuid.NewString()
 	student, err := domain.NewStudent(
 		name,
 		nil,
-		nil,
+		&nis,
 		&nisn,
 	)
 	if err != nil {
@@ -602,11 +842,13 @@ func newTestStudentWithUserID(
 ) domain.Student {
 	t.Helper()
 
+	nis := "NIS-" + uuid.NewString()
+	nisn := "NISN-" + uuid.NewString()
 	student, err := domain.NewStudent(
 		name,
 		&userID,
-		nil,
-		nil,
+		&nis,
+		&nisn,
 	)
 	if err != nil {
 		t.Fatalf("NewStudent() error = %v", err)

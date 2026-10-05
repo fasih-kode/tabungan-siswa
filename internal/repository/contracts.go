@@ -33,6 +33,12 @@ type ClassRepository interface {
 	Create(ctx context.Context, class domain.Class) error
 	GetByID(ctx context.Context, id uuid.UUID) (domain.Class, error)
 	List(ctx context.Context, options ListOptions) ([]domain.Class, error)
+	ListByTeacherAndAcademicYear(
+		ctx context.Context,
+		userID uuid.UUID,
+		academicYearID uuid.UUID,
+		options ListOptions,
+	) ([]domain.Class, error)
 	Update(ctx context.Context, class domain.Class) error
 	ExistsByNameAndLevel(
 		ctx context.Context,
@@ -48,6 +54,12 @@ type StudentRepository interface {
 	GetByNISN(ctx context.Context, nisn string) (domain.Student, error)
 	GetByUserID(ctx context.Context, userID uuid.UUID) (domain.Student, error)
 	List(ctx context.Context, options ListOptions) ([]domain.Student, error)
+	ListByClassAndAcademicYear(
+		ctx context.Context,
+		classID uuid.UUID,
+		academicYearID uuid.UUID,
+		options ListOptions,
+	) ([]domain.Student, error)
 	Update(ctx context.Context, student domain.Student) error
 }
 
@@ -68,6 +80,12 @@ type StudentClassHistoryRepository interface {
 		studentID uuid.UUID,
 		academicYearID uuid.UUID,
 		date time.Time,
+	) (domain.StudentClassHistory, error)
+	CloseCurrentByStudentAndAcademicYear(
+		ctx context.Context,
+		studentID uuid.UUID,
+		academicYearID uuid.UUID,
+		endDate time.Time,
 	) (domain.StudentClassHistory, error)
 }
 
@@ -106,6 +124,16 @@ type ClassTransferRequestRepository interface {
 		request domain.ClassTransferRequest,
 	) error
 	GetByID(
+		ctx context.Context,
+		id uuid.UUID,
+	) (domain.ClassTransferRequest, error)
+	// GetByIDForUpdate harus dijalankan oleh repository
+	// yang terikat pada transaction aktif.
+	//
+	// Implementasi wajib menggunakan row-level locking
+	// untuk menjaga konsistensi state transition seperti
+	// approval dan rejection transfer kelas.
+	GetByIDForUpdate(
 		ctx context.Context,
 		id uuid.UUID,
 	) (domain.ClassTransferRequest, error)

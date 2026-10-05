@@ -27,6 +27,12 @@ func NewStudent(
 	if strings.TrimSpace(name) == "" {
 		return Student{}, ErrEmptyName
 	}
+	if nis == nil || strings.TrimSpace(*nis) == "" {
+		return Student{}, ErrInvalidValue
+	}
+	if nisn == nil || strings.TrimSpace(*nisn) == "" {
+		return Student{}, ErrInvalidValue
+	}
 
 	now := time.Now()
 

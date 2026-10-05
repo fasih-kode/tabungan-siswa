@@ -54,28 +54,42 @@ func TestNewStudent(t *testing.T) {
 	}
 }
 
-func TestNewStudentAllowsOptionalIdentityFields(t *testing.T) {
-	student, err := NewStudent(
-		"Ahmad Fauzan",
-		nil,
-		nil,
-		nil,
-	)
-	if err != nil {
-		t.Fatalf("NewStudent() error = %v", err)
+func TestNewStudentRequiresNISAndNISN(t *testing.T) {
+	nis := "12345"
+	nisn := "0012345678"
+
+	tests := []struct {
+		name string
+		nis  *string
+		nisn *string
+	}{
+		{name: "nil NIS", nis: nil, nisn: &nisn},
+		{name: "empty NIS", nis: ptrString(""), nisn: &nisn},
+		{name: "nil NISN", nis: &nis, nisn: nil},
+		{name: "empty NISN", nis: &nis, nisn: ptrString("")},
 	}
 
-	if student.UserID != nil {
-		t.Fatal("UserID should be nil")
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := NewStudent(
+				"Ahmad Fauzan",
+				nil,
+				tt.nis,
+				tt.nisn,
+			)
+			if err != ErrInvalidValue {
+				t.Fatalf(
+					"NewStudent() error = %v, want %v",
+					err,
+					ErrInvalidValue,
+				)
+			}
+		})
 	}
+}
 
-	if student.NIS != nil {
-		t.Fatal("NIS should be nil")
-	}
-
-	if student.NISN != nil {
-		t.Fatal("NISN should be nil")
-	}
+func ptrString(value string) *string {
+	return &value
 }
 
 func TestNewStudentRejectsEmptyName(t *testing.T) {
@@ -93,11 +107,13 @@ func TestNewStudentRejectsWhitespaceName(t *testing.T) {
 }
 
 func TestStudentLeave(t *testing.T) {
+	nis := "12345"
+	nisn := "0012345678"
 	student, err := NewStudent(
 		"Ahmad Fauzan",
 		nil,
-		nil,
-		nil,
+		&nis,
+		&nisn,
 	)
 	if err != nil {
 		t.Fatalf("NewStudent() error = %v", err)
@@ -121,11 +137,13 @@ func TestStudentLeave(t *testing.T) {
 }
 
 func TestStudentCannotLeaveTwice(t *testing.T) {
+	nis := "12345"
+	nisn := "0012345678"
 	student, err := NewStudent(
 		"Ahmad Fauzan",
 		nil,
-		nil,
-		nil,
+		&nis,
+		&nisn,
 	)
 	if err != nil {
 		t.Fatalf("NewStudent() error = %v", err)

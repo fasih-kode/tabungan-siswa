@@ -191,6 +191,70 @@ func (r *StudentRepository) List(
 	return students, nil
 }
 
+func (r *StudentRepository) ListByClassAndAcademicYear(
+	ctx context.Context,
+	classID uuid.UUID,
+	academicYearID uuid.UUID,
+	options repository.ListOptions,
+) ([]domain.Student, error) {
+	const query = `
+		SELECT DISTINCT
+			s.id,
+			s.user_id,
+			s.nis,
+			s.nisn,
+			s.name,
+			s.status,
+			s.created_at,
+			s.updated_at
+		FROM students s
+		INNER JOIN student_class_histories h
+			ON h.student_id = s.id
+			AND h.class_id = $1
+			AND h.academic_year_id = $2
+		WHERE NOT isempty(h.validity)
+		ORDER BY s.name ASC, s.id ASC
+		LIMIT $3
+		OFFSET $4
+	`
+
+	rows, err := r.db.QueryContext(
+		ctx,
+		query,
+		classID,
+		academicYearID,
+		options.Limit,
+		options.Offset,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("list students by class and academic year: %w", err)
+	}
+	defer rows.Close()
+
+	students := make([]domain.Student, 0)
+
+	for rows.Next() {
+		student, err := scanStudent(rows)
+		if err != nil {
+			return nil, fmt.Errorf(
+				"scan student by class and academic year: %w",
+				err,
+			)
+		}
+
+		students = append(students, student)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf(
+			"iterate students by class and academic year: %w",
+			err,
+		)
+	}
+
+	return students, nil
+}
+
 func (r *StudentRepository) Update(
 	ctx context.Context,
 	student domain.Student,

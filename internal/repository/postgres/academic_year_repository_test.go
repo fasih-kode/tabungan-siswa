@@ -416,17 +416,140 @@ func deleteTestAcademicYear(
 	}
 }
 
+func cleanupScopedRepositoryFixtures(
+	t *testing.T,
+	db *sql.DB,
+) {
+	t.Helper()
+
+	statements := []struct {
+		name  string
+		query string
+	}{
+		{
+			name:  "transactions",
+			query: "DELETE FROM transactions",
+		},
+		{
+			name:  "savings settlements",
+			query: "DELETE FROM savings_settlements",
+		},
+		{
+			name:  "savings accounts",
+			query: "DELETE FROM savings_accounts",
+		},
+		{
+			name:  "class transfer requests",
+			query: "DELETE FROM class_transfer_requests",
+		},
+		{
+			name:  "student class histories",
+			query: "DELETE FROM student_class_histories",
+		},
+		{
+			name:  "teacher class assignments",
+			query: "DELETE FROM teacher_class_assignments",
+		},
+		{
+			name:  "audit logs",
+			query: "DELETE FROM audit_logs",
+		},
+		{
+			name:  "students",
+			query: "DELETE FROM students",
+		},
+		{
+			name:  "classes",
+			query: "DELETE FROM classes",
+		},
+		{
+			name:  "academic years",
+			query: "DELETE FROM academic_years",
+		},
+		{
+			name:  "users",
+			query: "DELETE FROM users",
+		},
+	}
+
+	ctx := context.Background()
+
+	for _, statement := range statements {
+		if _, err := db.ExecContext(ctx, statement.query); err != nil {
+			t.Fatalf(
+				"cleanup %s: %v",
+				statement.name,
+				err,
+			)
+		}
+	}
+}
+
 func cleanupAcademicYears(
 	t *testing.T,
 	db *sql.DB,
 ) {
 	t.Helper()
 
-	_, err := db.ExecContext(
-		context.Background(),
-		"DELETE FROM academic_years",
-	)
-	if err != nil {
-		t.Fatalf("cleanup academic years: %v", err)
+	statements := []struct {
+		name  string
+		query string
+	}{
+		{
+			name:  "transactions",
+			query: "DELETE FROM transactions",
+		},
+		{
+			name:  "savings settlements",
+			query: "DELETE FROM savings_settlements",
+		},
+		{
+			name:  "savings accounts",
+			query: "DELETE FROM savings_accounts",
+		},
+		{
+			name:  "class transfer requests",
+			query: "DELETE FROM class_transfer_requests",
+		},
+		{
+			name:  "student class histories",
+			query: "DELETE FROM student_class_histories",
+		},
+		{
+			name:  "teacher class assignments",
+			query: "DELETE FROM teacher_class_assignments",
+		},
+		{
+			name:  "audit logs",
+			query: "DELETE FROM audit_logs",
+		},
+		{
+			name:  "students",
+			query: "DELETE FROM students",
+		},
+		{
+			name:  "classes",
+			query: "DELETE FROM classes",
+		},
+		{
+			name:  "academic years",
+			query: "DELETE FROM academic_years",
+		},
+		{
+			name:  "users",
+			query: "DELETE FROM users",
+		},
+	}
+
+	ctx := context.Background()
+
+	for _, statement := range statements {
+		if _, err := db.ExecContext(ctx, statement.query); err != nil {
+			t.Fatalf(
+				"cleanup %s: %v",
+				statement.name,
+				err,
+			)
+		}
 	}
 }

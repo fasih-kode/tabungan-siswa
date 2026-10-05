@@ -111,6 +111,32 @@ func (r *ClassTransferRequestRepository) GetByID(
 	return r.getOne(ctx, query, id)
 }
 
+func (r *ClassTransferRequestRepository) GetByIDForUpdate(
+	ctx context.Context,
+	id uuid.UUID,
+) (domain.ClassTransferRequest, error) {
+	const query = `
+		SELECT
+			id,
+			student_id,
+			academic_year_id,
+			from_class_id,
+			to_class_id,
+			requested_by,
+			status,
+			reviewed_by,
+			reviewed_at,
+			rejection_reason,
+			requested_at,
+			updated_at
+		FROM class_transfer_requests
+		WHERE id = $1
+		FOR UPDATE
+	`
+
+	return r.getOne(ctx, query, id)
+}
+
 func (r *ClassTransferRequestRepository) ListByStudentAndAcademicYear(
 	ctx context.Context,
 	studentID uuid.UUID,
