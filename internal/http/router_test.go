@@ -442,6 +442,51 @@ func TestNewRouterProtectedRouteRequiresAuthentication(t *testing.T) {
 	}
 }
 
+func TestNewRouterProtectedMiddlewareRunsAuthenticationBeforeCSRF(t *testing.T) {
+	cookie := newTestSessionCookie(t)
+	authMiddleware, err := middleware.NewAuthenticationMiddleware(
+		cookie,
+		&routerSessionRepositoryFake{},
+		&routerUserRepositoryFake{},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	router, err := NewRouter(
+		HandlerSet{
+			Authentication: &AuthenticationHandler{},
+		},
+		MiddlewareSet{
+			Authentication: authMiddleware,
+			CSRF: middleware.NewCSRFMiddleware(
+				newTestCSRFCookie(t),
+			),
+		},
+		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			t.Fatal("protected handler was called")
+		}),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/protected", nil)
+	recorder := httptest.NewRecorder()
+
+	router.ServeHTTP(recorder, req)
+
+	if recorder.Code != http.StatusUnauthorized {
+		t.Fatalf("status = %d, want %d", recorder.Code, http.StatusUnauthorized)
+	}
+
+	for _, cookie := range recorder.Result().Cookies() {
+		if cookie.Name == security.DefaultCSRFCookieName {
+			t.Fatal("CSRF cookie was set before authentication succeeded")
+		}
+	}
+}
+
 func TestNewRouterProtectedRouteAllowsAuthenticatedRequest(t *testing.T) {
 	userID := uuid.New()
 	sessionToken := "protected-route-session-token"
