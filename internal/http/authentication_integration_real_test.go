@@ -194,10 +194,12 @@ func TestAuthenticationIntegrationUsesRealServiceAndArgon2id(t *testing.T) {
 	)
 
 	router, err := NewRouter(
-		RouterDependencies{
-			AuthenticationHandler: authenticationHandler,
-			Authentication:        authMiddleware,
-			CSRF:                  csrfMiddleware,
+		HandlerSet{
+			Authentication: authenticationHandler,
+		},
+		MiddlewareSet{
+			Authentication: authMiddleware,
+			CSRF:            csrfMiddleware,
 		},
 		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusNoContent)

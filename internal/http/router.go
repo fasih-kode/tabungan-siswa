@@ -1,21 +1,15 @@
 package http
 
-import (
-	"net/http"
+import "net/http"
 
-	"github.com/fasih/tabungan-siswa/internal/http/middleware"
-)
-
-type RouterDependencies struct {
-	AuthenticationHandler *AuthenticationHandler
-	Authentication        *middleware.AuthenticationMiddleware
-	CSRF                  *middleware.CSRFMiddleware
-}
-
-func NewRouter(deps RouterDependencies, protected http.Handler) (*http.ServeMux, error) {
-	if deps.AuthenticationHandler == nil ||
-		deps.Authentication == nil ||
-		deps.CSRF == nil ||
+func NewRouter(
+	handlers HandlerSet,
+	middlewares MiddlewareSet,
+	protected http.Handler,
+) (*http.ServeMux, error) {
+	if handlers.Authentication == nil ||
+		middlewares.Authentication == nil ||
+		middlewares.CSRF == nil ||
 		protected == nil {
 		return nil, ErrInvalidRouterDependency
 	}
@@ -23,21 +17,21 @@ func NewRouter(deps RouterDependencies, protected http.Handler) (*http.ServeMux,
 	mux := http.NewServeMux()
 
 	mux.HandleFunc("GET /login", func(w http.ResponseWriter, r *http.Request) {
-		deps.CSRF.Protect(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		middlewares.CSRF.Protect(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusNoContent)
 		})).ServeHTTP(w, r)
 	})
 
-	mux.HandleFunc("POST /login", deps.CSRF.Protect(http.HandlerFunc(
-		deps.AuthenticationHandler.Login,
+	mux.HandleFunc("POST /login", middlewares.CSRF.Protect(http.HandlerFunc(
+		handlers.Authentication.Login,
 	)).ServeHTTP)
 
-	mux.HandleFunc("POST /logout", deps.CSRF.Protect(http.HandlerFunc(
-		deps.AuthenticationHandler.Logout,
+	mux.HandleFunc("POST /logout", middlewares.CSRF.Protect(http.HandlerFunc(
+		handlers.Authentication.Logout,
 	)).ServeHTTP)
 
-	protectedHandler := deps.Authentication.RequireAuthentication(
-		deps.CSRF.Protect(protected),
+	protectedHandler := middlewares.Authentication.RequireAuthentication(
+		middlewares.CSRF.Protect(protected),
 	)
 	mux.Handle("/protected", protectedHandler)
 

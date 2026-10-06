@@ -30,18 +30,20 @@ func TestNewRouterRejectsMissingDependencies(t *testing.T) {
 		w.WriteHeader(http.StatusNoContent)
 	})
 
-	deps := RouterDependencies{
-		AuthenticationHandler: &AuthenticationHandler{},
-		Authentication:        authMiddleware,
-		CSRF:                  csrfMiddleware,
+	handlers := HandlerSet{
+		Authentication: &AuthenticationHandler{},
+	}
+	middlewares := MiddlewareSet{
+		Authentication: authMiddleware,
+		CSRF:           csrfMiddleware,
 	}
 
-	if _, err := NewRouter(deps, protected); err != nil {
+	if _, err := NewRouter(handlers, middlewares, protected); err != nil {
 		t.Fatalf("unexpected error = %v", err)
 	}
 
-	deps.AuthenticationHandler = nil
-	if _, err := NewRouter(deps, protected); err != ErrInvalidRouterDependency {
+	handlers.Authentication = nil
+	if _, err := NewRouter(handlers, middlewares, protected); err != ErrInvalidRouterDependency {
 		t.Fatalf("missing handler error = %v, want %v", err, ErrInvalidRouterDependency)
 	}
 }
@@ -58,9 +60,11 @@ func TestNewRouterProtectedRouteRequiresAuthentication(t *testing.T) {
 	}
 
 	router, err := NewRouter(
-		RouterDependencies{
-			AuthenticationHandler: &AuthenticationHandler{},
-			Authentication:        authMiddleware,
+		HandlerSet{
+			Authentication: &AuthenticationHandler{},
+		},
+		MiddlewareSet{
+			Authentication: authMiddleware,
 			CSRF: middleware.NewCSRFMiddleware(
 				newTestCSRFCookie(t),
 			),
@@ -95,9 +99,11 @@ func TestNewRouterProtectedPostRequiresAuthenticationBeforeCSRF(t *testing.T) {
 	}
 
 	router, err := NewRouter(
-		RouterDependencies{
-			AuthenticationHandler: &AuthenticationHandler{},
-			Authentication:        authMiddleware,
+		HandlerSet{
+			Authentication: &AuthenticationHandler{},
+		},
+		MiddlewareSet{
+			Authentication: authMiddleware,
 			CSRF: middleware.NewCSRFMiddleware(
 				newTestCSRFCookie(t),
 			),

@@ -168,10 +168,12 @@ func newIntegrationRouter(t *testing.T) *http.ServeMux {
 	)
 
 	router, err := NewRouter(
-		RouterDependencies{
-			AuthenticationHandler: authHandler,
-			Authentication:        authMiddleware,
-			CSRF:                  csrfMiddleware,
+		HandlerSet{
+			Authentication: authHandler,
+		},
+		MiddlewareSet{
+			Authentication: authMiddleware,
+			CSRF:            csrfMiddleware,
 		},
 		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			actor, ok := service.ActorFromContext(r.Context())
