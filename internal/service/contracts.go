@@ -14,6 +14,26 @@ type ListOptions struct {
 }
 
 // =========================
+// Authentication Service
+// =========================
+
+type AuthenticationService interface {
+	Authenticate(
+		ctx context.Context,
+		input AuthenticateInput,
+	) (AuthenticateOutput, error)
+}
+
+type AuthenticateInput struct {
+	Username string
+	Password string
+}
+
+type AuthenticateOutput struct {
+	Actor Actor
+}
+
+// =========================
 // User Service
 // =========================
 
