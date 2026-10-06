@@ -11,6 +11,8 @@ import (
 	"github.com/fasih/tabungan-siswa/internal/service"
 )
 
+const maxLoginRequestBodyBytes int64 = 16 << 10
+
 type AuthenticationHandler struct {
 	authentication service.AuthenticationService
 	sessions       repository.SessionRepository
@@ -55,6 +57,7 @@ func (h *AuthenticationHandler) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	r.Body = http.MaxBytesReader(w, r.Body, maxLoginRequestBodyBytes)
 	if err := r.ParseForm(); err != nil {
 		http.Error(
 			w,

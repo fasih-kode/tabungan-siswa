@@ -251,6 +251,34 @@ func TestAuthenticationHandlerLoginRejectsMissingContentType(t *testing.T) {
 	}
 }
 
+func TestAuthenticationHandlerLoginRejectsOversizedRequestBody(t *testing.T) {
+	authentication := &authenticationHandlerServiceFake{}
+	handler := newAuthenticationHandlerForTest(
+		t,
+		authentication,
+		&authenticationHandlerSessionRepositoryFake{},
+	)
+
+	body := "username=" + strings.Repeat("a", int(maxLoginRequestBodyBytes))
+	req := httptest.NewRequest(
+		http.MethodPost,
+		"/login",
+		strings.NewReader(body),
+	)
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	recorder := httptest.NewRecorder()
+
+	handler.Login(recorder, req)
+
+	if recorder.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d", recorder.Code, http.StatusBadRequest)
+	}
+
+	if authentication.authenticateCalls != 0 {
+		t.Fatal("authentication service was called for oversized request body")
+	}
+}
+
 func TestAuthenticationHandlerLoginRejectsMalformedForm(t *testing.T) {
 	authentication := &authenticationHandlerServiceFake{}
 	handler := newAuthenticationHandlerForTest(
