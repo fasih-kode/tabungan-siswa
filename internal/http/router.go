@@ -22,6 +22,12 @@ func NewRouter(deps RouterDependencies, protected http.Handler) (*http.ServeMux,
 
 	mux := http.NewServeMux()
 
+	mux.HandleFunc("GET /login", func(w http.ResponseWriter, r *http.Request) {
+		deps.CSRF.Protect(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusNoContent)
+		})).ServeHTTP(w, r)
+	})
+
 	mux.HandleFunc("POST /login", deps.CSRF.Protect(http.HandlerFunc(
 		deps.AuthenticationHandler.Login,
 	)).ServeHTTP)
