@@ -54,6 +54,25 @@ func Open(dsn string) (*sql.DB, error) {
 	return db, nil
 }
 
+// OpenAndPing membuka connection pool PostgreSQL dan memastikan database
+// dapat diakses.
+//
+// Jika ping gagal, connection pool yang baru dibuka ditutup sebelum error
+// dikembalikan.
+func OpenAndPing(ctx context.Context, dsn string) (*sql.DB, error) {
+	db, err := Open(dsn)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := Ping(ctx, db); err != nil {
+		_ = Close(db)
+		return nil, err
+	}
+
+	return db, nil
+}
+
 // Ping memastikan database dapat diakses.
 func Ping(ctx context.Context, db *sql.DB) error {
 	if db == nil {
