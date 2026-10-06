@@ -1,6 +1,7 @@
 package http
 
 import (
+	"errors"
 	"mime"
 	"net/http"
 	"time"
@@ -59,11 +60,13 @@ func (h *AuthenticationHandler) Login(w http.ResponseWriter, r *http.Request) {
 
 	r.Body = http.MaxBytesReader(w, r.Body, maxLoginRequestBodyBytes)
 	if err := r.ParseForm(); err != nil {
-		http.Error(
-			w,
-			http.StatusText(http.StatusBadRequest),
-			http.StatusBadRequest,
-		)
+		status := http.StatusBadRequest
+		var maxBytesError *http.MaxBytesError
+		if errors.As(err, &maxBytesError) {
+			status = http.StatusRequestEntityTooLarge
+		}
+
+		http.Error(w, http.StatusText(status), status)
 		return
 	}
 

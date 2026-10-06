@@ -338,8 +338,16 @@ func TestAuthenticationHandlerLoginRejectsOversizedRequestBody(t *testing.T) {
 
 	handler.Login(recorder, req)
 
-	if recorder.Code != http.StatusBadRequest {
-		t.Fatalf("status = %d, want %d", recorder.Code, http.StatusBadRequest)
+	if recorder.Code != http.StatusRequestEntityTooLarge {
+		t.Fatalf(
+			"status = %d, want %d",
+			recorder.Code,
+			http.StatusRequestEntityTooLarge,
+		)
+	}
+
+	if got := recorder.Body.String(); got != "Request Entity Too Large\n" {
+		t.Fatalf("body = %q, want %q", got, "Request Entity Too Large\n")
 	}
 
 	if authentication.authenticateCalls != 0 {
