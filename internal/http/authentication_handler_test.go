@@ -194,6 +194,44 @@ func TestAuthenticationHandlerLoginReadsCredentialsFromPostForm(t *testing.T) {
 	}
 }
 
+func TestAuthenticationHandlerLoginAcceptsFormContentTypeWithCharset(t *testing.T) {
+	authentication := &authenticationHandlerServiceFake{
+		authenticateOutput: service.AuthenticateOutput{
+			Actor: service.Actor{UserID: uuid.New(), Role: domain.RoleAdmin},
+		},
+	}
+	handler := newAuthenticationHandlerForTest(
+		t,
+		authentication,
+		&authenticationHandlerSessionRepositoryFake{},
+	)
+
+	req := httptest.NewRequest(
+		http.MethodPost,
+		"/login",
+		strings.NewReader("username=admin&password=secret"),
+	)
+	req.Header.Set(
+		"Content-Type",
+		"application/x-www-form-urlencoded; charset=UTF-8",
+	)
+	recorder := httptest.NewRecorder()
+
+	handler.Login(recorder, req)
+
+	if recorder.Code != http.StatusNoContent {
+		t.Fatalf("status = %d, want %d", recorder.Code, http.StatusNoContent)
+	}
+
+	if authentication.authenticateCalls != 1 {
+		t.Fatalf(
+			"authentication calls = %d, want %d",
+			authentication.authenticateCalls,
+			1,
+		)
+	}
+}
+
 func TestAuthenticationHandlerLoginRejectsUnsupportedContentType(t *testing.T) {
 	authentication := &authenticationHandlerServiceFake{}
 	handler := newAuthenticationHandlerForTest(
@@ -222,6 +260,36 @@ func TestAuthenticationHandlerLoginRejectsUnsupportedContentType(t *testing.T) {
 
 	if got := recorder.Header().Get("Cache-Control"); got != "no-store" {
 		t.Fatalf("Cache-Control = %q, want %q", got, "no-store")
+	}
+}
+
+func TestAuthenticationHandlerLoginRejectsMalformedContentType(t *testing.T) {
+	authentication := &authenticationHandlerServiceFake{}
+	handler := newAuthenticationHandlerForTest(
+		t,
+		authentication,
+		&authenticationHandlerSessionRepositoryFake{},
+	)
+
+	req := httptest.NewRequest(
+		http.MethodPost,
+		"/login",
+		strings.NewReader("username=admin&password=secret"),
+	)
+	req.Header.Set(
+		"Content-Type",
+		"application/x-www-form-urlencoded; charset",
+	)
+	recorder := httptest.NewRecorder()
+
+	handler.Login(recorder, req)
+
+	if recorder.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d", recorder.Code, http.StatusBadRequest)
+	}
+
+	if authentication.authenticateCalls != 0 {
+		t.Fatal("authentication service was called for malformed content type")
 	}
 }
 
