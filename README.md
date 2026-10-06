@@ -6,8 +6,8 @@ Aplikasi pengelolaan tabungan siswa.
 
 - Go
 - net/http
-- templ
+- html/template
 - HTMX
-- Tailwind CSS
+- https://github.com/TailAdmin/tailadmin-free-tailwind-dashboard-template
 - PostgreSQL
 - SQL

@@ -32,6 +32,9 @@ func TestPostgresUnitOfWork_BeginProvidesAllRepositories(t *testing.T) {
 	if repos.Users == nil {
 		t.Error("Repositories().Users is nil")
 	}
+	if repos.Sessions == nil {
+		t.Error("Repositories().Sessions is nil")
+	}
 	if repos.AcademicYears == nil {
 		t.Error("Repositories().AcademicYears is nil")
 	}

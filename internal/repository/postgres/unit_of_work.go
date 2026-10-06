@@ -48,19 +48,7 @@ func (m *PostgresUnitOfWorkManager) Begin(
 		return nil, fmt.Errorf("begin transaction: %w", err)
 	}
 
-	repos := repository.RepositorySet{
-		Users:                   NewUserRepository(tx),
-		AcademicYears:           NewAcademicYearRepository(tx),
-		Classes:                 NewClassRepository(tx),
-		Students:                NewStudentRepository(tx),
-		StudentClassHistories:   NewStudentClassHistoryRepository(tx),
-		TeacherClassAssignments: NewTeacherClassAssignmentRepository(tx),
-		ClassTransferRequests:   NewClassTransferRequestRepository(tx),
-		SavingsAccounts:         NewSavingsAccountRepository(tx),
-		Transactions:            NewTransactionRepository(tx),
-		Settlements:             NewSettlementRepository(tx),
-		AuditLogs:               NewAuditRepository(tx),
-	}
+	repos := NewRepositorySet(tx)
 
 	return &PostgresUnitOfWork{
 		tx:    tx,
