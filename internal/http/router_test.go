@@ -164,6 +164,78 @@ func TestNewRouterAuthenticationRoutesRequireCSRF(t *testing.T) {
 	}
 }
 
+func TestNewRouterAuthenticationRoutesRejectUnsupportedMethods(t *testing.T) {
+	cookie := newTestSessionCookie(t)
+	authMiddleware, err := middleware.NewAuthenticationMiddleware(
+		cookie,
+		&routerSessionRepositoryFake{},
+		&routerUserRepositoryFake{},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	router, err := NewRouter(
+		HandlerSet{
+			Authentication: &AuthenticationHandler{},
+		},
+		MiddlewareSet{
+			Authentication: authMiddleware,
+			CSRF:           middleware.NewCSRFMiddleware(newTestCSRFCookie(t)),
+		},
+		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusNoContent)
+		}),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	tests := []struct {
+		name      string
+		path      string
+		wantAllow string
+	}{
+		{
+			name:      "login",
+			path:      "/login",
+			wantAllow: "GET, HEAD, POST",
+		},
+		{
+			name:      "logout",
+			path:      "/logout",
+			wantAllow: "POST",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodPut, tt.path, nil)
+			recorder := httptest.NewRecorder()
+
+			router.ServeHTTP(recorder, req)
+
+			if recorder.Code != http.StatusMethodNotAllowed {
+				t.Fatalf(
+					"PUT %s status = %d, want %d",
+					tt.path,
+					recorder.Code,
+					http.StatusMethodNotAllowed,
+				)
+			}
+
+			if got := recorder.Header().Get("Allow"); got != tt.wantAllow {
+				t.Fatalf(
+					"PUT %s Allow = %q, want %q",
+					tt.path,
+					got,
+					tt.wantAllow,
+				)
+			}
+		})
+	}
+}
+
 func TestNewRouterLogoutRouteUsesPostMethod(t *testing.T) {
 	cookie := newTestSessionCookie(t)
 	authMiddleware, err := middleware.NewAuthenticationMiddleware(
