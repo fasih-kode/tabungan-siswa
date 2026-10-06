@@ -487,6 +487,49 @@ func TestNewRouterProtectedMiddlewareRunsAuthenticationBeforeCSRF(t *testing.T) 
 	}
 }
 
+func TestNewRouterProtectedRouteDoesNotPropagateActorWhenAuthenticationFails(t *testing.T) {
+	cookie := newTestSessionCookie(t)
+	authMiddleware, err := middleware.NewAuthenticationMiddleware(
+		cookie,
+		&routerSessionRepositoryFake{},
+		&routerUserRepositoryFake{},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	protected := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if _, ok := service.ActorFromContext(r.Context()); ok {
+			t.Fatal("actor propagated despite failed authentication")
+		}
+
+		w.WriteHeader(http.StatusNoContent)
+	})
+
+	router, err := NewRouter(
+		HandlerSet{
+			Authentication: &AuthenticationHandler{},
+		},
+		MiddlewareSet{
+			Authentication: authMiddleware,
+			CSRF:           middleware.NewCSRFMiddleware(newTestCSRFCookie(t)),
+		},
+		protected,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/protected", nil)
+	recorder := httptest.NewRecorder()
+
+	router.ServeHTTP(recorder, req)
+
+	if recorder.Code != http.StatusUnauthorized {
+		t.Fatalf("status = %d, want %d", recorder.Code, http.StatusUnauthorized)
+	}
+}
+
 func TestNewRouterProtectedRouteAllowsAuthenticatedRequest(t *testing.T) {
 	userID := uuid.New()
 	sessionToken := "protected-route-session-token"
