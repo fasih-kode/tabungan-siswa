@@ -20,17 +20,30 @@ func NewRouter(
 
 	mux := http.NewServeMux()
 
+	registerRoutes(
+		mux,
+		handlers,
+		middlewares,
+		protected,
+	)
+
+	return mux, nil
+}
+
+func registerRoutes(
+	mux *http.ServeMux,
+	handlers HandlerSet,
+	middlewares MiddlewareSet,
+	protected http.Handler,
+) {
 	registerPublicRoutes(mux, middlewares.CSRF)
 	registerAuthenticationRoutes(mux, handlers.Authentication, middlewares.CSRF)
-
 	registerProtectedRoutes(
 		mux,
 		middlewares.Authentication,
 		middlewares.CSRF,
 		protected,
 	)
-
-	return mux, nil
 }
 
 func registerProtectedRoutes(
