@@ -351,6 +351,58 @@ func TestNewRouterReturnsNotFoundForUnknownRoute(t *testing.T) {
 	}
 }
 
+func TestNewRouterUsesCanonicalPathsWithoutTrailingSlash(t *testing.T) {
+	cookie := newTestSessionCookie(t)
+	authMiddleware, err := middleware.NewAuthenticationMiddleware(
+		cookie,
+		&routerSessionRepositoryFake{},
+		&routerUserRepositoryFake{},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	router, err := NewRouter(
+		HandlerSet{
+			Authentication: &AuthenticationHandler{},
+		},
+		MiddlewareSet{
+			Authentication: authMiddleware,
+			CSRF:           middleware.NewCSRFMiddleware(newTestCSRFCookie(t)),
+		},
+		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusNoContent)
+		}),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	paths := []string{
+		"/login/",
+		"/logout/",
+		"/protected/",
+	}
+
+	for _, path := range paths {
+		t.Run(path, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodGet, path, nil)
+			recorder := httptest.NewRecorder()
+
+			router.ServeHTTP(recorder, req)
+
+			if recorder.Code != http.StatusNotFound {
+				t.Fatalf(
+					"GET %s status = %d, want %d",
+					path,
+					recorder.Code,
+					http.StatusNotFound,
+				)
+			}
+		})
+	}
+}
+
 func TestNewRouterProtectedRouteRequiresAuthentication(t *testing.T) {
 	cookie := newTestSessionCookie(t)
 	authMiddleware, err := middleware.NewAuthenticationMiddleware(
