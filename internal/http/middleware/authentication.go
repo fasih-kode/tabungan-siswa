@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"time"
 
-	apphttp "github.com/fasih/tabungan-siswa/internal/http"
+	"github.com/fasih/tabungan-siswa/internal/http/autherror"
 	"github.com/fasih/tabungan-siswa/internal/repository"
 	"github.com/fasih/tabungan-siswa/internal/security"
 	"github.com/fasih/tabungan-siswa/internal/service"
@@ -39,7 +39,7 @@ func (m *AuthenticationMiddleware) RequireAuthentication(
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		token, err := m.cookie.Read(r)
 		if err != nil {
-			apphttp.WriteAuthenticationError(w, service.ErrInvalidCredentials)
+			autherror.Write(w, service.ErrInvalidCredentials)
 			return
 		}
 
@@ -49,27 +49,27 @@ func (m *AuthenticationMiddleware) RequireAuthentication(
 		)
 		if err != nil {
 			if errors.Is(err, repository.ErrNotFound) {
-				apphttp.WriteAuthenticationError(w, service.ErrInvalidCredentials)
+				autherror.Write(w, service.ErrInvalidCredentials)
 				return
 			}
 
-			apphttp.WriteAuthenticationError(w, err)
+			autherror.Write(w, err)
 			return
 		}
 
 		if !session.IsActive(time.Now()) {
-			apphttp.WriteAuthenticationError(w, service.ErrInvalidCredentials)
+			autherror.Write(w, service.ErrInvalidCredentials)
 			return
 		}
 
 		user, err := m.users.GetByID(r.Context(), session.UserID)
 		if err != nil {
 			if errors.Is(err, repository.ErrNotFound) {
-				apphttp.WriteAuthenticationError(w, service.ErrInvalidCredentials)
+				autherror.Write(w, service.ErrInvalidCredentials)
 				return
 			}
 
-			apphttp.WriteAuthenticationError(w, err)
+			autherror.Write(w, err)
 			return
 		}
 
@@ -78,7 +78,7 @@ func (m *AuthenticationMiddleware) RequireAuthentication(
 			Role:   user.Role,
 		}
 		if err := actor.Validate(); err != nil {
-			apphttp.WriteAuthenticationError(w, err)
+			autherror.Write(w, err)
 			return
 		}
 
