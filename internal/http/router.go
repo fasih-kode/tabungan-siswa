@@ -1,6 +1,10 @@
 package http
 
-import "net/http"
+import (
+	"net/http"
+
+	"github.com/fasih/tabungan-siswa/internal/http/middleware"
+)
 
 func NewRouter(
 	handlers HandlerSet,
@@ -16,24 +20,52 @@ func NewRouter(
 
 	mux := http.NewServeMux()
 
-	mux.HandleFunc("GET /login", func(w http.ResponseWriter, r *http.Request) {
-		middlewares.CSRF.Protect(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			w.WriteHeader(http.StatusNoContent)
-		})).ServeHTTP(w, r)
-	})
+	registerPublicRoutes(mux, middlewares.CSRF)
+	registerAuthenticationRoutes(mux, handlers.Authentication, middlewares.CSRF)
 
-	mux.HandleFunc("POST /login", middlewares.CSRF.Protect(http.HandlerFunc(
-		handlers.Authentication.Login,
-	)).ServeHTTP)
-
-	mux.HandleFunc("POST /logout", middlewares.CSRF.Protect(http.HandlerFunc(
-		handlers.Authentication.Logout,
-	)).ServeHTTP)
-
-	protectedHandler := middlewares.Authentication.RequireAuthentication(
-		middlewares.CSRF.Protect(protected),
+	registerProtectedRoutes(
+		mux,
+		middlewares.Authentication,
+		middlewares.CSRF,
+		protected,
 	)
-	mux.Handle("/protected", protectedHandler)
 
 	return mux, nil
+}
+
+func registerProtectedRoutes(
+	mux *http.ServeMux,
+	authentication *middleware.AuthenticationMiddleware,
+	csrf *middleware.CSRFMiddleware,
+	protected http.Handler,
+) {
+	protectedHandler := authentication.RequireAuthentication(
+		csrf.Protect(protected),
+	)
+	mux.Handle("/protected", protectedHandler)
+}
+
+func registerAuthenticationRoutes(
+	mux *http.ServeMux,
+	handler *AuthenticationHandler,
+	csrf *middleware.CSRFMiddleware,
+) {
+	mux.HandleFunc("POST /login", csrf.Protect(http.HandlerFunc(
+		handler.Login,
+	)).ServeHTTP)
+
+	mux.HandleFunc("POST /logout", csrf.Protect(http.HandlerFunc(
+		handler.Logout,
+	)).ServeHTTP)
+}
+
+func registerPublicRoutes(
+	mux *http.ServeMux,
+	csrf *middleware.CSRFMiddleware,
+) {
+	mux.HandleFunc("GET /login", csrf.Protect(http.HandlerFunc(
+		func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusNoContent)
+		},
+	)).ServeHTTP)
 }
