@@ -283,6 +283,74 @@ func TestNewRouterLogoutRouteUsesPostMethod(t *testing.T) {
 	}
 }
 
+func TestNewRouterReturnsNotFoundForUnknownRoute(t *testing.T) {
+	cookie := newTestSessionCookie(t)
+	authMiddleware, err := middleware.NewAuthenticationMiddleware(
+		cookie,
+		&routerSessionRepositoryFake{},
+		&routerUserRepositoryFake{},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	router, err := NewRouter(
+		HandlerSet{
+			Authentication: &AuthenticationHandler{},
+		},
+		MiddlewareSet{
+			Authentication: authMiddleware,
+			CSRF:           middleware.NewCSRFMiddleware(newTestCSRFCookie(t)),
+		},
+		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusNoContent)
+		}),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	tests := []struct {
+		name   string
+		method string
+	}{
+		{
+			name:   "get",
+			method: http.MethodGet,
+		},
+		{
+			name:   "post",
+			method: http.MethodPost,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req := httptest.NewRequest(tt.method, "/does-not-exist", nil)
+			recorder := httptest.NewRecorder()
+
+			router.ServeHTTP(recorder, req)
+
+			if recorder.Code != http.StatusNotFound {
+				t.Fatalf(
+					"%s /does-not-exist status = %d, want %d",
+					tt.method,
+					recorder.Code,
+					http.StatusNotFound,
+				)
+			}
+
+			if got := recorder.Header().Get("Allow"); got != "" {
+				t.Fatalf(
+					"%s /does-not-exist Allow = %q, want empty",
+					tt.method,
+					got,
+				)
+			}
+		})
+	}
+}
+
 func TestNewRouterProtectedRouteRequiresAuthentication(t *testing.T) {
 	cookie := newTestSessionCookie(t)
 	authMiddleware, err := middleware.NewAuthenticationMiddleware(
