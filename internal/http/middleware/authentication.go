@@ -1,8 +1,6 @@
 package middleware
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
 	"errors"
 	"net/http"
 	"time"
@@ -46,7 +44,7 @@ func (m *AuthenticationMiddleware) RequireAuthentication(
 
 		session, err := m.sessions.GetByTokenHash(
 			r.Context(),
-			hashSessionToken(token),
+			security.HashSessionToken(token),
 		)
 		if err != nil {
 			if errors.Is(err, repository.ErrNotFound) {
@@ -85,11 +83,6 @@ func (m *AuthenticationMiddleware) RequireAuthentication(
 
 		next.ServeHTTP(w, r.WithContext(service.WithActor(r.Context(), actor)))
 	})
-}
-
-func hashSessionToken(token string) string {
-	sum := sha256.Sum256([]byte(token))
-	return hex.EncodeToString(sum[:])
 }
 
 func writeUnauthorized(w http.ResponseWriter) {

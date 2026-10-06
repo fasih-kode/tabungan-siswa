@@ -22,6 +22,10 @@ type AuthenticationService interface {
 		ctx context.Context,
 		input AuthenticateInput,
 	) (AuthenticateOutput, error)
+	Logout(
+		ctx context.Context,
+		input LogoutInput,
+	) error
 }
 
 type AuthenticateInput struct {
@@ -31,6 +35,10 @@ type AuthenticateInput struct {
 
 type AuthenticateOutput struct {
 	Actor Actor
+}
+
+type LogoutInput struct {
+	SessionTokenHash string
 }
 
 // =========================

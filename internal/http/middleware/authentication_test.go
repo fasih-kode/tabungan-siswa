@@ -95,7 +95,7 @@ func TestAuthenticationMiddlewareInjectsActor(t *testing.T) {
 	session := domain.Session{
 		ID:        uuid.New(),
 		UserID:    userID,
-		TokenHash: hashSessionToken("opaque-session-token"),
+		TokenHash: security.HashSessionToken("opaque-session-token"),
 		ExpiresAt: time.Now().Add(time.Hour),
 		CreatedAt: time.Now(),
 	}
@@ -182,7 +182,7 @@ func TestAuthenticationMiddlewareRejectsExpiredSession(t *testing.T) {
 	session := domain.Session{
 		ID:        uuid.New(),
 		UserID:    uuid.New(),
-		TokenHash: hashSessionToken("expired-token"),
+		TokenHash: security.HashSessionToken("expired-token"),
 		ExpiresAt: time.Now().Add(-time.Minute),
 		CreatedAt: time.Now().Add(-time.Hour),
 	}
@@ -216,7 +216,7 @@ func TestAuthenticationMiddlewareRejectsRevokedSession(t *testing.T) {
 	session := domain.Session{
 		ID:        uuid.New(),
 		UserID:    uuid.New(),
-		TokenHash: hashSessionToken("revoked-token"),
+		TokenHash: security.HashSessionToken("revoked-token"),
 		ExpiresAt: time.Now().Add(time.Hour),
 		RevokedAt: &revokedAt,
 		CreatedAt: time.Now().Add(-time.Hour),
@@ -250,7 +250,7 @@ func TestAuthenticationMiddlewareRejectsUnknownUser(t *testing.T) {
 	session := domain.Session{
 		ID:        uuid.New(),
 		UserID:    uuid.New(),
-		TokenHash: hashSessionToken("unknown-user-token"),
+		TokenHash: security.HashSessionToken("unknown-user-token"),
 		ExpiresAt: time.Now().Add(time.Hour),
 		CreatedAt: time.Now(),
 	}
@@ -301,18 +301,5 @@ func TestAuthenticationMiddlewarePropagatesRepositoryFailureAsServerError(t *tes
 
 	if recorder.Code != http.StatusInternalServerError {
 		t.Fatalf("status = %d, want %d", recorder.Code, http.StatusInternalServerError)
-	}
-}
-
-func TestHashSessionTokenIsDeterministic(t *testing.T) {
-	first := hashSessionToken("opaque-session-token")
-	second := hashSessionToken("opaque-session-token")
-
-	if first != second {
-		t.Fatalf("hashes differ: %q != %q", first, second)
-	}
-
-	if first == "opaque-session-token" {
-		t.Fatal("hashSessionToken() returned plaintext token")
 	}
 }

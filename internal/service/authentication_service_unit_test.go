@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/fasih/tabungan-siswa/internal/domain"
 	"github.com/fasih/tabungan-siswa/internal/repository"
@@ -26,6 +27,37 @@ func (f *authenticationServiceFakeUserRepository) GetByUsername(
 	}
 
 	return domain.User{}, repository.ErrNotFound
+}
+
+type authenticationServiceFakeSessionRepository struct {
+	repository.SessionRepository
+	session       domain.Session
+	getByHashErr  error
+	revokeCalls   int
+	revokeSession uuid.UUID
+	revokeAt      time.Time
+	revokeErr     error
+}
+
+func (f *authenticationServiceFakeSessionRepository) GetByTokenHash(
+	context.Context,
+	string,
+) (domain.Session, error) {
+	if f.getByHashErr != nil {
+		return domain.Session{}, f.getByHashErr
+	}
+	return f.session, nil
+}
+
+func (f *authenticationServiceFakeSessionRepository) Revoke(
+	_ context.Context,
+	sessionID uuid.UUID,
+	revokedAt time.Time,
+) error {
+	f.revokeCalls++
+	f.revokeSession = sessionID
+	f.revokeAt = revokedAt
+	return f.revokeErr
 }
 
 type authenticationServiceFakePasswordHasher struct {
@@ -54,7 +86,7 @@ func TestNewAuthenticationService(t *testing.T) {
 
 	t.Run("valid dependencies", func(t *testing.T) {
 		svc, err := NewAuthenticationService(Dependencies{
-			Repositories:   repository.RepositorySet{Users: users},
+			Repositories:   repository.RepositorySet{Users: users, Sessions: &authenticationServiceFakeSessionRepository{}},
 			UOW:            uow,
 			PasswordHasher: hasher,
 		})
@@ -97,6 +129,20 @@ func TestNewAuthenticationService(t *testing.T) {
 
 		if svc != nil {
 			t.Fatal("NewAuthenticationService() service != nil without user repository")
+		}
+	})
+
+	t.Run("missing session repository", func(t *testing.T) {
+		svc, err := NewAuthenticationService(Dependencies{
+			Repositories:   repository.RepositorySet{Users: users},
+			UOW:            uow,
+			PasswordHasher: hasher,
+		})
+		if !errors.Is(err, ErrInvalidDependency) {
+			t.Fatalf("NewAuthenticationService() error = %v, want %v", err, ErrInvalidDependency)
+		}
+		if svc != nil {
+			t.Fatal("NewAuthenticationService() service != nil without session repository")
 		}
 	})
 
@@ -326,7 +372,8 @@ func TestAuthenticationService_Authenticate(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			svc, err := NewAuthenticationService(Dependencies{
 				Repositories: repository.RepositorySet{
-					Users: tt.userRepo,
+					Users:    tt.userRepo,
+					Sessions: &authenticationServiceFakeSessionRepository{},
 				},
 				UOW:            foundationFakeUOWManager{},
 				PasswordHasher: tt.hasher,
@@ -360,5 +407,195 @@ func TestAuthenticationService_Authenticate(t *testing.T) {
 				)
 			}
 		})
+	}
+}
+
+func newAuthenticationServiceForLogoutTest(
+	t *testing.T,
+	sessions repository.SessionRepository,
+) *authenticationService {
+	t.Helper()
+
+	svc, err := NewAuthenticationService(Dependencies{
+		Repositories: repository.RepositorySet{
+			Users:    &authenticationServiceFakeUserRepository{},
+			Sessions: sessions,
+		},
+		UOW:            foundationFakeUOWManager{},
+		PasswordHasher: &authenticationServiceFakePasswordHasher{},
+	})
+	if err != nil {
+		t.Fatalf("NewAuthenticationService() error = %v", err)
+	}
+
+	return svc
+}
+
+func TestAuthenticationService_Logout(t *testing.T) {
+	session := domain.Session{
+		ID:        uuid.New(),
+		UserID:    uuid.New(),
+		TokenHash: "session-token-hash",
+		ExpiresAt: time.Now().Add(time.Hour),
+		CreatedAt: time.Now(),
+	}
+	sessions := &authenticationServiceFakeSessionRepository{session: session}
+	svc := newAuthenticationServiceForLogoutTest(t, sessions)
+
+	if err := svc.Logout(context.Background(), LogoutInput{
+		SessionTokenHash: session.TokenHash,
+	}); err != nil {
+		t.Fatalf("Logout() error = %v, want nil", err)
+	}
+	if sessions.revokeCalls != 1 {
+		t.Fatalf("Revoke() calls = %d, want 1", sessions.revokeCalls)
+	}
+	if sessions.revokeSession != session.ID {
+		t.Fatalf("Revoke() session ID = %v, want %v", sessions.revokeSession, session.ID)
+	}
+	if sessions.revokeAt.IsZero() {
+		t.Fatal("Revoke() revokedAt is zero, want non-zero timestamp")
+	}
+}
+
+func TestAuthenticationService_LogoutIsIdempotentForUnknownSession(t *testing.T) {
+	sessions := &authenticationServiceFakeSessionRepository{
+		getByHashErr: repository.ErrNotFound,
+	}
+	svc := newAuthenticationServiceForLogoutTest(t, sessions)
+
+	if err := svc.Logout(context.Background(), LogoutInput{
+		SessionTokenHash: "missing",
+	}); err != nil {
+		t.Fatalf("Logout() error = %v, want nil", err)
+	}
+	if sessions.revokeCalls != 0 {
+		t.Fatalf("Revoke() calls = %d, want 0", sessions.revokeCalls)
+	}
+}
+
+func TestAuthenticationService_LogoutIgnoresExpiredSession(t *testing.T) {
+	sessions := &authenticationServiceFakeSessionRepository{
+		session: domain.Session{
+			ID:        uuid.New(),
+			UserID:    uuid.New(),
+			TokenHash: "expired-session",
+			ExpiresAt: time.Now().Add(-time.Minute),
+			CreatedAt: time.Now().Add(-time.Hour),
+		},
+	}
+	svc := newAuthenticationServiceForLogoutTest(t, sessions)
+
+	if err := svc.Logout(context.Background(), LogoutInput{
+		SessionTokenHash: sessions.session.TokenHash,
+	}); err != nil {
+		t.Fatalf("Logout() error = %v, want nil", err)
+	}
+	if sessions.revokeCalls != 0 {
+		t.Fatalf("Revoke() calls = %d, want 0 for expired session", sessions.revokeCalls)
+	}
+}
+
+func TestAuthenticationService_LogoutIgnoresRevokedSession(t *testing.T) {
+	revokedAt := time.Now().Add(-time.Minute)
+	sessions := &authenticationServiceFakeSessionRepository{
+		session: domain.Session{
+			ID:        uuid.New(),
+			UserID:    uuid.New(),
+			TokenHash: "revoked-session",
+			ExpiresAt: time.Now().Add(time.Hour),
+			RevokedAt: &revokedAt,
+			CreatedAt: time.Now().Add(-time.Hour),
+		},
+	}
+	svc := newAuthenticationServiceForLogoutTest(t, sessions)
+
+	if err := svc.Logout(context.Background(), LogoutInput{
+		SessionTokenHash: sessions.session.TokenHash,
+	}); err != nil {
+		t.Fatalf("Logout() error = %v, want nil", err)
+	}
+	if sessions.revokeCalls != 0 {
+		t.Fatalf("Revoke() calls = %d, want 0 for revoked session", sessions.revokeCalls)
+	}
+}
+
+func TestAuthenticationService_LogoutPropagatesSessionLookupError(t *testing.T) {
+	repositoryErr := errors.New("database unavailable")
+	sessions := &authenticationServiceFakeSessionRepository{
+		getByHashErr: repositoryErr,
+	}
+	svc := newAuthenticationServiceForLogoutTest(t, sessions)
+
+	err := svc.Logout(context.Background(), LogoutInput{
+		SessionTokenHash: "session-token-hash",
+	})
+	if !errors.Is(err, repositoryErr) {
+		t.Fatalf("Logout() error = %v, want %v", err, repositoryErr)
+	}
+	if sessions.revokeCalls != 0 {
+		t.Fatalf("Revoke() calls = %d, want 0 after lookup error", sessions.revokeCalls)
+	}
+}
+
+func TestAuthenticationService_LogoutPropagatesRevokeError(t *testing.T) {
+	repositoryErr := errors.New("database unavailable")
+	session := domain.Session{
+		ID:        uuid.New(),
+		UserID:    uuid.New(),
+		TokenHash: "session-token-hash",
+		ExpiresAt: time.Now().Add(time.Hour),
+		CreatedAt: time.Now(),
+	}
+	sessions := &authenticationServiceFakeSessionRepository{
+		session:   session,
+		revokeErr: repositoryErr,
+	}
+	svc := newAuthenticationServiceForLogoutTest(t, sessions)
+
+	err := svc.Logout(context.Background(), LogoutInput{
+		SessionTokenHash: session.TokenHash,
+	})
+	if !errors.Is(err, repositoryErr) {
+		t.Fatalf("Logout() error = %v, want %v", err, repositoryErr)
+	}
+	if sessions.revokeCalls != 1 {
+		t.Fatalf("Revoke() calls = %d, want 1", sessions.revokeCalls)
+	}
+}
+
+func TestAuthenticationService_LogoutIsIdempotentForConcurrentRevocation(t *testing.T) {
+	session := domain.Session{
+		ID:        uuid.New(),
+		UserID:    uuid.New(),
+		TokenHash: "session-token-hash",
+		ExpiresAt: time.Now().Add(time.Hour),
+		CreatedAt: time.Now(),
+	}
+	sessions := &authenticationServiceFakeSessionRepository{
+		session:   session,
+		revokeErr: repository.ErrNotFound,
+	}
+	svc := newAuthenticationServiceForLogoutTest(t, sessions)
+
+	if err := svc.Logout(context.Background(), LogoutInput{
+		SessionTokenHash: session.TokenHash,
+	}); err != nil {
+		t.Fatalf("Logout() error = %v, want nil", err)
+	}
+	if sessions.revokeCalls != 1 {
+		t.Fatalf("Revoke() calls = %d, want 1", sessions.revokeCalls)
+	}
+}
+
+func TestAuthenticationService_LogoutRejectsEmptyTokenHash(t *testing.T) {
+	sessions := &authenticationServiceFakeSessionRepository{}
+	svc := newAuthenticationServiceForLogoutTest(t, sessions)
+
+	if err := svc.Logout(context.Background(), LogoutInput{}); !errors.Is(err, domain.ErrInvalidSessionTokenHash) {
+		t.Fatalf("Logout() error = %v, want %v", err, domain.ErrInvalidSessionTokenHash)
+	}
+	if sessions.revokeCalls != 0 {
+		t.Fatalf("Revoke() calls = %d, want 0 for invalid token hash", sessions.revokeCalls)
 	}
 }
