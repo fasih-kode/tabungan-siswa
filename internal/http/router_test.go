@@ -523,6 +523,72 @@ func TestNewRouterProtectedRouteAllowsAuthenticatedRequest(t *testing.T) {
 	}
 }
 
+func TestNewRouterProtectedPostRequiresCSRFAfterAuthentication(t *testing.T) {
+	userID := uuid.New()
+	sessionToken := "protected-csrf-session-token"
+
+	session := domain.Session{
+		ID:        uuid.New(),
+		UserID:    userID,
+		TokenHash: security.HashSessionToken(sessionToken),
+		ExpiresAt: time.Now().Add(time.Hour),
+		CreatedAt: time.Now(),
+	}
+
+	user := domain.User{
+		ID:   userID,
+		Role: domain.RoleAdmin,
+	}
+
+	authMiddleware, err := middleware.NewAuthenticationMiddleware(
+		security.NewDefaultSessionCookie(),
+		&routerSessionRepositoryFake{session: session},
+		&routerUserRepositoryFake{user: user},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	protectedCalled := false
+	protected := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		protectedCalled = true
+		w.WriteHeader(http.StatusNoContent)
+	})
+
+	router, err := NewRouter(
+		HandlerSet{
+			Authentication: &AuthenticationHandler{},
+		},
+		MiddlewareSet{
+			Authentication: authMiddleware,
+			CSRF: middleware.NewCSRFMiddleware(
+				newTestCSRFCookie(t),
+			),
+		},
+		protected,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/protected", nil)
+	req.AddCookie(&http.Cookie{
+		Name:  security.DefaultSessionCookieName,
+		Value: sessionToken,
+	})
+	recorder := httptest.NewRecorder()
+
+	router.ServeHTTP(recorder, req)
+
+	if recorder.Code != http.StatusForbidden {
+		t.Fatalf("status = %d, want %d", recorder.Code, http.StatusForbidden)
+	}
+
+	if protectedCalled {
+		t.Fatal("protected handler was called without a valid CSRF token")
+	}
+}
+
 func TestNewRouterProtectedPostRequiresAuthenticationBeforeCSRF(t *testing.T) {
 	cookie := newTestSessionCookie(t)
 	authMiddleware, err := middleware.NewAuthenticationMiddleware(
