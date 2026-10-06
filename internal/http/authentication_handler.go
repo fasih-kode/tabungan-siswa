@@ -1,6 +1,7 @@
 package http
 
 import (
+	"mime"
 	"net/http"
 	"time"
 
@@ -44,16 +45,30 @@ func (h *AuthenticationHandler) Login(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Cache-Control", "no-store")
 
+	mediaType, _, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
+	if err != nil || mediaType != "application/x-www-form-urlencoded" {
+		http.Error(
+			w,
+			http.StatusText(http.StatusBadRequest),
+			http.StatusBadRequest,
+		)
+		return
+	}
+
 	if err := r.ParseForm(); err != nil {
-		WriteAuthenticationError(w, err)
+		http.Error(
+			w,
+			http.StatusText(http.StatusBadRequest),
+			http.StatusBadRequest,
+		)
 		return
 	}
 
 	output, err := h.authentication.Authenticate(
 		r.Context(),
 		service.AuthenticateInput{
-			Username: r.FormValue("username"),
-			Password: r.FormValue("password"),
+			Username: r.PostForm.Get("username"),
+			Password: r.PostForm.Get("password"),
 		},
 	)
 	if err != nil {

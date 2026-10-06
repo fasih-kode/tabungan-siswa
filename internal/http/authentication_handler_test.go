@@ -20,14 +20,18 @@ import (
 type authenticationHandlerServiceFake struct {
 	authenticateOutput service.AuthenticateOutput
 	authenticateErr    error
+	authenticateInput  service.AuthenticateInput
+	authenticateCalls  int
 	logoutErr          error
 	logoutInput        service.LogoutInput
 }
 
 func (f *authenticationHandlerServiceFake) Authenticate(
-	context.Context,
-	service.AuthenticateInput,
+	_ context.Context,
+	input service.AuthenticateInput,
 ) (service.AuthenticateOutput, error) {
+	f.authenticateInput = input
+	f.authenticateCalls++
 	return f.authenticateOutput, f.authenticateErr
 }
 
@@ -152,6 +156,129 @@ func TestAuthenticationHandlerLoginCreatesSessionAndCookie(t *testing.T) {
 	}
 	if !cookie.HttpOnly || !cookie.Secure || cookie.SameSite != http.SameSiteLaxMode || cookie.Path != "/" {
 		t.Fatalf("unexpected session cookie properties: %+v", cookie)
+	}
+}
+
+func TestAuthenticationHandlerLoginReadsCredentialsFromPostForm(t *testing.T) {
+	authentication := &authenticationHandlerServiceFake{
+		authenticateOutput: service.AuthenticateOutput{
+			Actor: service.Actor{UserID: uuid.New(), Role: domain.RoleAdmin},
+		},
+	}
+	handler := newAuthenticationHandlerForTest(
+		t,
+		authentication,
+		&authenticationHandlerSessionRepositoryFake{},
+	)
+
+	req := httptest.NewRequest(
+		http.MethodPost,
+		"/login?username=query-user&password=query-password",
+		strings.NewReader("username=body-user&password=body-password"),
+	)
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	recorder := httptest.NewRecorder()
+
+	handler.Login(recorder, req)
+
+	if recorder.Code != http.StatusNoContent {
+		t.Fatalf("status = %d, want %d", recorder.Code, http.StatusNoContent)
+	}
+
+	if got := authentication.authenticateInput.Username; got != "body-user" {
+		t.Fatalf("username = %q, want %q", got, "body-user")
+	}
+
+	if got := authentication.authenticateInput.Password; got != "body-password" {
+		t.Fatalf("password = %q, want %q", got, "body-password")
+	}
+}
+
+func TestAuthenticationHandlerLoginRejectsUnsupportedContentType(t *testing.T) {
+	authentication := &authenticationHandlerServiceFake{}
+	handler := newAuthenticationHandlerForTest(
+		t,
+		authentication,
+		&authenticationHandlerSessionRepositoryFake{},
+	)
+
+	req := httptest.NewRequest(
+		http.MethodPost,
+		"/login",
+		strings.NewReader(`{"username":"admin","password":"secret"}`),
+	)
+	req.Header.Set("Content-Type", "application/json")
+	recorder := httptest.NewRecorder()
+
+	handler.Login(recorder, req)
+
+	if recorder.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d", recorder.Code, http.StatusBadRequest)
+	}
+
+	if authentication.authenticateCalls != 0 {
+		t.Fatal("authentication service was called for unsupported content type")
+	}
+
+	if got := recorder.Header().Get("Cache-Control"); got != "no-store" {
+		t.Fatalf("Cache-Control = %q, want %q", got, "no-store")
+	}
+}
+
+func TestAuthenticationHandlerLoginRejectsMissingContentType(t *testing.T) {
+	authentication := &authenticationHandlerServiceFake{}
+	handler := newAuthenticationHandlerForTest(
+		t,
+		authentication,
+		&authenticationHandlerSessionRepositoryFake{},
+	)
+
+	req := httptest.NewRequest(
+		http.MethodPost,
+		"/login",
+		strings.NewReader("username=admin&password=secret"),
+	)
+	recorder := httptest.NewRecorder()
+
+	handler.Login(recorder, req)
+
+	if recorder.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d", recorder.Code, http.StatusBadRequest)
+	}
+
+	if authentication.authenticateCalls != 0 {
+		t.Fatal("authentication service was called without content type")
+	}
+}
+
+func TestAuthenticationHandlerLoginRejectsMalformedForm(t *testing.T) {
+	authentication := &authenticationHandlerServiceFake{}
+	handler := newAuthenticationHandlerForTest(
+		t,
+		authentication,
+		&authenticationHandlerSessionRepositoryFake{},
+	)
+
+	req := httptest.NewRequest(
+		http.MethodPost,
+		"/login",
+		strings.NewReader("username=%zz&password=secret"),
+	)
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	recorder := httptest.NewRecorder()
+
+	handler.Login(recorder, req)
+
+	if recorder.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d", recorder.Code, http.StatusBadRequest)
+	}
+
+	if authentication.authenticateCalls != 0 {
+		t.Fatal("authentication service was called for malformed form")
+	}
+
+	if got := recorder.Header().Get("Cache-Control"); got != "no-store" {
+		t.Fatalf("Cache-Control = %q, want %q", got, "no-store")
 	}
 }
 

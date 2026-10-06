@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/http/cookiejar"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -173,7 +174,7 @@ func newIntegrationRouter(t *testing.T) *http.ServeMux {
 		},
 		MiddlewareSet{
 			Authentication: authMiddleware,
-			CSRF:            csrfMiddleware,
+			CSRF:           csrfMiddleware,
 		},
 		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			actor, ok := service.ActorFromContext(r.Context())
@@ -228,11 +229,15 @@ func TestAuthenticationIntegrationLoginProtectLogout(t *testing.T) {
 	loginRequest, err := http.NewRequest(
 		http.MethodPost,
 		server.URL+"/login",
-		nil,
+		strings.NewReader("username=admin&password=secret"),
 	)
 	if err != nil {
 		t.Fatal(err)
 	}
+	loginRequest.Header.Set(
+		"Content-Type",
+		"application/x-www-form-urlencoded",
+	)
 	loginRequest.Header.Set(security.DefaultCSRFHeaderName, csrfToken)
 
 	response, err = client.Do(loginRequest)
