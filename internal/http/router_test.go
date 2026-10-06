@@ -1,6 +1,7 @@
 package http
 
 import (
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -527,6 +528,61 @@ func TestNewRouterProtectedRouteDoesNotPropagateActorWhenAuthenticationFails(t *
 
 	if recorder.Code != http.StatusUnauthorized {
 		t.Fatalf("status = %d, want %d", recorder.Code, http.StatusUnauthorized)
+	}
+}
+
+func TestNewRouterProtectedRouteMapsAuthenticationFailureToServerError(t *testing.T) {
+	cookie := newTestSessionCookie(t)
+	authMiddleware, err := middleware.NewAuthenticationMiddleware(
+		cookie,
+		&routerSessionRepositoryFake{err: errors.New("database unavailable")},
+		&routerUserRepositoryFake{},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	protected := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Fatal("protected handler called after authentication failure")
+	})
+
+	router, err := NewRouter(
+		HandlerSet{
+			Authentication: &AuthenticationHandler{},
+		},
+		MiddlewareSet{
+			Authentication: authMiddleware,
+			CSRF:           middleware.NewCSRFMiddleware(newTestCSRFCookie(t)),
+		},
+		protected,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/protected", nil)
+	req.AddCookie(&http.Cookie{
+		Name:  security.DefaultSessionCookieName,
+		Value: "session-token",
+	})
+	recorder := httptest.NewRecorder()
+
+	router.ServeHTTP(recorder, req)
+
+	if recorder.Code != http.StatusInternalServerError {
+		t.Fatalf(
+			"status = %d, want %d",
+			recorder.Code,
+			http.StatusInternalServerError,
+		)
+	}
+
+	if got := recorder.Body.String(); got != "Internal Server Error\n" {
+		t.Fatalf("body = %q, want generic error", got)
+	}
+
+	if got := recorder.Header().Get("Cache-Control"); got != "no-store" {
+		t.Fatalf("Cache-Control = %q, want no-store", got)
 	}
 }
 
