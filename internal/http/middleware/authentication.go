@@ -5,15 +5,16 @@ import (
 	"net/http"
 	"time"
 
+	apphttp "github.com/fasih/tabungan-siswa/internal/http"
 	"github.com/fasih/tabungan-siswa/internal/repository"
 	"github.com/fasih/tabungan-siswa/internal/security"
 	"github.com/fasih/tabungan-siswa/internal/service"
 )
 
 type AuthenticationMiddleware struct {
+	cookie   security.SessionCookie
 	sessions repository.SessionRepository
 	users    repository.UserRepository
-	cookie   security.SessionCookie
 }
 
 func NewAuthenticationMiddleware(
@@ -26,9 +27,9 @@ func NewAuthenticationMiddleware(
 	}
 
 	return &AuthenticationMiddleware{
+		cookie:   cookie,
 		sessions: sessions,
 		users:    users,
-		cookie:   cookie,
 	}, nil
 }
 
@@ -38,7 +39,7 @@ func (m *AuthenticationMiddleware) RequireAuthentication(
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		token, err := m.cookie.Read(r)
 		if err != nil {
-			writeUnauthorized(w)
+			apphttp.WriteAuthenticationError(w, service.ErrInvalidCredentials)
 			return
 		}
 
@@ -48,27 +49,27 @@ func (m *AuthenticationMiddleware) RequireAuthentication(
 		)
 		if err != nil {
 			if errors.Is(err, repository.ErrNotFound) {
-				writeUnauthorized(w)
+				apphttp.WriteAuthenticationError(w, service.ErrInvalidCredentials)
 				return
 			}
 
-			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+			apphttp.WriteAuthenticationError(w, err)
 			return
 		}
 
 		if !session.IsActive(time.Now()) {
-			writeUnauthorized(w)
+			apphttp.WriteAuthenticationError(w, service.ErrInvalidCredentials)
 			return
 		}
 
 		user, err := m.users.GetByID(r.Context(), session.UserID)
 		if err != nil {
 			if errors.Is(err, repository.ErrNotFound) {
-				writeUnauthorized(w)
+				apphttp.WriteAuthenticationError(w, service.ErrInvalidCredentials)
 				return
 			}
 
-			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+			apphttp.WriteAuthenticationError(w, err)
 			return
 		}
 
@@ -77,14 +78,10 @@ func (m *AuthenticationMiddleware) RequireAuthentication(
 			Role:   user.Role,
 		}
 		if err := actor.Validate(); err != nil {
-			writeUnauthorized(w)
+			apphttp.WriteAuthenticationError(w, err)
 			return
 		}
 
 		next.ServeHTTP(w, r.WithContext(service.WithActor(r.Context(), actor)))
 	})
-}
-
-func writeUnauthorized(w http.ResponseWriter) {
-	w.WriteHeader(http.StatusUnauthorized)
 }
