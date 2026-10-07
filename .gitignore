@@ -25,3 +25,6 @@ coverage.html
 *.tmp
 *.log
 /tmp/
+
+# Frontend dependencies
+node_modules/
