@@ -171,6 +171,7 @@ func newIntegrationRouter(t *testing.T) *http.ServeMux {
 	router, err := NewRouter(
 		HandlerSet{
 			Authentication: authHandler,
+			LoginPage:      newTestLoginPageHandler(t),
 		},
 		MiddlewareSet{
 			Authentication: authMiddleware,
@@ -213,8 +214,8 @@ func TestAuthenticationIntegrationLoginProtectLogout(t *testing.T) {
 	}
 	response.Body.Close()
 
-	if response.StatusCode != http.StatusNoContent {
-		t.Fatalf("GET /login status = %d, want %d", response.StatusCode, http.StatusNoContent)
+	if response.StatusCode != http.StatusOK {
+		t.Fatalf("GET /login status = %d, want %d", response.StatusCode, http.StatusOK)
 	}
 
 	var csrfToken string

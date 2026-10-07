@@ -196,6 +196,7 @@ func TestAuthenticationIntegrationUsesRealServiceAndArgon2id(t *testing.T) {
 	router, err := NewRouter(
 		HandlerSet{
 			Authentication: authenticationHandler,
+			LoginPage:      newTestLoginPageHandler(t),
 		},
 		MiddlewareSet{
 			Authentication: authMiddleware,
@@ -226,11 +227,11 @@ func TestAuthenticationIntegrationUsesRealServiceAndArgon2id(t *testing.T) {
 	}
 	getLogin.Body.Close()
 
-	if getLogin.StatusCode != http.StatusNoContent {
+	if getLogin.StatusCode != http.StatusOK {
 		t.Fatalf(
 			"GET /login status = %d, want %d",
 			getLogin.StatusCode,
-			http.StatusNoContent,
+			http.StatusOK,
 		)
 	}
 

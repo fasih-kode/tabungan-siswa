@@ -2,6 +2,7 @@ package http
 
 import (
 	"context"
+	"html/template"
 	"net/http"
 	"testing"
 	"time"
@@ -64,3 +65,29 @@ func newTestCSRFCookie(t *testing.T) security.CSRFCookie {
 }
 
 var _ http.Handler = http.HandlerFunc(nil)
+
+func newTestLoginPageHandler(t *testing.T) *LoginPageHandler {
+	t.Helper()
+
+	templates := newTestTemplate(t)
+
+	handler, err := NewLoginPageHandler(templates)
+	if err != nil {
+		t.Fatalf("NewLoginPageHandler() error = %v", err)
+	}
+
+	return handler
+}
+
+func newTestTemplate(t *testing.T) *template.Template {
+	t.Helper()
+
+	templates, err := template.New("base").Parse(
+		`{{define "base"}}<html><body>{{.Title}}</body></html>{{end}}`,
+	)
+	if err != nil {
+		t.Fatalf("test template parse error = %v", err)
+	}
+
+	return templates
+}

@@ -38,6 +38,7 @@ func TestNewRouterRejectsMissingDependencies(t *testing.T) {
 
 	handlers := HandlerSet{
 		Authentication: &AuthenticationHandler{},
+		LoginPage:      newTestLoginPageHandler(t),
 	}
 	middlewares := MiddlewareSet{
 		Authentication: authMiddleware,
@@ -51,6 +52,12 @@ func TestNewRouterRejectsMissingDependencies(t *testing.T) {
 	handlers.Authentication = nil
 	if _, err := NewRouter(handlers, middlewares, protected, newTestStaticAssetHandler()); err != ErrInvalidRouterDependency {
 		t.Fatalf("missing handler error = %v, want %v", err, ErrInvalidRouterDependency)
+	}
+
+	handlers.Authentication = &AuthenticationHandler{}
+	handlers.LoginPage = nil
+	if _, err := NewRouter(handlers, middlewares, protected, newTestStaticAssetHandler()); err != ErrInvalidRouterDependency {
+		t.Fatalf("missing login page handler error = %v, want %v", err, ErrInvalidRouterDependency)
 	}
 }
 
@@ -83,6 +90,7 @@ func TestNewRouterStaticRouteUsesStaticAssetHandler(t *testing.T) {
 	router, err := NewRouter(
 		HandlerSet{
 			Authentication: &AuthenticationHandler{},
+			LoginPage:      newTestLoginPageHandler(t),
 		},
 		MiddlewareSet{
 			Authentication: authMiddleware,
@@ -139,6 +147,7 @@ func TestNewRouterPublicLoginRoute(t *testing.T) {
 	router, err := NewRouter(
 		HandlerSet{
 			Authentication: &AuthenticationHandler{},
+			LoginPage:      newTestLoginPageHandler(t),
 		},
 		MiddlewareSet{
 			Authentication: authMiddleware,
@@ -158,8 +167,12 @@ func TestNewRouterPublicLoginRoute(t *testing.T) {
 
 	router.ServeHTTP(recorder, req)
 
-	if recorder.Code != http.StatusNoContent {
-		t.Fatalf("status = %d, want %d", recorder.Code, http.StatusNoContent)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", recorder.Code, http.StatusOK)
+	}
+
+	if got := recorder.Body.String(); got != "<html><body>Login</body></html>" {
+		t.Fatalf("body = %q, want rendered login page", got)
 	}
 
 	if len(recorder.Result().Cookies()) != 1 {
@@ -185,6 +198,7 @@ func TestNewRouterAuthenticationRoutesRequireCSRF(t *testing.T) {
 	router, err := NewRouter(
 		HandlerSet{
 			Authentication: &AuthenticationHandler{},
+			LoginPage:      newTestLoginPageHandler(t),
 		},
 		MiddlewareSet{
 			Authentication: authMiddleware,
@@ -248,6 +262,7 @@ func TestNewRouterAuthenticationRoutesRejectUnsupportedMethods(t *testing.T) {
 	router, err := NewRouter(
 		HandlerSet{
 			Authentication: &AuthenticationHandler{},
+			LoginPage:      newTestLoginPageHandler(t),
 		},
 		MiddlewareSet{
 			Authentication: authMiddleware,
@@ -321,6 +336,7 @@ func TestNewRouterLogoutRouteUsesPostMethod(t *testing.T) {
 	router, err := NewRouter(
 		HandlerSet{
 			Authentication: &AuthenticationHandler{},
+			LoginPage:      newTestLoginPageHandler(t),
 		},
 		MiddlewareSet{
 			Authentication: authMiddleware,
@@ -369,6 +385,7 @@ func TestNewRouterReturnsNotFoundForUnknownRoute(t *testing.T) {
 	router, err := NewRouter(
 		HandlerSet{
 			Authentication: &AuthenticationHandler{},
+			LoginPage:      newTestLoginPageHandler(t),
 		},
 		MiddlewareSet{
 			Authentication: authMiddleware,
@@ -438,6 +455,7 @@ func TestNewRouterUsesCanonicalPathsWithoutTrailingSlash(t *testing.T) {
 	router, err := NewRouter(
 		HandlerSet{
 			Authentication: &AuthenticationHandler{},
+			LoginPage:      newTestLoginPageHandler(t),
 		},
 		MiddlewareSet{
 			Authentication: authMiddleware,
@@ -491,6 +509,7 @@ func TestNewRouterProtectedRouteRequiresAuthentication(t *testing.T) {
 	router, err := NewRouter(
 		HandlerSet{
 			Authentication: &AuthenticationHandler{},
+			LoginPage:      newTestLoginPageHandler(t),
 		},
 		MiddlewareSet{
 			Authentication: authMiddleware,
@@ -531,6 +550,7 @@ func TestNewRouterProtectedMiddlewareRunsAuthenticationBeforeCSRF(t *testing.T) 
 	router, err := NewRouter(
 		HandlerSet{
 			Authentication: &AuthenticationHandler{},
+			LoginPage:      newTestLoginPageHandler(t),
 		},
 		MiddlewareSet{
 			Authentication: authMiddleware,
@@ -585,6 +605,7 @@ func TestNewRouterProtectedRouteDoesNotPropagateActorWhenAuthenticationFails(t *
 	router, err := NewRouter(
 		HandlerSet{
 			Authentication: &AuthenticationHandler{},
+			LoginPage:      newTestLoginPageHandler(t),
 		},
 		MiddlewareSet{
 			Authentication: authMiddleware,
@@ -625,6 +646,7 @@ func TestNewRouterProtectedRouteMapsAuthenticationFailureToServerError(t *testin
 	router, err := NewRouter(
 		HandlerSet{
 			Authentication: &AuthenticationHandler{},
+			LoginPage:      newTestLoginPageHandler(t),
 		},
 		MiddlewareSet{
 			Authentication: authMiddleware,
@@ -713,6 +735,7 @@ func TestNewRouterProtectedRouteAllowsAuthenticatedRequest(t *testing.T) {
 	router, err := NewRouter(
 		HandlerSet{
 			Authentication: &AuthenticationHandler{},
+			LoginPage:      newTestLoginPageHandler(t),
 		},
 		MiddlewareSet{
 			Authentication: authMiddleware,
@@ -780,6 +803,7 @@ func TestNewRouterProtectedPostRequiresCSRFAfterAuthentication(t *testing.T) {
 	router, err := NewRouter(
 		HandlerSet{
 			Authentication: &AuthenticationHandler{},
+			LoginPage:      newTestLoginPageHandler(t),
 		},
 		MiddlewareSet{
 			Authentication: authMiddleware,
@@ -826,6 +850,7 @@ func TestNewRouterProtectedPostRequiresAuthenticationBeforeCSRF(t *testing.T) {
 	router, err := NewRouter(
 		HandlerSet{
 			Authentication: &AuthenticationHandler{},
+			LoginPage:      newTestLoginPageHandler(t),
 		},
 		MiddlewareSet{
 			Authentication: authMiddleware,

@@ -13,6 +13,7 @@ func NewRouter(
 	staticAssets http.Handler,
 ) (*http.ServeMux, error) {
 	if handlers.Authentication == nil ||
+		handlers.LoginPage == nil ||
 		middlewares.Authentication == nil ||
 		middlewares.CSRF == nil ||
 		protected == nil ||
@@ -41,7 +42,7 @@ func registerRoutes(
 	staticAssets http.Handler,
 ) {
 	registerStaticRoutes(mux, staticAssets)
-	registerPublicRoutes(mux, middlewares.CSRF)
+	registerPublicRoutes(mux, handlers.LoginPage, middlewares.CSRF)
 	registerAuthenticationRoutes(mux, handlers.Authentication, middlewares.CSRF)
 	registerProtectedRoutes(
 		mux,
@@ -86,11 +87,10 @@ func registerAuthenticationRoutes(
 
 func registerPublicRoutes(
 	mux *http.ServeMux,
+	loginPage *LoginPageHandler,
 	csrf *middleware.CSRFMiddleware,
 ) {
 	mux.HandleFunc("GET /login", csrf.Protect(http.HandlerFunc(
-		func(w http.ResponseWriter, r *http.Request) {
-			w.WriteHeader(http.StatusNoContent)
-		},
+		loginPage.Get,
 	)).ServeHTTP)
 }

@@ -74,6 +74,7 @@ func TestNewHandlerSet(t *testing.T) {
 			SessionCookie:     security.NewDefaultSessionCookie(),
 			SessionExpiration: expiration,
 		},
+		newTestTemplate(t),
 	)
 	if err != nil {
 		t.Fatalf("NewHandlerSet() error = %v", err)
@@ -81,6 +82,10 @@ func TestNewHandlerSet(t *testing.T) {
 
 	if set.Authentication == nil {
 		t.Fatal("HandlerSet.Authentication is nil")
+	}
+
+	if set.LoginPage == nil {
+		t.Fatal("HandlerSet.LoginPage is nil")
 	}
 }
 
@@ -99,6 +104,7 @@ func TestNewHandlerSetRejectsMissingAuthenticationService(t *testing.T) {
 			SessionCookie:     security.NewDefaultSessionCookie(),
 			SessionExpiration: expiration,
 		},
+		newTestTemplate(t),
 	)
 	if err != service.ErrInvalidDependency {
 		t.Fatalf(
@@ -124,6 +130,7 @@ func TestNewHandlerSetRejectsMissingSessionRepository(t *testing.T) {
 			SessionCookie:     security.NewDefaultSessionCookie(),
 			SessionExpiration: expiration,
 		},
+		newTestTemplate(t),
 	)
 	if err != service.ErrInvalidDependency {
 		t.Fatalf(

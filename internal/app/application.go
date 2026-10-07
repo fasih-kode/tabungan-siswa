@@ -2,6 +2,8 @@ package app
 
 import (
 	"database/sql"
+	"embed"
+	"html/template"
 	"net/http"
 	"time"
 
@@ -10,6 +12,9 @@ import (
 	"github.com/fasih/tabungan-siswa/internal/security"
 	"github.com/fasih/tabungan-siswa/internal/service"
 )
+
+//go:embed templates/layouts/base.html templates/auth/login.html
+var templateFiles embed.FS
 
 // Application berisi HTTP server hasil seluruh application composition.
 type Application struct {
@@ -43,10 +48,20 @@ func NewApplication(
 		return Application{}, err
 	}
 
+	templates, err := template.ParseFS(
+		templateFiles,
+		"templates/layouts/base.html",
+		"templates/auth/login.html",
+	)
+	if err != nil {
+		return Application{}, err
+	}
+
 	handlerSet, err := httpapp.NewHandlerSet(
 		serviceSet,
 		repositories,
 		securitySet,
+		templates,
 	)
 	if err != nil {
 		return Application{}, err
