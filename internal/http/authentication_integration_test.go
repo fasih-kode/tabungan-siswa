@@ -186,7 +186,8 @@ func newIntegrationRouter(t *testing.T) *http.ServeMux {
 			}
 			w.WriteHeader(http.StatusNoContent)
 		}),
-	)
+
+		newTestStaticAssetHandler())
 	if err != nil {
 		t.Fatal(err)
 	}

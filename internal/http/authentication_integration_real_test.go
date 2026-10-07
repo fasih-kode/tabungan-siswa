@@ -199,12 +199,13 @@ func TestAuthenticationIntegrationUsesRealServiceAndArgon2id(t *testing.T) {
 		},
 		MiddlewareSet{
 			Authentication: authMiddleware,
-			CSRF:            csrfMiddleware,
+			CSRF:           csrfMiddleware,
 		},
 		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusNoContent)
 		}),
-	)
+
+		newTestStaticAssetHandler())
 	if err != nil {
 		t.Fatalf("NewRouter() error = %v", err)
 	}

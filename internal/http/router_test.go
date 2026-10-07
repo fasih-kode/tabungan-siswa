@@ -44,13 +44,80 @@ func TestNewRouterRejectsMissingDependencies(t *testing.T) {
 		CSRF:           csrfMiddleware,
 	}
 
-	if _, err := NewRouter(handlers, middlewares, protected); err != nil {
+	if _, err := NewRouter(handlers, middlewares, protected, newTestStaticAssetHandler()); err != nil {
 		t.Fatalf("unexpected error = %v", err)
 	}
 
 	handlers.Authentication = nil
-	if _, err := NewRouter(handlers, middlewares, protected); err != ErrInvalidRouterDependency {
+	if _, err := NewRouter(handlers, middlewares, protected, newTestStaticAssetHandler()); err != ErrInvalidRouterDependency {
 		t.Fatalf("missing handler error = %v, want %v", err, ErrInvalidRouterDependency)
+	}
+}
+
+func TestNewRouterStaticRouteUsesStaticAssetHandler(t *testing.T) {
+	cookie := newTestSessionCookie(t)
+	authMiddleware, err := middleware.NewAuthenticationMiddleware(
+		cookie,
+		&routerSessionRepositoryFake{},
+		&routerUserRepositoryFake{},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	staticCalled := false
+	staticAssets := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		staticCalled = true
+
+		if r.URL.Path != "/static/css/app.css" {
+			t.Fatalf(
+				"static asset path = %q, want %q",
+				r.URL.Path,
+				"/static/css/app.css",
+			)
+		}
+
+		w.WriteHeader(http.StatusNoContent)
+	})
+
+	router, err := NewRouter(
+		HandlerSet{
+			Authentication: &AuthenticationHandler{},
+		},
+		MiddlewareSet{
+			Authentication: authMiddleware,
+			CSRF: middleware.NewCSRFMiddleware(
+				newTestCSRFCookie(t),
+			),
+		},
+		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusNoContent)
+		}),
+		staticAssets,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	req := httptest.NewRequest(
+		http.MethodGet,
+		"/static/css/app.css",
+		nil,
+	)
+	recorder := httptest.NewRecorder()
+
+	router.ServeHTTP(recorder, req)
+
+	if recorder.Code != http.StatusNoContent {
+		t.Fatalf(
+			"GET /static/css/app.css status = %d, want %d",
+			recorder.Code,
+			http.StatusNoContent,
+		)
+	}
+
+	if !staticCalled {
+		t.Fatal("static asset handler was not called")
 	}
 }
 
@@ -80,7 +147,8 @@ func TestNewRouterPublicLoginRoute(t *testing.T) {
 		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusNoContent)
 		}),
-	)
+
+		newTestStaticAssetHandler())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -127,7 +195,8 @@ func TestNewRouterAuthenticationRoutesRequireCSRF(t *testing.T) {
 		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusNoContent)
 		}),
-	)
+
+		newTestStaticAssetHandler())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -187,7 +256,8 @@ func TestNewRouterAuthenticationRoutesRejectUnsupportedMethods(t *testing.T) {
 		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusNoContent)
 		}),
-	)
+
+		newTestStaticAssetHandler())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -261,7 +331,8 @@ func TestNewRouterLogoutRouteUsesPostMethod(t *testing.T) {
 		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusNoContent)
 		}),
-	)
+
+		newTestStaticAssetHandler())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -306,7 +377,8 @@ func TestNewRouterReturnsNotFoundForUnknownRoute(t *testing.T) {
 		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusNoContent)
 		}),
-	)
+
+		newTestStaticAssetHandler())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -374,7 +446,8 @@ func TestNewRouterUsesCanonicalPathsWithoutTrailingSlash(t *testing.T) {
 		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusNoContent)
 		}),
-	)
+
+		newTestStaticAssetHandler())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -428,7 +501,8 @@ func TestNewRouterProtectedRouteRequiresAuthentication(t *testing.T) {
 		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusNoContent)
 		}),
-	)
+
+		newTestStaticAssetHandler())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -467,7 +541,8 @@ func TestNewRouterProtectedMiddlewareRunsAuthenticationBeforeCSRF(t *testing.T) 
 		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			t.Fatal("protected handler was called")
 		}),
-	)
+
+		newTestStaticAssetHandler())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -516,7 +591,8 @@ func TestNewRouterProtectedRouteDoesNotPropagateActorWhenAuthenticationFails(t *
 			CSRF:           middleware.NewCSRFMiddleware(newTestCSRFCookie(t)),
 		},
 		protected,
-	)
+
+		newTestStaticAssetHandler())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -555,7 +631,8 @@ func TestNewRouterProtectedRouteMapsAuthenticationFailureToServerError(t *testin
 			CSRF:           middleware.NewCSRFMiddleware(newTestCSRFCookie(t)),
 		},
 		protected,
-	)
+
+		newTestStaticAssetHandler())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -644,7 +721,8 @@ func TestNewRouterProtectedRouteAllowsAuthenticatedRequest(t *testing.T) {
 			),
 		},
 		protected,
-	)
+
+		newTestStaticAssetHandler())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -710,7 +788,8 @@ func TestNewRouterProtectedPostRequiresCSRFAfterAuthentication(t *testing.T) {
 			),
 		},
 		protected,
-	)
+
+		newTestStaticAssetHandler())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -757,7 +836,8 @@ func TestNewRouterProtectedPostRequiresAuthenticationBeforeCSRF(t *testing.T) {
 		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusNoContent)
 		}),
-	)
+
+		newTestStaticAssetHandler())
 	if err != nil {
 		t.Fatal(err)
 	}

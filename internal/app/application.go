@@ -52,6 +52,8 @@ func NewApplication(
 		return Application{}, err
 	}
 
+	staticAssets := httpapp.NewStaticAssetHandler("static")
+
 	middlewareSet, err := httpapp.NewMiddlewareSet(
 		repositories,
 		securitySet,
@@ -64,6 +66,7 @@ func NewApplication(
 		handlerSet,
 		middlewareSet,
 		protected,
+		staticAssets,
 	)
 	if err != nil {
 		return Application{}, err
