@@ -1,0 +1,13 @@
+{{define "sidebar"}}
+<aside class="hidden w-[290px] shrink-0 flex-col border-r border-gray-200 bg-white dark:border-gray-800 dark:bg-gray-900 lg:flex">
+    <div class="flex h-16 items-center border-b border-gray-200 px-6 dark:border-gray-800">
+        <a href="/protected" class="text-lg font-semibold text-gray-800 dark:text-white">
+            Tabungan Siswa
+        </a>
+    </div>
+
+    <div class="flex flex-1 flex-col overflow-y-auto px-5 py-6">
+        {{template "navigation" .}}
+    </div>
+</aside>
+{{end}}

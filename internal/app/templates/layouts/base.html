@@ -4,11 +4,23 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>{{.Title}}</title>
+    <title>{{.Title}} - Tabungan Siswa</title>
     <link rel="stylesheet" href="/static/css/app.css">
 </head>
-<body>
-    {{block "content" .}}{{end}}
+<body class="bg-gray-50 dark:bg-gray-900">
+    <div class="flex h-screen overflow-hidden">
+        {{template "sidebar" .}}
+
+        <div class="relative flex flex-1 flex-col overflow-x-hidden overflow-y-auto">
+            {{template "header" .}}
+
+            <main>
+                <div class="mx-auto max-w-(--breakpoint-2xl) p-4 md:p-6">
+                    {{template "page-content" .}}
+                </div>
+            </main>
+        </div>
+    </div>
 </body>
 </html>
 {{end}}

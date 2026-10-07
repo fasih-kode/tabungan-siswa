@@ -82,8 +82,8 @@ func newTestLoginPageHandler(t *testing.T) *LoginPageHandler {
 func newTestTemplate(t *testing.T) *template.Template {
 	t.Helper()
 
-	templates, err := template.New("base").Parse(
-		`{{define "base"}}<html><body>{{.Title}}</body></html>{{end}}`,
+	templates, err := template.New("auth").Parse(
+		`{{define "auth"}}{{template "auth-content" .}}{{end}}{{define "auth-content"}}<html><body>{{.Title}}</body></html>{{end}}`,
 	)
 	if err != nil {
 		t.Fatalf("test template parse error = %v", err)

@@ -1,0 +1,21 @@
+{{define "navigation"}}
+<nav>
+    <div class="mb-4 text-xs font-medium uppercase tracking-wider text-gray-400 dark:text-gray-500">
+        Menu
+    </div>
+
+    <ul class="space-y-1">
+        <li>
+            <a
+                href="/protected"
+                class="flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-100 hover:text-gray-900 dark:text-gray-300 dark:hover:bg-gray-800 dark:hover:text-white"
+            >
+                <svg class="h-5 w-5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="m3 10 9-7 9 7v10a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1V10Z"/>
+                </svg>
+                <span>Dashboard</span>
+            </a>
+        </li>
+    </ul>
+</nav>
+{{end}}

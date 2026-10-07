@@ -13,7 +13,7 @@ import (
 	"github.com/fasih/tabungan-siswa/internal/service"
 )
 
-//go:embed templates/layouts/base.html templates/auth/login.html
+//go:embed templates/layouts/*.html templates/partials/*.html templates/auth/*.html
 var templateFiles embed.FS
 
 // Application berisi HTTP server hasil seluruh application composition.
@@ -50,8 +50,9 @@ func NewApplication(
 
 	templates, err := template.ParseFS(
 		templateFiles,
-		"templates/layouts/base.html",
-		"templates/auth/login.html",
+		"templates/layouts/*.html",
+		"templates/partials/*.html",
+		"templates/auth/*.html",
 	)
 	if err != nil {
 		return Application{}, err

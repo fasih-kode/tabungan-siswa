@@ -30,7 +30,7 @@ func (h *LoginPageHandler) Get(w http.ResponseWriter, r *http.Request) {
 		Title: "Login",
 	}
 
-	if err := h.templates.ExecuteTemplate(w, "base", viewModel); err != nil {
+	if err := h.templates.ExecuteTemplate(w, "auth", viewModel); err != nil {
 		http.Error(
 			w,
 			http.StatusText(http.StatusInternalServerError),
