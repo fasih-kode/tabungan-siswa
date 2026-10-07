@@ -1,26 +1,62 @@
 {{define "auth-content"}}
-<main class="min-h-screen bg-gray-50 px-4 py-12 dark:bg-gray-900">
-    <div class="mx-auto max-w-md rounded-2xl bg-white p-8 shadow-theme-sm dark:bg-gray-800">
-        <div class="mb-8">
-            <h1 class="text-2xl font-semibold text-gray-800 dark:text-white">Masuk</h1>
-            <p class="mt-2 text-sm text-gray-500 dark:text-gray-400">Masuk ke Tabungan Siswa.</p>
+<main class="min-h-screen bg-gray-50 px-4 py-10 dark:bg-gray-900 sm:px-6 lg:px-8">
+    <div class="flex min-h-[calc(100vh-5rem)] items-center justify-center">
+        <div class="w-full max-w-md">
+            <div class="mb-8 text-center">
+                <a href="/login" class="inline-flex items-center text-2xl font-semibold text-gray-800 dark:text-white">
+                    Tabungan Siswa
+                </a>
+
+                <h1 class="mt-6 text-2xl font-semibold text-gray-800 dark:text-white">
+                    Selamat datang kembali
+                </h1>
+
+                <p class="mt-2 text-sm text-gray-500 dark:text-gray-400">
+                    Masuk untuk melanjutkan ke aplikasi Tabungan Siswa.
+                </p>
+            </div>
+
+            <div class="rounded-2xl border border-gray-200 bg-white p-6 shadow-theme-sm dark:border-gray-800 dark:bg-gray-800 sm:p-8">
+                <form method="post" action="/login" class="space-y-5">
+                    <div>
+                        <label for="username" class="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                            Username
+                        </label>
+
+                        <input
+                            id="username"
+                            name="username"
+                            type="text"
+                            autocomplete="username"
+                            required
+                            class="h-11 w-full rounded-lg border border-gray-300 bg-transparent px-4 text-sm text-gray-800 shadow-theme-xs outline-none transition focus:border-brand-300 focus:ring-3 focus:ring-brand-500/10 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90"
+                        >
+                    </div>
+
+                    <div>
+                        <label for="password" class="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                            Password
+                        </label>
+
+                        <input
+                            id="password"
+                            name="password"
+                            type="password"
+                            autocomplete="current-password"
+                            required
+                            class="h-11 w-full rounded-lg border border-gray-300 bg-transparent px-4 text-sm text-gray-800 shadow-theme-xs outline-none transition focus:border-brand-300 focus:ring-3 focus:ring-brand-500/10 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90"
+                        >
+                    </div>
+
+                    <button
+                        type="submit"
+                        class="flex h-11 w-full items-center justify-center rounded-lg bg-brand-500 px-4 text-sm font-medium text-white shadow-theme-xs transition hover:bg-brand-600 focus:outline-none focus:ring-3 focus:ring-brand-500/10"
+                    >
+                        Masuk
+                    </button>
+                </form>
+            </div>
         </div>
-
-        <form method="post" action="/login" class="space-y-5">
-            <div>
-                <label for="username" class="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">Username</label>
-                <input id="username" name="username" type="text" autocomplete="username" required class="h-11 w-full rounded-lg border border-gray-300 bg-transparent px-4 text-sm text-gray-800 shadow-theme-xs outline-none focus:border-brand-300 focus:ring-3 focus:ring-brand-500/10 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90">
-            </div>
-
-            <div>
-                <label for="password" class="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">Password</label>
-                <input id="password" name="password" type="password" autocomplete="current-password" required class="h-11 w-full rounded-lg border border-gray-300 bg-transparent px-4 text-sm text-gray-800 shadow-theme-xs outline-none focus:border-brand-300 focus:ring-3 focus:ring-brand-500/10 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90">
-            </div>
-
-            <button type="submit" class="flex h-11 w-full items-center justify-center rounded-lg bg-brand-500 px-4 text-sm font-medium text-white shadow-theme-xs hover:bg-brand-600">
-                Masuk
-            </button>
-        </form>
     </div>
 </main>
 {{end}}
