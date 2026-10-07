@@ -197,15 +197,12 @@ func TestAuthenticationIntegrationUsesRealServiceAndArgon2id(t *testing.T) {
 		HandlerSet{
 			Authentication: authenticationHandler,
 			LoginPage:      newTestLoginPageHandler(t),
+			Dashboard:      newTestDashboardPageHandler(t),
 		},
 		MiddlewareSet{
 			Authentication: authMiddleware,
 			CSRF:           csrfMiddleware,
 		},
-		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			w.WriteHeader(http.StatusNoContent)
-		}),
-
 		newTestStaticAssetHandler())
 	if err != nil {
 		t.Fatalf("NewRouter() error = %v", err)
@@ -315,11 +312,11 @@ func TestAuthenticationIntegrationUsesRealServiceAndArgon2id(t *testing.T) {
 	}
 	protectedResponse.Body.Close()
 
-	if protectedResponse.StatusCode != http.StatusNoContent {
+	if protectedResponse.StatusCode != http.StatusOK {
 		t.Fatalf(
 			"GET /protected status = %d, want %d",
 			protectedResponse.StatusCode,
-			http.StatusNoContent,
+			http.StatusOK,
 		)
 	}
 
