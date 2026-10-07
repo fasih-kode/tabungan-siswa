@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"log"
-	"net/http"
 	"os"
 	"time"
 
@@ -40,18 +39,10 @@ func main() {
 		}
 	}()
 
-	protected := http.HandlerFunc(func(
-		w http.ResponseWriter,
-		r *http.Request,
-	) {
-		w.WriteHeader(http.StatusNoContent)
-	})
-
 	application, err := app.NewApplication(
 		db,
 		serverAddr,
 		sessionLifetime,
-		protected,
 	)
 	if err != nil {
 		log.Fatal(err)

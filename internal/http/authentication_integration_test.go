@@ -172,22 +172,12 @@ func newIntegrationRouter(t *testing.T) *http.ServeMux {
 		HandlerSet{
 			Authentication: authHandler,
 			LoginPage:      newTestLoginPageHandler(t),
+			Dashboard:      newTestDashboardPageHandler(t),
 		},
 		MiddlewareSet{
 			Authentication: authMiddleware,
 			CSRF:           csrfMiddleware,
 		},
-		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			actor, ok := service.ActorFromContext(r.Context())
-			if !ok {
-				t.Fatal("protected handler missing actor")
-			}
-			if actor.UserID != userID {
-				t.Fatalf("actor user ID = %v, want %v", actor.UserID, userID)
-			}
-			w.WriteHeader(http.StatusNoContent)
-		}),
-
 		newTestStaticAssetHandler())
 	if err != nil {
 		t.Fatal(err)
@@ -248,8 +238,8 @@ func TestAuthenticationIntegrationLoginProtectLogout(t *testing.T) {
 	}
 	response.Body.Close()
 
-	if response.StatusCode != http.StatusNoContent {
-		t.Fatalf("POST /login status = %d, want %d", response.StatusCode, http.StatusNoContent)
+	if response.StatusCode != http.StatusOK {
+		t.Fatalf("POST /login final status = %d, want %d", response.StatusCode, http.StatusOK)
 	}
 
 	sessionCookieFound := false
@@ -278,8 +268,8 @@ func TestAuthenticationIntegrationLoginProtectLogout(t *testing.T) {
 	}
 	response.Body.Close()
 
-	if response.StatusCode != http.StatusNoContent {
-		t.Fatalf("GET /protected status = %d, want %d", response.StatusCode, http.StatusNoContent)
+	if response.StatusCode != http.StatusOK {
+		t.Fatalf("GET /protected status = %d, want %d", response.StatusCode, http.StatusOK)
 	}
 
 	logoutRequest, err := http.NewRequest(

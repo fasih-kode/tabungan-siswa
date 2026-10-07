@@ -13,7 +13,7 @@ import (
 	"github.com/fasih/tabungan-siswa/internal/service"
 )
 
-//go:embed templates/layouts/*.html templates/partials/*.html templates/auth/*.html
+//go:embed templates/layouts/*.html templates/partials/*.html templates/auth/*.html templates/pages/*.html
 var templateFiles embed.FS
 
 // Application berisi HTTP server hasil seluruh application composition.
@@ -29,7 +29,6 @@ func NewApplication(
 	db *sql.DB,
 	addr string,
 	sessionLifetime time.Duration,
-	protected http.Handler,
 ) (Application, error) {
 	repositories := postgres.NewRepositorySet(db)
 	uow := postgres.NewUnitOfWorkManager(db)
@@ -53,6 +52,7 @@ func NewApplication(
 		"templates/layouts/*.html",
 		"templates/partials/*.html",
 		"templates/auth/*.html",
+		"templates/pages/*.html",
 	)
 	if err != nil {
 		return Application{}, err
@@ -81,7 +81,6 @@ func NewApplication(
 	router, err := httpapp.NewRouter(
 		handlerSet,
 		middlewareSet,
-		protected,
 		staticAssets,
 	)
 	if err != nil {

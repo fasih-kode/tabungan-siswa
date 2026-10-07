@@ -15,6 +15,7 @@ import (
 type HandlerSet struct {
 	Authentication *AuthenticationHandler
 	LoginPage      *LoginPageHandler
+	Dashboard      *DashboardPageHandler
 }
 
 // NewHandlerSet membangun seluruh HTTP handler dari dependency yang
@@ -40,8 +41,14 @@ func NewHandlerSet(
 		return HandlerSet{}, err
 	}
 
+	dashboard, err := NewDashboardPageHandler(templates)
+	if err != nil {
+		return HandlerSet{}, err
+	}
+
 	return HandlerSet{
 		Authentication: authentication,
 		LoginPage:      loginPage,
+		Dashboard:      dashboard,
 	}, nil
 }

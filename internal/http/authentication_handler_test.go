@@ -127,8 +127,11 @@ func TestAuthenticationHandlerLoginCreatesSessionAndCookie(t *testing.T) {
 
 	handler.Login(recorder, req)
 
-	if recorder.Code != http.StatusNoContent {
-		t.Fatalf("status = %d, want %d", recorder.Code, http.StatusNoContent)
+	if recorder.Code != http.StatusSeeOther {
+		t.Fatalf("status = %d, want %d", recorder.Code, http.StatusSeeOther)
+	}
+	if got := recorder.Header().Get("Location"); got != "/protected" {
+		t.Fatalf("Location = %q, want %q", got, "/protected")
 	}
 	if sessions.created.UserID != userID {
 		t.Fatalf("session user ID = %v, want %v", sessions.created.UserID, userID)
@@ -181,8 +184,11 @@ func TestAuthenticationHandlerLoginReadsCredentialsFromPostForm(t *testing.T) {
 
 	handler.Login(recorder, req)
 
-	if recorder.Code != http.StatusNoContent {
-		t.Fatalf("status = %d, want %d", recorder.Code, http.StatusNoContent)
+	if recorder.Code != http.StatusSeeOther {
+		t.Fatalf("status = %d, want %d", recorder.Code, http.StatusSeeOther)
+	}
+	if got := recorder.Header().Get("Location"); got != "/protected" {
+		t.Fatalf("Location = %q, want %q", got, "/protected")
 	}
 
 	if got := authentication.authenticateInput.Username; got != "body-user" {
@@ -219,8 +225,11 @@ func TestAuthenticationHandlerLoginAcceptsFormContentTypeWithCharset(t *testing.
 
 	handler.Login(recorder, req)
 
-	if recorder.Code != http.StatusNoContent {
-		t.Fatalf("status = %d, want %d", recorder.Code, http.StatusNoContent)
+	if recorder.Code != http.StatusSeeOther {
+		t.Fatalf("status = %d, want %d", recorder.Code, http.StatusSeeOther)
+	}
+	if got := recorder.Header().Get("Location"); got != "/protected" {
+		t.Fatalf("Location = %q, want %q", got, "/protected")
 	}
 
 	if authentication.authenticateCalls != 1 {

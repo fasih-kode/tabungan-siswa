@@ -9,14 +9,13 @@ import (
 func NewRouter(
 	handlers HandlerSet,
 	middlewares MiddlewareSet,
-	protected http.Handler,
 	staticAssets http.Handler,
 ) (*http.ServeMux, error) {
 	if handlers.Authentication == nil ||
 		handlers.LoginPage == nil ||
+		handlers.Dashboard == nil ||
 		middlewares.Authentication == nil ||
 		middlewares.CSRF == nil ||
-		protected == nil ||
 		staticAssets == nil {
 		return nil, ErrInvalidRouterDependency
 	}
@@ -27,7 +26,6 @@ func NewRouter(
 		mux,
 		handlers,
 		middlewares,
-		protected,
 		staticAssets,
 	)
 
@@ -38,7 +36,6 @@ func registerRoutes(
 	mux *http.ServeMux,
 	handlers HandlerSet,
 	middlewares MiddlewareSet,
-	protected http.Handler,
 	staticAssets http.Handler,
 ) {
 	registerStaticRoutes(mux, staticAssets)
@@ -48,7 +45,7 @@ func registerRoutes(
 		mux,
 		middlewares.Authentication,
 		middlewares.CSRF,
-		protected,
+		handlers.Dashboard,
 	)
 }
 
@@ -63,10 +60,10 @@ func registerProtectedRoutes(
 	mux *http.ServeMux,
 	authentication *middleware.AuthenticationMiddleware,
 	csrf *middleware.CSRFMiddleware,
-	protected http.Handler,
+	dashboard *DashboardPageHandler,
 ) {
 	protectedHandler := authentication.RequireAuthentication(
-		csrf.Protect(protected),
+		csrf.Protect(http.HandlerFunc(dashboard.Get)),
 	)
 	mux.Handle("/protected", protectedHandler)
 }

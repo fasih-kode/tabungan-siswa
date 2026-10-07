@@ -10,7 +10,6 @@ import (
 	"github.com/fasih/tabungan-siswa/internal/domain"
 	"github.com/fasih/tabungan-siswa/internal/http/middleware"
 	"github.com/fasih/tabungan-siswa/internal/security"
-	"github.com/fasih/tabungan-siswa/internal/service"
 	"github.com/google/uuid"
 )
 
@@ -32,32 +31,35 @@ func TestNewRouterRejectsMissingDependencies(t *testing.T) {
 		newTestCSRFCookie(t),
 	)
 
-	protected := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusNoContent)
-	})
-
 	handlers := HandlerSet{
 		Authentication: &AuthenticationHandler{},
 		LoginPage:      newTestLoginPageHandler(t),
+		Dashboard:      newTestDashboardPageHandler(t),
 	}
 	middlewares := MiddlewareSet{
 		Authentication: authMiddleware,
 		CSRF:           csrfMiddleware,
 	}
 
-	if _, err := NewRouter(handlers, middlewares, protected, newTestStaticAssetHandler()); err != nil {
+	if _, err := NewRouter(handlers, middlewares, newTestStaticAssetHandler()); err != nil {
 		t.Fatalf("unexpected error = %v", err)
 	}
 
 	handlers.Authentication = nil
-	if _, err := NewRouter(handlers, middlewares, protected, newTestStaticAssetHandler()); err != ErrInvalidRouterDependency {
+	if _, err := NewRouter(handlers, middlewares, newTestStaticAssetHandler()); err != ErrInvalidRouterDependency {
 		t.Fatalf("missing handler error = %v, want %v", err, ErrInvalidRouterDependency)
 	}
 
 	handlers.Authentication = &AuthenticationHandler{}
 	handlers.LoginPage = nil
-	if _, err := NewRouter(handlers, middlewares, protected, newTestStaticAssetHandler()); err != ErrInvalidRouterDependency {
+	if _, err := NewRouter(handlers, middlewares, newTestStaticAssetHandler()); err != ErrInvalidRouterDependency {
 		t.Fatalf("missing login page handler error = %v, want %v", err, ErrInvalidRouterDependency)
+	}
+
+	handlers.LoginPage = newTestLoginPageHandler(t)
+	handlers.Dashboard = nil
+	if _, err := NewRouter(handlers, middlewares, newTestStaticAssetHandler()); err != ErrInvalidRouterDependency {
+		t.Fatalf("missing dashboard handler error = %v, want %v", err, ErrInvalidRouterDependency)
 	}
 }
 
@@ -91,6 +93,7 @@ func TestNewRouterStaticRouteUsesStaticAssetHandler(t *testing.T) {
 		HandlerSet{
 			Authentication: &AuthenticationHandler{},
 			LoginPage:      newTestLoginPageHandler(t),
+			Dashboard:      newTestDashboardPageHandler(t),
 		},
 		MiddlewareSet{
 			Authentication: authMiddleware,
@@ -98,9 +101,6 @@ func TestNewRouterStaticRouteUsesStaticAssetHandler(t *testing.T) {
 				newTestCSRFCookie(t),
 			),
 		},
-		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			w.WriteHeader(http.StatusNoContent)
-		}),
 		staticAssets,
 	)
 	if err != nil {
@@ -148,15 +148,12 @@ func TestNewRouterPublicLoginRoute(t *testing.T) {
 		HandlerSet{
 			Authentication: &AuthenticationHandler{},
 			LoginPage:      newTestLoginPageHandler(t),
+			Dashboard:      newTestDashboardPageHandler(t),
 		},
 		MiddlewareSet{
 			Authentication: authMiddleware,
 			CSRF:           csrfMiddleware,
 		},
-		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			w.WriteHeader(http.StatusNoContent)
-		}),
-
 		newTestStaticAssetHandler())
 	if err != nil {
 		t.Fatal(err)
@@ -199,6 +196,7 @@ func TestNewRouterAuthenticationRoutesRequireCSRF(t *testing.T) {
 		HandlerSet{
 			Authentication: &AuthenticationHandler{},
 			LoginPage:      newTestLoginPageHandler(t),
+			Dashboard:      newTestDashboardPageHandler(t),
 		},
 		MiddlewareSet{
 			Authentication: authMiddleware,
@@ -206,10 +204,6 @@ func TestNewRouterAuthenticationRoutesRequireCSRF(t *testing.T) {
 				newTestCSRFCookie(t),
 			),
 		},
-		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			w.WriteHeader(http.StatusNoContent)
-		}),
-
 		newTestStaticAssetHandler())
 	if err != nil {
 		t.Fatal(err)
@@ -263,15 +257,12 @@ func TestNewRouterAuthenticationRoutesRejectUnsupportedMethods(t *testing.T) {
 		HandlerSet{
 			Authentication: &AuthenticationHandler{},
 			LoginPage:      newTestLoginPageHandler(t),
+			Dashboard:      newTestDashboardPageHandler(t),
 		},
 		MiddlewareSet{
 			Authentication: authMiddleware,
 			CSRF:           middleware.NewCSRFMiddleware(newTestCSRFCookie(t)),
 		},
-		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			w.WriteHeader(http.StatusNoContent)
-		}),
-
 		newTestStaticAssetHandler())
 	if err != nil {
 		t.Fatal(err)
@@ -337,6 +328,7 @@ func TestNewRouterLogoutRouteUsesPostMethod(t *testing.T) {
 		HandlerSet{
 			Authentication: &AuthenticationHandler{},
 			LoginPage:      newTestLoginPageHandler(t),
+			Dashboard:      newTestDashboardPageHandler(t),
 		},
 		MiddlewareSet{
 			Authentication: authMiddleware,
@@ -344,10 +336,6 @@ func TestNewRouterLogoutRouteUsesPostMethod(t *testing.T) {
 				newTestCSRFCookie(t),
 			),
 		},
-		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			w.WriteHeader(http.StatusNoContent)
-		}),
-
 		newTestStaticAssetHandler())
 	if err != nil {
 		t.Fatal(err)
@@ -386,15 +374,12 @@ func TestNewRouterReturnsNotFoundForUnknownRoute(t *testing.T) {
 		HandlerSet{
 			Authentication: &AuthenticationHandler{},
 			LoginPage:      newTestLoginPageHandler(t),
+			Dashboard:      newTestDashboardPageHandler(t),
 		},
 		MiddlewareSet{
 			Authentication: authMiddleware,
 			CSRF:           middleware.NewCSRFMiddleware(newTestCSRFCookie(t)),
 		},
-		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			w.WriteHeader(http.StatusNoContent)
-		}),
-
 		newTestStaticAssetHandler())
 	if err != nil {
 		t.Fatal(err)
@@ -456,15 +441,12 @@ func TestNewRouterUsesCanonicalPathsWithoutTrailingSlash(t *testing.T) {
 		HandlerSet{
 			Authentication: &AuthenticationHandler{},
 			LoginPage:      newTestLoginPageHandler(t),
+			Dashboard:      newTestDashboardPageHandler(t),
 		},
 		MiddlewareSet{
 			Authentication: authMiddleware,
 			CSRF:           middleware.NewCSRFMiddleware(newTestCSRFCookie(t)),
 		},
-		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			w.WriteHeader(http.StatusNoContent)
-		}),
-
 		newTestStaticAssetHandler())
 	if err != nil {
 		t.Fatal(err)
@@ -510,6 +492,7 @@ func TestNewRouterProtectedRouteRequiresAuthentication(t *testing.T) {
 		HandlerSet{
 			Authentication: &AuthenticationHandler{},
 			LoginPage:      newTestLoginPageHandler(t),
+			Dashboard:      newTestDashboardPageHandler(t),
 		},
 		MiddlewareSet{
 			Authentication: authMiddleware,
@@ -517,10 +500,6 @@ func TestNewRouterProtectedRouteRequiresAuthentication(t *testing.T) {
 				newTestCSRFCookie(t),
 			),
 		},
-		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			w.WriteHeader(http.StatusNoContent)
-		}),
-
 		newTestStaticAssetHandler())
 	if err != nil {
 		t.Fatal(err)
@@ -551,6 +530,7 @@ func TestNewRouterProtectedMiddlewareRunsAuthenticationBeforeCSRF(t *testing.T) 
 		HandlerSet{
 			Authentication: &AuthenticationHandler{},
 			LoginPage:      newTestLoginPageHandler(t),
+			Dashboard:      newTestDashboardPageHandler(t),
 		},
 		MiddlewareSet{
 			Authentication: authMiddleware,
@@ -558,10 +538,6 @@ func TestNewRouterProtectedMiddlewareRunsAuthenticationBeforeCSRF(t *testing.T) 
 				newTestCSRFCookie(t),
 			),
 		},
-		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			t.Fatal("protected handler was called")
-		}),
-
 		newTestStaticAssetHandler())
 	if err != nil {
 		t.Fatal(err)
@@ -594,25 +570,16 @@ func TestNewRouterProtectedRouteDoesNotPropagateActorWhenAuthenticationFails(t *
 		t.Fatal(err)
 	}
 
-	protected := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if _, ok := service.ActorFromContext(r.Context()); ok {
-			t.Fatal("actor propagated despite failed authentication")
-		}
-
-		w.WriteHeader(http.StatusNoContent)
-	})
-
 	router, err := NewRouter(
 		HandlerSet{
 			Authentication: &AuthenticationHandler{},
 			LoginPage:      newTestLoginPageHandler(t),
+			Dashboard:      newTestDashboardPageHandler(t),
 		},
 		MiddlewareSet{
 			Authentication: authMiddleware,
 			CSRF:           middleware.NewCSRFMiddleware(newTestCSRFCookie(t)),
 		},
-		protected,
-
 		newTestStaticAssetHandler())
 	if err != nil {
 		t.Fatal(err)
@@ -639,21 +606,16 @@ func TestNewRouterProtectedRouteMapsAuthenticationFailureToServerError(t *testin
 		t.Fatal(err)
 	}
 
-	protected := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		t.Fatal("protected handler called after authentication failure")
-	})
-
 	router, err := NewRouter(
 		HandlerSet{
 			Authentication: &AuthenticationHandler{},
 			LoginPage:      newTestLoginPageHandler(t),
+			Dashboard:      newTestDashboardPageHandler(t),
 		},
 		MiddlewareSet{
 			Authentication: authMiddleware,
 			CSRF:           middleware.NewCSRFMiddleware(newTestCSRFCookie(t)),
 		},
-		protected,
-
 		newTestStaticAssetHandler())
 	if err != nil {
 		t.Fatal(err)
@@ -711,31 +673,11 @@ func TestNewRouterProtectedRouteAllowsAuthenticatedRequest(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	protectedCalled := false
-	protected := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		protectedCalled = true
-
-		actor, ok := service.ActorFromContext(r.Context())
-		if !ok {
-			t.Fatal("ActorFromContext() ok = false, want true")
-		}
-
-		if actor.UserID != userID || actor.Role != domain.RoleAdmin {
-			t.Fatalf(
-				"actor = %+v, want user ID %v and role %v",
-				actor,
-				userID,
-				domain.RoleAdmin,
-			)
-		}
-
-		w.WriteHeader(http.StatusNoContent)
-	})
-
 	router, err := NewRouter(
 		HandlerSet{
 			Authentication: &AuthenticationHandler{},
 			LoginPage:      newTestLoginPageHandler(t),
+			Dashboard:      newTestDashboardPageHandler(t),
 		},
 		MiddlewareSet{
 			Authentication: authMiddleware,
@@ -743,8 +685,6 @@ func TestNewRouterProtectedRouteAllowsAuthenticatedRequest(t *testing.T) {
 				newTestCSRFCookie(t),
 			),
 		},
-		protected,
-
 		newTestStaticAssetHandler())
 	if err != nil {
 		t.Fatal(err)
@@ -759,12 +699,8 @@ func TestNewRouterProtectedRouteAllowsAuthenticatedRequest(t *testing.T) {
 
 	router.ServeHTTP(recorder, req)
 
-	if recorder.Code != http.StatusNoContent {
-		t.Fatalf("status = %d, want %d", recorder.Code, http.StatusNoContent)
-	}
-
-	if !protectedCalled {
-		t.Fatal("protected handler was not called")
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", recorder.Code, http.StatusOK)
 	}
 }
 
@@ -794,16 +730,11 @@ func TestNewRouterProtectedPostRequiresCSRFAfterAuthentication(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	protectedCalled := false
-	protected := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		protectedCalled = true
-		w.WriteHeader(http.StatusNoContent)
-	})
-
 	router, err := NewRouter(
 		HandlerSet{
 			Authentication: &AuthenticationHandler{},
 			LoginPage:      newTestLoginPageHandler(t),
+			Dashboard:      newTestDashboardPageHandler(t),
 		},
 		MiddlewareSet{
 			Authentication: authMiddleware,
@@ -811,8 +742,6 @@ func TestNewRouterProtectedPostRequiresCSRFAfterAuthentication(t *testing.T) {
 				newTestCSRFCookie(t),
 			),
 		},
-		protected,
-
 		newTestStaticAssetHandler())
 	if err != nil {
 		t.Fatal(err)
@@ -829,10 +758,6 @@ func TestNewRouterProtectedPostRequiresCSRFAfterAuthentication(t *testing.T) {
 
 	if recorder.Code != http.StatusForbidden {
 		t.Fatalf("status = %d, want %d", recorder.Code, http.StatusForbidden)
-	}
-
-	if protectedCalled {
-		t.Fatal("protected handler was called without a valid CSRF token")
 	}
 }
 
@@ -851,6 +776,7 @@ func TestNewRouterProtectedPostRequiresAuthenticationBeforeCSRF(t *testing.T) {
 		HandlerSet{
 			Authentication: &AuthenticationHandler{},
 			LoginPage:      newTestLoginPageHandler(t),
+			Dashboard:      newTestDashboardPageHandler(t),
 		},
 		MiddlewareSet{
 			Authentication: authMiddleware,
@@ -858,10 +784,6 @@ func TestNewRouterProtectedPostRequiresAuthenticationBeforeCSRF(t *testing.T) {
 				newTestCSRFCookie(t),
 			),
 		},
-		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			w.WriteHeader(http.StatusNoContent)
-		}),
-
 		newTestStaticAssetHandler())
 	if err != nil {
 		t.Fatal(err)

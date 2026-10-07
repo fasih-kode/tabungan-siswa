@@ -270,11 +270,11 @@ func TestAuthenticationIntegrationUsesRealServiceAndArgon2id(t *testing.T) {
 	}
 	loginResponse.Body.Close()
 
-	if loginResponse.StatusCode != http.StatusNoContent {
+	if loginResponse.StatusCode != http.StatusOK {
 		t.Fatalf(
-			"POST /login status = %d, want %d",
+			"POST /login final status = %d, want %d",
 			loginResponse.StatusCode,
-			http.StatusNoContent,
+			http.StatusOK,
 		)
 	}
 

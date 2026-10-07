@@ -91,3 +91,21 @@ func newTestTemplate(t *testing.T) *template.Template {
 
 	return templates
 }
+
+func newTestDashboardPageHandler(t *testing.T) *DashboardPageHandler {
+	t.Helper()
+
+	templates, err := template.New("base").Parse(
+		`{{define "base"}}<html><body>{{.Title}}</body></html>{{end}}`,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	handler, err := NewDashboardPageHandler(templates)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	return handler
+}

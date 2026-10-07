@@ -1,11 +1,14 @@
 package middleware
 
 import (
+	"context"
 	"crypto/subtle"
 	"net/http"
 
 	"github.com/fasih/tabungan-siswa/internal/security"
 )
+
+type csrfTokenContextKey struct{}
 
 type CSRFMiddleware struct {
 	cookie security.CSRFCookie
@@ -20,10 +23,13 @@ func NewCSRFMiddleware(cookie security.CSRFCookie) *CSRFMiddleware {
 func (m *CSRFMiddleware) Protect(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if isSafeCSRFMethod(r.Method) {
-			if !m.ensureToken(w, r) {
+			token, ok := m.ensureToken(w, r)
+			if !ok {
 				return
 			}
-			next.ServeHTTP(w, r)
+
+			ctx := context.WithValue(r.Context(), csrfTokenContextKey{}, token)
+			next.ServeHTTP(w, r.WithContext(ctx))
 			return
 		}
 
@@ -33,9 +39,13 @@ func (m *CSRFMiddleware) Protect(next http.Handler) http.Handler {
 			return
 		}
 
-		headerToken := r.Header.Get(security.DefaultCSRFHeaderName)
-		if headerToken == "" ||
-			subtle.ConstantTimeCompare([]byte(cookieToken), []byte(headerToken)) != 1 {
+		requestToken := r.Header.Get(security.DefaultCSRFHeaderName)
+		if requestToken == "" {
+			requestToken = r.FormValue("csrf_token")
+		}
+
+		if requestToken == "" ||
+			subtle.ConstantTimeCompare([]byte(cookieToken), []byte(requestToken)) != 1 {
 			http.Error(w, http.StatusText(http.StatusForbidden), http.StatusForbidden)
 			return
 		}
@@ -44,23 +54,28 @@ func (m *CSRFMiddleware) Protect(next http.Handler) http.Handler {
 	})
 }
 
-func (m *CSRFMiddleware) ensureToken(w http.ResponseWriter, r *http.Request) bool {
+func (m *CSRFMiddleware) ensureToken(w http.ResponseWriter, r *http.Request) (string, bool) {
 	if token, err := m.cookie.Read(r); err == nil && token != "" {
-		return true
+		return token, true
 	}
 
 	token, err := security.GenerateCSRFToken()
 	if err != nil {
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
-		return false
+		return "", false
 	}
 
 	if err := m.cookie.Set(w, token); err != nil {
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
-		return false
+		return "", false
 	}
 
-	return true
+	return token, true
+}
+
+func CSRFToken(r *http.Request) (string, bool) {
+	token, ok := r.Context().Value(csrfTokenContextKey{}).(string)
+	return token, ok
 }
 
 func isSafeCSRFMethod(method string) bool {

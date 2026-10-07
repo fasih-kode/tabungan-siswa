@@ -109,7 +109,7 @@ func (h *AuthenticationHandler) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	w.WriteHeader(http.StatusNoContent)
+	http.Redirect(w, r, "/protected", http.StatusSeeOther)
 }
 
 func (h *AuthenticationHandler) Logout(w http.ResponseWriter, r *http.Request) {
