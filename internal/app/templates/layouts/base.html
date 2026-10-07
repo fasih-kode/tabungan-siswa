@@ -11,11 +11,11 @@
     <div class="flex h-screen overflow-hidden">
         {{template "sidebar" .}}
 
-        <div class="relative flex flex-1 flex-col overflow-x-hidden overflow-y-auto">
+        <div class="relative flex min-w-0 flex-1 flex-col overflow-x-hidden overflow-y-auto">
             {{template "header" .}}
 
-            <main>
-                <div class="mx-auto max-w-(--breakpoint-2xl) p-4 md:p-6">
+            <main class="min-w-0">
+                <div class="mx-auto w-full max-w-(--breakpoint-2xl) p-4 md:p-6">
                     {{template "page-content" .}}
                 </div>
             </main>
