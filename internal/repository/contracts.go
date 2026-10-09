@@ -30,6 +30,7 @@ type SessionRepository interface {
 type AcademicYearRepository interface {
 	Create(ctx context.Context, academicYear domain.AcademicYear) error
 	GetByID(ctx context.Context, id uuid.UUID) (domain.AcademicYear, error)
+	GetByIDForUpdate(ctx context.Context, id uuid.UUID) (domain.AcademicYear, error)
 	List(ctx context.Context, options ListOptions) ([]domain.AcademicYear, error)
 	Update(ctx context.Context, academicYear domain.AcademicYear) error
 	GetOpen(ctx context.Context) (domain.AcademicYear, error)
@@ -190,6 +191,7 @@ type SavingsAccountRepository interface {
 		ctx context.Context,
 		account domain.SavingsAccount,
 	) error
+	HasOpenByAcademicYear(ctx context.Context, academicYearID uuid.UUID) (bool, error)
 }
 
 type TransactionRepository interface {

@@ -15,6 +15,7 @@ var (
 	ErrAlreadySettled           = errors.New("savings account is already settled")
 	ErrAlreadyCancelled         = errors.New("transaction is already cancelled")
 	ErrNegativeBalance          = errors.New("balance cannot be negative")
+	ErrMoneyOverflow            = errors.New("money amount exceeds supported range")
 	ErrEmptyName                = errors.New("name cannot be empty")
 	ErrInvalidClassLevel        = errors.New("class level must be between 1 and 12")
 	ErrInvalidSessionTokenHash  = errors.New("invalid session token hash")

@@ -39,6 +39,25 @@ func (s *savingsAccountService) Create(
 		}
 	}
 
+	if s.deps.Repositories.Students != nil {
+		student, err := s.deps.Repositories.Students.GetByID(ctx, input.StudentID)
+		if err != nil {
+			return CreateSavingsAccountOutput{}, err
+		}
+		if student.IsLeft() {
+			return CreateSavingsAccountOutput{}, domain.ErrInvalidTransition
+		}
+	}
+	if s.deps.Repositories.AcademicYears != nil {
+		academicYear, err := s.deps.Repositories.AcademicYears.GetByID(ctx, input.AcademicYearID)
+		if err != nil {
+			return CreateSavingsAccountOutput{}, err
+		}
+		if !academicYear.IsOpen() {
+			return CreateSavingsAccountOutput{}, domain.ErrInvalidTransition
+		}
+	}
+
 	account, err := domain.NewSavingsAccount(
 		input.StudentID,
 		input.AcademicYearID,

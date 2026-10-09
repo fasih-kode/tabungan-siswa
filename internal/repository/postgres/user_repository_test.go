@@ -284,8 +284,8 @@ func openTestDatabase(t *testing.T) *sql.DB {
 	t.Helper()
 
 	dsn := os.Getenv("DATABASE_URL")
-	if dsn == "" {
-		t.Fatal("DATABASE_URL is not set")
+	if err := database.ValidateTestDatabaseDSN(dsn); err != nil {
+		t.Fatalf("unsafe test database configuration: %v", err)
 	}
 
 	db, err := database.Open(dsn)

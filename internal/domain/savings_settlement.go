@@ -37,7 +37,7 @@ func NewSavingsSettlement(
 		return SavingsSettlement{}, ErrInvalidValue
 	}
 
-	if amount < 0 {
+	if amount < 0 || amount > MaxMoney {
 		return SavingsSettlement{}, ErrInvalidAmount
 	}
 

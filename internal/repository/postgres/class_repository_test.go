@@ -362,7 +362,7 @@ func TestClassRepository_ListByTeacherAndAcademicYear(t *testing.T) {
 		t,
 		"2026/2027",
 		time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC),
-		time.Date(2027, 6, 30, 0, 0, 0, 0, time.UTC),
+		time.Date(2027, 7, 1, 0, 0, 0, 0, time.UTC),
 		domain.AcademicYearClosed,
 	)
 	if err := academicYearRepo.Create(ctx, secondAcademicYear); err != nil {

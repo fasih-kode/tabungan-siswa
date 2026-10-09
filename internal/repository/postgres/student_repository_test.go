@@ -466,7 +466,7 @@ func TestStudentRepository_ListByClassAndAcademicYear(t *testing.T) {
 		t,
 		"2026/2027",
 		time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC),
-		time.Date(2027, 6, 30, 0, 0, 0, 0, time.UTC),
+		time.Date(2027, 7, 1, 0, 0, 0, 0, time.UTC),
 		domain.AcademicYearClosed,
 	)
 	if err := academicYearRepo.Create(ctx, secondAcademicYear); err != nil {
@@ -515,7 +515,7 @@ func TestStudentRepository_ListByClassAndAcademicYear(t *testing.T) {
 		academicYear.ID,
 		classA.ID,
 		time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC),
-		time.Date(2026, 6, 30, 0, 0, 0, 0, time.UTC),
+		time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC),
 	)
 	historyB := newTestStudentClassHistory(
 		t,
@@ -523,7 +523,7 @@ func TestStudentRepository_ListByClassAndAcademicYear(t *testing.T) {
 		academicYear.ID,
 		classA.ID,
 		time.Date(2025, 7, 1, 0, 0, 0, 0, time.UTC),
-		time.Date(2026, 6, 30, 0, 0, 0, 0, time.UTC),
+		time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC),
 	)
 	historyC := newTestStudentClassHistory(
 		t,
@@ -531,7 +531,7 @@ func TestStudentRepository_ListByClassAndAcademicYear(t *testing.T) {
 		academicYear.ID,
 		classB.ID,
 		time.Date(2025, 7, 1, 0, 0, 0, 0, time.UTC),
-		time.Date(2026, 6, 30, 0, 0, 0, 0, time.UTC),
+		time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC),
 	)
 	historyD := newTestStudentClassHistory(
 		t,
@@ -539,7 +539,7 @@ func TestStudentRepository_ListByClassAndAcademicYear(t *testing.T) {
 		secondAcademicYear.ID,
 		classA.ID,
 		time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC),
-		time.Date(2027, 6, 30, 0, 0, 0, 0, time.UTC),
+		time.Date(2027, 7, 1, 0, 0, 0, 0, time.UTC),
 	)
 
 	histories := []domain.StudentClassHistory{

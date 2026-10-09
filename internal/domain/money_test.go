@@ -23,10 +23,24 @@ func TestMoneyIsPositive(t *testing.T) {
 }
 
 func TestMoneyAdd(t *testing.T) {
-	got := Money(10000).Add(5000)
-
+	got, err := Money(10000).Add(5000)
+	if err != nil {
+		t.Fatalf("Add() error = %v", err)
+	}
 	if got != 15000 {
 		t.Fatalf("Add() = %d, want %d", got, 15000)
+	}
+}
+
+func TestMoneyAddRejectsOverflow(t *testing.T) {
+	if _, err := MaxMoney.Add(1); err != ErrMoneyOverflow {
+		t.Fatalf("Add() error = %v, want %v", err, ErrMoneyOverflow)
+	}
+}
+
+func TestMoneySubtractRejectsOutOfRange(t *testing.T) {
+	if _, err := MaxMoney.Subtract(-1); err != ErrMoneyOverflow {
+		t.Fatalf("Subtract() error = %v, want %v", err, ErrMoneyOverflow)
 	}
 }
 

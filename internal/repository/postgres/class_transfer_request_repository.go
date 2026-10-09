@@ -401,11 +401,14 @@ func translateClassTransferRequestError(
 	if errors.As(err, &pgErr) {
 		switch pgErr.Code {
 		case "23505", "23P01":
-			return fmt.Errorf(
-				"%s: %w",
-				operation,
-				repository.ErrConflict,
-			)
+			return fmt.Errorf("%s: %w", operation, repository.ErrConflict)
+		case "23514":
+			switch pgErr.ConstraintName {
+			case "class_transfer_requests_rejection_reason_check":
+				return fmt.Errorf("%s: %w", operation, domain.ErrEmptyRejectionReason)
+			case "class_transfer_requests_academic_year_must_be_open":
+				return fmt.Errorf("%s: %w", operation, domain.ErrInvalidTransition)
+			}
 		}
 	}
 

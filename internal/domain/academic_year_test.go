@@ -7,7 +7,7 @@ import (
 
 func TestNewAcademicYear(t *testing.T) {
 	startDate := time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC)
-	endDate := time.Date(2027, 6, 30, 0, 0, 0, 0, time.UTC)
+	endDate := time.Date(2027, 7, 1, 0, 0, 0, 0, time.UTC)
 
 	academicYear, err := NewAcademicYear(
 		"2026/2027",
@@ -45,7 +45,7 @@ func TestNewAcademicYear(t *testing.T) {
 
 func TestNewAcademicYearTrimsName(t *testing.T) {
 	startDate := time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC)
-	endDate := time.Date(2027, 6, 30, 0, 0, 0, 0, time.UTC)
+	endDate := time.Date(2027, 7, 1, 0, 0, 0, 0, time.UTC)
 
 	academicYear, err := NewAcademicYear(
 		"  2026/2027  ",
@@ -67,7 +67,7 @@ func TestNewAcademicYearTrimsName(t *testing.T) {
 
 func TestNewAcademicYearRejectsEmptyName(t *testing.T) {
 	startDate := time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC)
-	endDate := time.Date(2027, 6, 30, 0, 0, 0, 0, time.UTC)
+	endDate := time.Date(2027, 7, 1, 0, 0, 0, 0, time.UTC)
 
 	_, err := NewAcademicYear("", startDate, endDate)
 	if err != ErrEmptyName {
@@ -77,7 +77,7 @@ func TestNewAcademicYearRejectsEmptyName(t *testing.T) {
 
 func TestNewAcademicYearRejectsWhitespaceOnlyName(t *testing.T) {
 	startDate := time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC)
-	endDate := time.Date(2027, 6, 30, 0, 0, 0, 0, time.UTC)
+	endDate := time.Date(2027, 7, 1, 0, 0, 0, 0, time.UTC)
 
 	_, err := NewAcademicYear("   ", startDate, endDate)
 	if err != ErrEmptyName {
@@ -91,7 +91,7 @@ func TestNewAcademicYearRejectsWhitespaceOnlyName(t *testing.T) {
 
 func TestNewAcademicYearRejectsInvalidDateRange(t *testing.T) {
 	startDate := time.Date(2027, 7, 1, 0, 0, 0, 0, time.UTC)
-	endDate := time.Date(2026, 6, 30, 0, 0, 0, 0, time.UTC)
+	endDate := time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC)
 
 	_, err := NewAcademicYear("2026/2027", startDate, endDate)
 	if err != ErrInvalidDateRange {
@@ -112,7 +112,7 @@ func TestAcademicYearStartClosing(t *testing.T) {
 	academicYear, err := NewAcademicYear(
 		"2026/2027",
 		time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC),
-		time.Date(2027, 6, 30, 0, 0, 0, 0, time.UTC),
+		time.Date(2027, 7, 1, 0, 0, 0, 0, time.UTC),
 	)
 	if err != nil {
 		t.Fatalf("NewAcademicYear() error = %v", err)
@@ -131,7 +131,7 @@ func TestAcademicYearCannotStartClosingTwice(t *testing.T) {
 	academicYear, err := NewAcademicYear(
 		"2026/2027",
 		time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC),
-		time.Date(2027, 6, 30, 0, 0, 0, 0, time.UTC),
+		time.Date(2027, 7, 1, 0, 0, 0, 0, time.UTC),
 	)
 	if err != nil {
 		t.Fatalf("NewAcademicYear() error = %v", err)
@@ -150,7 +150,7 @@ func TestAcademicYearClose(t *testing.T) {
 	academicYear, err := NewAcademicYear(
 		"2026/2027",
 		time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC),
-		time.Date(2027, 6, 30, 0, 0, 0, 0, time.UTC),
+		time.Date(2027, 7, 1, 0, 0, 0, 0, time.UTC),
 	)
 	if err != nil {
 		t.Fatalf("NewAcademicYear() error = %v", err)
@@ -173,7 +173,7 @@ func TestAcademicYearCannotCloseWhileOpen(t *testing.T) {
 	academicYear, err := NewAcademicYear(
 		"2026/2027",
 		time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC),
-		time.Date(2027, 6, 30, 0, 0, 0, 0, time.UTC),
+		time.Date(2027, 7, 1, 0, 0, 0, 0, time.UTC),
 	)
 	if err != nil {
 		t.Fatalf("NewAcademicYear() error = %v", err)
@@ -188,7 +188,7 @@ func TestAcademicYearReopen(t *testing.T) {
 	academicYear, err := NewAcademicYear(
 		"2026/2027",
 		time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC),
-		time.Date(2027, 6, 30, 0, 0, 0, 0, time.UTC),
+		time.Date(2027, 7, 1, 0, 0, 0, 0, time.UTC),
 	)
 	if err != nil {
 		t.Fatalf("NewAcademicYear() error = %v", err)
@@ -215,7 +215,7 @@ func TestAcademicYearCannotReopenWhileOpen(t *testing.T) {
 	academicYear, err := NewAcademicYear(
 		"2026/2027",
 		time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC),
-		time.Date(2027, 6, 30, 0, 0, 0, 0, time.UTC),
+		time.Date(2027, 7, 1, 0, 0, 0, 0, time.UTC),
 	)
 	if err != nil {
 		t.Fatalf("NewAcademicYear() error = %v", err)
@@ -230,7 +230,7 @@ func TestAcademicYearCannotCloseFromOpenDirectly(t *testing.T) {
 	academicYear, err := NewAcademicYear(
 		"2026/2027",
 		time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC),
-		time.Date(2027, 6, 30, 0, 0, 0, 0, time.UTC),
+		time.Date(2027, 7, 1, 0, 0, 0, 0, time.UTC),
 	)
 	if err != nil {
 		t.Fatalf("NewAcademicYear() error = %v", err)

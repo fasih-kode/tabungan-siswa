@@ -27,6 +27,7 @@ func Status(err error) int {
 		errors.Is(err, domain.ErrAlreadySettled),
 		errors.Is(err, domain.ErrAlreadyCancelled),
 		errors.Is(err, domain.ErrNegativeBalance),
+		errors.Is(err, domain.ErrMoneyOverflow),
 		errors.Is(err, domain.ErrSessionAlreadyRevoked):
 		return http.StatusConflict
 

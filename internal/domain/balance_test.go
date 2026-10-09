@@ -66,6 +66,23 @@ func TestCalculateBalanceIgnoresCancelledTransactions(t *testing.T) {
 	}
 }
 
+func TestCalculateBalanceRejectsMoneyOverflow(t *testing.T) {
+	accountID := uuid.New()
+	userID := uuid.New()
+	date := time.Date(2026, 8, 1, 0, 0, 0, 0, time.UTC)
+	first, err := NewDeposit(accountID, MaxMoney, date, userID)
+	if err != nil {
+		t.Fatalf("NewDeposit(first) error = %v", err)
+	}
+	second, err := NewDeposit(accountID, 1, date.AddDate(0, 0, 1), userID)
+	if err != nil {
+		t.Fatalf("NewDeposit(second) error = %v", err)
+	}
+	if _, err := CalculateBalance([]Transaction{first, second}); err != ErrMoneyOverflow {
+		t.Fatalf("CalculateBalance() error = %v, want %v", err, ErrMoneyOverflow)
+	}
+}
+
 func TestCalculateBalanceRejectsNegativeResult(t *testing.T) {
 	accountID := uuid.New()
 	userID := uuid.New()

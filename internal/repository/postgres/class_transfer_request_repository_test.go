@@ -45,6 +45,76 @@ func TestClassTransferRequestRepository_CreateAndGetByID(t *testing.T) {
 	assertClassTransferRequestEqual(t, got, request)
 }
 
+func TestClassTransferRequestRepository_RejectsRequestForClosedYear(t *testing.T) {
+	db := openTestDatabase(t)
+	ctx := context.Background()
+	fixture := newClassTransferRequestFixture(t, db)
+	fixture.academicYear.Status = domain.AcademicYearClosed
+	fixture.academicYear.UpdatedAt = time.Now()
+	if err := postgres.NewAcademicYearRepository(db).Update(ctx, fixture.academicYear); err != nil {
+		t.Fatalf("close academic year fixture: %v", err)
+	}
+
+	request := newTestClassTransferRequest(t, fixture.student.ID, fixture.academicYear.ID, fixture.fromClass.ID, fixture.toClass.ID, fixture.requestedBy.ID)
+	if err := postgres.NewClassTransferRequestRepository(db).Create(ctx, request); !errors.Is(err, domain.ErrInvalidTransition) {
+		t.Fatalf("Create(closed year) error = %v, want %v", err, domain.ErrInvalidTransition)
+	}
+}
+
+func TestClassTransferRequestRepository_RejectsProcessingOutsideOpenYear(t *testing.T) {
+	db := openTestDatabase(t)
+	ctx := context.Background()
+	fixture := newClassTransferRequestFixture(t, db)
+	repo := postgres.NewClassTransferRequestRepository(db)
+	request := newTestClassTransferRequest(t, fixture.student.ID, fixture.academicYear.ID, fixture.fromClass.ID, fixture.toClass.ID, fixture.requestedBy.ID)
+	if err := repo.Create(ctx, request); err != nil {
+		t.Fatalf("Create(pending) error = %v", err)
+	}
+	t.Cleanup(func() { deleteTestClassTransferRequest(t, db, request.ID) })
+
+	fixture.academicYear.Status = domain.AcademicYearClosed
+	fixture.academicYear.UpdatedAt = time.Now()
+	if err := postgres.NewAcademicYearRepository(db).Update(ctx, fixture.academicYear); err != nil {
+		t.Fatalf("close academic year fixture: %v", err)
+	}
+	if err := request.Reject(fixture.reviewedBy.ID, time.Now(), "Test reason"); err != nil {
+		t.Fatalf("Reject() domain error = %v", err)
+	}
+	if err := repo.Update(ctx, request); !errors.Is(err, domain.ErrInvalidTransition) {
+		t.Fatalf("Update(rejected outside open year) error = %v, want %v", err, domain.ErrInvalidTransition)
+	}
+}
+
+func TestClassTransferRequestRepository_RejectsSecondPendingRequest(t *testing.T) {
+	db := openTestDatabase(t)
+	repo := postgres.NewClassTransferRequestRepository(db)
+	ctx := context.Background()
+	fixture := newClassTransferRequestFixture(t, db)
+	first := newTestClassTransferRequest(t, fixture.student.ID, fixture.academicYear.ID, fixture.fromClass.ID, fixture.toClass.ID, fixture.requestedBy.ID)
+	second := newTestClassTransferRequest(t, fixture.student.ID, fixture.academicYear.ID, fixture.fromClass.ID, fixture.thirdClass.ID, fixture.requestedBy.ID)
+	if err := repo.Create(ctx, first); err != nil {
+		t.Fatalf("Create(first) error = %v", err)
+	}
+	t.Cleanup(func() { deleteTestClassTransferRequest(t, db, first.ID) })
+	if err := repo.Create(ctx, second); !errors.Is(err, repository.ErrConflict) {
+		t.Fatalf("Create(second pending) error = %v, want %v", err, repository.ErrConflict)
+	}
+}
+
+func TestClassTransferRequestRepository_RejectsRejectedWithoutReason(t *testing.T) {
+	db := openTestDatabase(t)
+	repo := postgres.NewClassTransferRequestRepository(db)
+	fixture := newClassTransferRequestFixture(t, db)
+	request := newTestClassTransferRequest(t, fixture.student.ID, fixture.academicYear.ID, fixture.fromClass.ID, fixture.toClass.ID, fixture.requestedBy.ID)
+	reviewedAt := time.Now()
+	request.Status = domain.TransferRejected
+	request.ReviewedBy = &fixture.reviewedBy.ID
+	request.ReviewedAt = &reviewedAt
+	if err := repo.Create(context.Background(), request); !errors.Is(err, domain.ErrEmptyRejectionReason) {
+		t.Fatalf("Create(REJECTED without reason) error = %v, want %v", err, domain.ErrEmptyRejectionReason)
+	}
+}
+
 func TestClassTransferRequestRepository_GetByIDNotFound(t *testing.T) {
 	db := openTestDatabase(t)
 	repo := postgres.NewClassTransferRequestRepository(db)
@@ -76,6 +146,9 @@ func TestClassTransferRequestRepository_ListByStudentAndAcademicYear(
 		2026, 7, 2, 10, 0, 0, 0, time.UTC,
 	)
 	first.UpdatedAt = first.CreatedAt
+	if err := first.Approve(fixture.reviewedBy.ID, first.CreatedAt.Add(time.Hour)); err != nil {
+		t.Fatalf("Approve(first) error = %v", err)
+	}
 
 	second := newTestClassTransferRequest(
 		t,
@@ -308,6 +381,11 @@ func TestClassTransferRequestRepository_ListPagination(t *testing.T) {
 			time.UTC,
 		)
 		request.UpdatedAt = request.CreatedAt
+		if i > 0 {
+			if err := request.Approve(fixture.reviewedBy.ID, request.CreatedAt.Add(time.Hour)); err != nil {
+				t.Fatalf("Approve(request %d) error = %v", i, err)
+			}
+		}
 
 		if err := repo.Create(ctx, request); err != nil {
 			t.Fatalf("Create() error = %v", err)

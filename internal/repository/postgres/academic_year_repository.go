@@ -87,6 +87,29 @@ func (r *AcademicYearRepository) GetByID(
 	return r.getOne(ctx, query, id, "get academic year by id")
 }
 
+// GetByIDForUpdate mengambil kunci FOR UPDATE pada baris tahun ajaran.
+// Pemanggil harus berada di dalam transaksi; kunci dipertahankan sampai commit/rollback.
+func (r *AcademicYearRepository) GetByIDForUpdate(
+	ctx context.Context,
+	id uuid.UUID,
+) (domain.AcademicYear, error) {
+	const query = `
+		SELECT
+			id,
+			name,
+			start_date,
+			end_date,
+			status,
+			created_at,
+			updated_at
+		FROM academic_years
+		WHERE id = $1
+		FOR UPDATE
+	`
+
+	return r.getOne(ctx, query, id, "get academic year by id for update")
+}
+
 func (r *AcademicYearRepository) List(
 	ctx context.Context,
 	options repository.ListOptions,

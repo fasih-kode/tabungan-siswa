@@ -394,11 +394,11 @@ func translateTransactionError(
 	if errors.As(err, &pgErr) {
 		switch pgErr.Code {
 		case "23505", "23P01":
-			return fmt.Errorf(
-				"%s: %w",
-				operation,
-				repository.ErrConflict,
-			)
+			return fmt.Errorf("%s: %w", operation, repository.ErrConflict)
+		case "23514":
+			if pgErr.ConstraintName == "transactions_cancel_requires_open_account" {
+				return fmt.Errorf("%s: %w", operation, domain.ErrInvalidTransition)
+			}
 		}
 	}
 

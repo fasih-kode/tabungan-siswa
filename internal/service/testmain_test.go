@@ -15,8 +15,8 @@ const (
 
 func TestMain(m *testing.M) {
 	dsn := os.Getenv("DATABASE_URL")
-	if dsn == "" {
-		panic("DATABASE_URL is not set")
+	if err := database.ValidateTestDatabaseDSN(dsn); err != nil {
+		panic("unsafe test database configuration: " + err.Error())
 	}
 
 	db, err := database.Open(dsn)

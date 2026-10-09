@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"sort"
 	"time"
 
 	"github.com/fasih/tabungan-siswa/internal/domain"
@@ -58,6 +59,16 @@ func (s *transactionService) Deposit(
 		input.Actor.UserID,
 	)
 	if err != nil {
+		return DepositOutput{}, err
+	}
+
+	transactions, err := repos.Transactions.ListActiveBySavingsAccount(ctx, account.ID)
+	if err != nil {
+		return DepositOutput{}, err
+	}
+	transactions = append(transactions, transaction)
+	sortTransactionsChronologically(transactions)
+	if _, err := domain.CalculateBalance(transactions); err != nil {
 		return DepositOutput{}, err
 	}
 
@@ -145,6 +156,7 @@ func (s *transactionService) Withdrawal(
 	}
 
 	transactions = append(transactions, withdrawal)
+	sortTransactionsChronologically(transactions)
 	if _, err := domain.CalculateBalance(transactions); err != nil {
 		return WithdrawalOutput{}, err
 	}
@@ -251,6 +263,9 @@ func (s *transactionService) Edit(
 	if input.TransactionID == uuid.Nil {
 		return EditTransactionOutput{}, ErrScopeViolation
 	}
+	if !input.Amount.IsPositive() || input.Amount > domain.MaxMoney {
+		return EditTransactionOutput{}, domain.ErrInvalidAmount
+	}
 
 	uow, repos, txCtx, ownsTransaction, err := beginTransaction(ctx, s.deps.UOW)
 	if err != nil {
@@ -319,6 +334,7 @@ func (s *transactionService) Edit(
 	if !found {
 		return EditTransactionOutput{}, repository.ErrNotFound
 	}
+	sortTransactionsChronologically(transactions)
 
 	if _, err := domain.CalculateBalance(transactions); err != nil {
 		return EditTransactionOutput{}, err
@@ -388,6 +404,9 @@ func (s *transactionService) Cancel(
 	if err := s.authorizeAccount(ctx, repos, input.Actor, account); err != nil {
 		return CancelTransactionOutput{}, err
 	}
+	if !account.IsOpen() {
+		return CancelTransactionOutput{}, domain.ErrInvalidTransition
+	}
 
 	existing, err = repos.Transactions.GetByID(ctx, input.TransactionID)
 	if err != nil {
@@ -395,7 +414,29 @@ func (s *transactionService) Cancel(
 	}
 
 	before := existing
+	if existing.Status != domain.TransactionActive {
+		return CancelTransactionOutput{}, existing.Cancel()
+	}
+	transactions, err := repos.Transactions.ListActiveBySavingsAccount(ctx, account.ID)
+	if err != nil {
+		return CancelTransactionOutput{}, err
+	}
 	if err := existing.Cancel(); err != nil {
+		return CancelTransactionOutput{}, err
+	}
+	found := false
+	for i := range transactions {
+		if transactions[i].ID == existing.ID {
+			transactions[i] = existing
+			found = true
+			break
+		}
+	}
+	if !found {
+		transactions = append(transactions, existing)
+	}
+	sortTransactionsChronologically(transactions)
+	if _, err := domain.CalculateBalance(transactions); err != nil {
 		return CancelTransactionOutput{}, err
 	}
 
@@ -490,6 +531,22 @@ func (s *transactionService) createTransactionAudit(
 		After:      afterData,
 	})
 	return err
+}
+
+func sortTransactionsChronologically(transactions []domain.Transaction) {
+	sort.SliceStable(transactions, func(i, j int) bool {
+		leftDate := transactions[i].TransactionDate
+		rightDate := transactions[j].TransactionDate
+		if leftDate.Year() != rightDate.Year() || leftDate.Month() != rightDate.Month() || leftDate.Day() != rightDate.Day() {
+			leftDay := time.Date(leftDate.Year(), leftDate.Month(), leftDate.Day(), 0, 0, 0, 0, time.UTC)
+			rightDay := time.Date(rightDate.Year(), rightDate.Month(), rightDate.Day(), 0, 0, 0, 0, time.UTC)
+			return leftDay.Before(rightDay)
+		}
+		if !transactions[i].CreatedAt.Equal(transactions[j].CreatedAt) {
+			return transactions[i].CreatedAt.Before(transactions[j].CreatedAt)
+		}
+		return transactions[i].ID.String() < transactions[j].ID.String()
+	})
 }
 
 func transactionPointers(transactions []domain.Transaction) []*domain.Transaction {

@@ -37,7 +37,7 @@ func NewTransaction(
 		return Transaction{}, ErrInvalidValue
 	}
 
-	if !amount.IsPositive() {
+	if !amount.IsPositive() || amount > MaxMoney {
 		return Transaction{}, ErrInvalidAmount
 	}
 

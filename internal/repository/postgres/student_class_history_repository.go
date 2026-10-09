@@ -157,7 +157,7 @@ func (r *StudentClassHistoryRepository) CloseCurrentByStudentAndAcademicYear(
 			updated_at = $4
 		WHERE student_id = $1
 			AND academic_year_id = $2
-			AND upper_inf(validity)
+			AND validity @> $3::date
 			AND lower(validity) < $3::date
 		RETURNING
 			id,
@@ -313,6 +313,8 @@ func translateStudentClassHistoryError(operation string, err error) error {
 		switch pgErr.Code {
 		case "23505", "23P01":
 			return fmt.Errorf("%s: %w", operation, repository.ErrConflict)
+		case "23514":
+			return fmt.Errorf("%s: %w", operation, domain.ErrInvalidDateRange)
 		}
 	}
 

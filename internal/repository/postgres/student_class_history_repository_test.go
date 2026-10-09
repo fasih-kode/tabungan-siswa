@@ -235,7 +235,7 @@ func TestStudentClassHistoryRepository_CloseCurrentByStudentAndAcademicYear(
 	startDate := time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC)
 	endDate := time.Date(2026, 10, 15, 0, 0, 0, 0, time.UTC)
 
-	history := newTestStudentClassHistoryOpenEnded(
+	history := newTestStudentClassHistoryWithinAcademicYearEnd(
 		t,
 		fixture.student.ID,
 		fixture.academicYear.ID,
@@ -464,13 +464,51 @@ func TestStudentClassHistoryRepository_CreateOverlappingPeriod(
 	}
 }
 
-func TestStudentClassHistoryRepository_CreateOpenEndedPeriod(
-	t *testing.T,
-) {
+func TestStudentClassHistoryRepository_RejectsPeriodOutsideAcademicYear(t *testing.T) {
 	db := openTestDatabase(t)
 	repo := postgres.NewStudentClassHistoryRepository(db)
-	ctx := context.Background()
+	fixture := newStudentClassHistoryFixture(t, db)
+	history := newTestStudentClassHistory(
+		t,
+		fixture.student.ID,
+		fixture.academicYear.ID,
+		fixture.class.ID,
+		time.Date(2026, 6, 30, 0, 0, 0, 0, time.UTC),
+		time.Date(2026, 10, 1, 0, 0, 0, 0, time.UTC),
+	)
+	if err := repo.Create(context.Background(), history); !errors.Is(err, domain.ErrInvalidDateRange) {
+		t.Fatalf("Create(outside year) error = %v, want %v", err, domain.ErrInvalidDateRange)
+	}
+}
 
+func TestStudentClassHistoryRepository_AcademicYearCannotExcludeExistingHistory(t *testing.T) {
+	db := openTestDatabase(t)
+	ctx := context.Background()
+	fixture := newStudentClassHistoryFixture(t, db)
+	repo := postgres.NewStudentClassHistoryRepository(db)
+	history := newTestStudentClassHistory(
+		t,
+		fixture.student.ID,
+		fixture.academicYear.ID,
+		fixture.class.ID,
+		time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC),
+		time.Date(2027, 7, 1, 0, 0, 0, 0, time.UTC),
+	)
+	if err := repo.Create(ctx, history); err != nil {
+		t.Fatalf("Create(history) error = %v", err)
+	}
+	t.Cleanup(func() { deleteTestStudentClassHistory(t, db, history.ID) })
+
+	fixture.academicYear.EndDate = time.Date(2027, 6, 1, 0, 0, 0, 0, time.UTC)
+	fixture.academicYear.UpdatedAt = time.Now()
+	if err := postgres.NewAcademicYearRepository(db).Update(ctx, fixture.academicYear); !errors.Is(err, domain.ErrInvalidDateRange) {
+		t.Fatalf("Update(shortened year) error = %v, want %v", err, domain.ErrInvalidDateRange)
+	}
+}
+
+func TestStudentClassHistoryRepository_RejectsOpenEndedPeriod(t *testing.T) {
+	db := openTestDatabase(t)
+	repo := postgres.NewStudentClassHistoryRepository(db)
 	fixture := newStudentClassHistoryFixture(t, db)
 
 	history := newTestStudentClassHistoryOpenEnded(
@@ -481,23 +519,8 @@ func TestStudentClassHistoryRepository_CreateOpenEndedPeriod(
 		time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC),
 	)
 
-	if err := repo.Create(ctx, history); err != nil {
-		t.Fatalf("Create() error = %v", err)
-	}
-
-	t.Cleanup(func() {
-		deleteTestStudentClassHistory(t, db, history.ID)
-	})
-
-	got, err := repo.GetByID(ctx, history.ID)
-	if err != nil {
-		t.Fatalf("GetByID() error = %v", err)
-	}
-
-	assertStudentClassHistoryEqual(t, got, history)
-
-	if got.Period.To != nil {
-		t.Fatalf("Period.To = %v, want nil", got.Period.To)
+	if err := repo.Create(context.Background(), history); !errors.Is(err, domain.ErrInvalidDateRange) {
+		t.Fatalf("Create(open-ended) error = %v, want %v", err, domain.ErrInvalidDateRange)
 	}
 }
 
@@ -594,20 +617,21 @@ func TestStudentClassHistoryRepository_CreateDifferentAcademicYearSamePeriod(
 		fixture.student.ID,
 		secondAcademicYear.ID,
 		fixture.class.ID,
-		time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC),
 		time.Date(2027, 7, 1, 0, 0, 0, 0, time.UTC),
+		time.Date(2028, 7, 1, 0, 0, 0, 0, time.UTC),
 	)
 
 	if err := repo.Create(ctx, first); err != nil {
 		t.Fatalf("Create(first) error = %v", err)
 	}
+	t.Cleanup(func() {
+		deleteTestStudentClassHistory(t, db, first.ID)
+	})
 
 	if err := repo.Create(ctx, second); err != nil {
 		t.Fatalf("Create(second) error = %v", err)
 	}
-
 	t.Cleanup(func() {
-		deleteTestStudentClassHistory(t, db, first.ID)
 		deleteTestStudentClassHistory(t, db, second.ID)
 	})
 }
@@ -630,7 +654,7 @@ func TestStudentClassHistoryRepository_GetCurrentUsesHalfOpenPeriod(
 		time.Date(2026, 10, 1, 0, 0, 0, 0, time.UTC),
 	)
 
-	second := newTestStudentClassHistoryOpenEnded(
+	second := newTestStudentClassHistoryWithinAcademicYearEnd(
 		t,
 		fixture.student.ID,
 		fixture.academicYear.ID,
@@ -762,6 +786,17 @@ func newTestStudentClassHistory(
 	}
 
 	return history
+}
+
+func newTestStudentClassHistoryWithinAcademicYearEnd(
+	t *testing.T,
+	studentID uuid.UUID,
+	academicYearID uuid.UUID,
+	classID uuid.UUID,
+	from time.Time,
+) domain.StudentClassHistory {
+	to := time.Date(2027, 7, 1, 0, 0, 0, 0, time.UTC)
+	return newTestStudentClassHistory(t, studentID, academicYearID, classID, from, to)
 }
 
 func newTestStudentClassHistoryOpenEnded(

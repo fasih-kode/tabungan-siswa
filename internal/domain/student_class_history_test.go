@@ -137,6 +137,37 @@ func TestNewStudentClassHistoryRejectsNilClassID(t *testing.T) {
 	}
 }
 
+func TestStudentClassHistoryValidateWithinAcademicYear(t *testing.T) {
+	start := time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC)
+	end := time.Date(2027, 7, 1, 0, 0, 0, 0, time.UTC)
+	insideEnd := time.Date(2027, 1, 1, 0, 0, 0, 0, time.UTC)
+	outsideStart := time.Date(2026, 6, 30, 0, 0, 0, 0, time.UTC)
+
+	valid, err := NewStudentClassHistory(uuid.New(), uuid.New(), uuid.New(), DateRange{From: start, To: &end})
+	if err != nil {
+		t.Fatalf("NewStudentClassHistory(valid) error = %v", err)
+	}
+	if err := valid.ValidateWithinAcademicYear(start, end); err != nil {
+		t.Fatalf("ValidateWithinAcademicYear(valid) error = %v", err)
+	}
+
+	before, err := NewStudentClassHistory(uuid.New(), uuid.New(), uuid.New(), DateRange{From: outsideStart, To: &insideEnd})
+	if err != nil {
+		t.Fatalf("NewStudentClassHistory(before) error = %v", err)
+	}
+	if err := before.ValidateWithinAcademicYear(start, end); err != ErrInvalidDateRange {
+		t.Fatalf("ValidateWithinAcademicYear(before) error = %v, want %v", err, ErrInvalidDateRange)
+	}
+
+	openEnded, err := NewStudentClassHistory(uuid.New(), uuid.New(), uuid.New(), DateRange{From: start})
+	if err != nil {
+		t.Fatalf("NewStudentClassHistory(open-ended) error = %v", err)
+	}
+	if err := openEnded.ValidateWithinAcademicYear(start, end); err != ErrInvalidDateRange {
+		t.Fatalf("ValidateWithinAcademicYear(open-ended) error = %v, want %v", err, ErrInvalidDateRange)
+	}
+}
+
 func TestStudentClassHistoryContains(t *testing.T) {
 	from := time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC)
 	to := time.Date(2027, 7, 1, 0, 0, 0, 0, time.UTC)

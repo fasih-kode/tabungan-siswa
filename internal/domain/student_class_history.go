@@ -50,3 +50,14 @@ func NewStudentClassHistory(
 func (h StudentClassHistory) Contains(date time.Time) bool {
 	return h.Period.Contains(date)
 }
+
+// ValidateWithinAcademicYear enforces the half-open academic-year boundary.
+func (h StudentClassHistory) ValidateWithinAcademicYear(startDate, endDate time.Time) error {
+	if !startDate.Before(endDate) || h.Period.From.Before(startDate) || !h.Period.From.Before(endDate) {
+		return ErrInvalidDateRange
+	}
+	if h.Period.To == nil || !h.Period.To.After(h.Period.From) || h.Period.To.After(endDate) {
+		return ErrInvalidDateRange
+	}
+	return nil
+}

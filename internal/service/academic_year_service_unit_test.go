@@ -55,6 +55,13 @@ func (f *academicYearServiceFakeAcademicYearRepository) GetByID(
 	return domain.AcademicYear{}, repository.ErrNotFound
 }
 
+func (f *academicYearServiceFakeAcademicYearRepository) GetByIDForUpdate(
+	ctx context.Context,
+	id uuid.UUID,
+) (domain.AcademicYear, error) {
+	return f.GetByID(ctx, id)
+}
+
 func (f *academicYearServiceFakeAcademicYearRepository) List(
 	ctx context.Context,
 	options repository.ListOptions,
@@ -160,7 +167,7 @@ func newTestAcademicYear(
 		ID:        id,
 		Name:      "2026/2027",
 		StartDate: time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC),
-		EndDate:   time.Date(2027, 6, 30, 0, 0, 0, 0, time.UTC),
+		EndDate:   time.Date(2027, 7, 1, 0, 0, 0, 0, time.UTC),
 		Status:    status,
 		CreatedAt: now,
 		UpdatedAt: now,
@@ -216,7 +223,7 @@ func TestAcademicYearService_Create(t *testing.T) {
 	}
 
 	start := time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC)
-	end := time.Date(2027, 6, 30, 0, 0, 0, 0, time.UTC)
+	end := time.Date(2027, 7, 1, 0, 0, 0, 0, time.UTC)
 
 	t.Run("admin creates and commits", func(t *testing.T) {
 		repo := &academicYearServiceFakeAcademicYearRepository{}
@@ -753,6 +760,35 @@ func TestAcademicYearService_Close(t *testing.T) {
 			return dereferenceAcademicYear(out.AcademicYear), err
 		},
 	)
+}
+
+func TestAcademicYearService_CloseRejectsOpenAccounts(t *testing.T) {
+	ctx := context.Background()
+	admin := Actor{UserID: uuid.New(), Role: domain.RoleAdmin}
+	yearID := uuid.New()
+	yearRepo := &academicYearServiceFakeAcademicYearRepository{
+		getByIDFn: func(context.Context, uuid.UUID) (domain.AcademicYear, error) {
+			return newTestAcademicYear(yearID, domain.AcademicYearClosing), nil
+		},
+	}
+	accountRepo := &savingsAccountServiceFakeSavingsAccountRepository{
+		hasOpenByAcademicYearFn: func(_ context.Context, id uuid.UUID) (bool, error) {
+			if id != yearID {
+				t.Fatalf("HasOpenByAcademicYear() id = %v, want %v", id, yearID)
+			}
+			return true, nil
+		},
+	}
+	uow := &academicYearServiceFakeUnitOfWork{repos: repository.RepositorySet{AcademicYears: yearRepo, SavingsAccounts: accountRepo}}
+	svc := newAcademicYearServiceForTest(t, repository.RepositorySet{AcademicYears: yearRepo}, &academicYearServiceFakeUnitOfWorkManager{uow: uow})
+
+	_, err := svc.Close(ctx, CloseAcademicYearInput{Actor: admin, AcademicYearID: yearID})
+	if !errors.Is(err, domain.ErrInvalidTransition) {
+		t.Fatalf("Close() error = %v, want %v", err, domain.ErrInvalidTransition)
+	}
+	if yearRepo.updateCalls != 0 || uow.commitCount != 0 || uow.rollbackCount != 1 {
+		t.Fatalf("update/commit/rollback = %d/%d/%d, want 0/0/1", yearRepo.updateCalls, uow.commitCount, uow.rollbackCount)
+	}
 }
 
 func TestAcademicYearService_Reopen(t *testing.T) {

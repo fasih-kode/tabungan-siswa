@@ -206,11 +206,15 @@ func translateError(operation string, err error) error {
 
 	if errors.As(err, &pgErr) {
 		if pgErr.Code == "23505" || pgErr.Code == "23P01" {
-			return fmt.Errorf(
-				"%s: %w",
-				operation,
-				repository.ErrConflict,
-			)
+			return fmt.Errorf("%s: %w", operation, repository.ErrConflict)
+		}
+		if pgErr.Code == "23514" {
+			switch pgErr.ConstraintName {
+			case "academic_years_close_requires_settled_accounts":
+				return fmt.Errorf("%s: %w", operation, domain.ErrInvalidTransition)
+			case "academic_years_history_bounds_check":
+				return fmt.Errorf("%s: %w", operation, domain.ErrInvalidDateRange)
+			}
 		}
 	}
 

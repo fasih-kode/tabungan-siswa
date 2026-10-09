@@ -36,6 +36,103 @@ func TestAcademicYearRepository_CreateAndGetByID(t *testing.T) {
 	assertAcademicYearEqual(t, got, academicYear)
 }
 
+func TestAcademicYearRepository_GetByIDForUpdateSerializesAccountCreation(t *testing.T) {
+	db := openTestDatabase(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	fixture := newSavingsAccountFixture(t, db)
+
+	closeTx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		t.Fatalf("begin close transaction: %v", err)
+	}
+	defer func() { _ = closeTx.Rollback() }()
+
+	lockedYear, err := postgres.NewAcademicYearRepository(closeTx).GetByIDForUpdate(
+		ctx, fixture.academicYear.ID,
+	)
+	if err != nil {
+		t.Fatalf("GetByIDForUpdate() error = %v", err)
+	}
+
+	account, err := domain.NewSavingsAccount(fixture.student.ID, fixture.academicYear.ID)
+	if err != nil {
+		t.Fatalf("NewSavingsAccount() error = %v", err)
+	}
+
+	type createResult struct{ err error }
+	started := make(chan struct{})
+	created := make(chan createResult, 1)
+	go func() {
+		insertTx, beginErr := db.BeginTx(ctx, nil)
+		if beginErr != nil {
+			started <- struct{}{}
+			created <- createResult{err: beginErr}
+			return
+		}
+		defer func() { _ = insertTx.Rollback() }()
+		started <- struct{}{}
+		createErr := postgres.NewSavingsAccountRepository(insertTx).Create(ctx, account)
+		if createErr == nil {
+			createErr = insertTx.Commit()
+		}
+		created <- createResult{err: createErr}
+	}()
+	<-started
+
+	// The INSERT trigger must wait on the year row's FOR SHARE lock while this
+	// transaction holds FOR UPDATE. It must not complete before close commits.
+	select {
+	case result := <-created:
+		t.Fatalf("account creation completed before close transaction released its lock: %v", result.err)
+	case <-time.After(150 * time.Millisecond):
+	}
+
+	lockedYear.Status = domain.AcademicYearClosed
+	lockedYear.UpdatedAt = time.Now().UTC()
+	if err := postgres.NewAcademicYearRepository(closeTx).Update(ctx, lockedYear); err != nil {
+		t.Fatalf("close year while holding lock: %v", err)
+	}
+	if err := closeTx.Commit(); err != nil {
+		t.Fatalf("commit close transaction: %v", err)
+	}
+
+	select {
+	case result := <-created:
+		if !errors.Is(result.err, domain.ErrInvalidTransition) {
+			t.Fatalf("account creation error = %v, want ErrInvalidTransition", result.err)
+		}
+	case <-ctx.Done():
+		t.Fatalf("account creation did not finish after close commit: %v", ctx.Err())
+	}
+
+	// Assert the invariant in persisted database state, not only through the
+	// insert error: a CLOSED year must not contain a newly created OPEN account.
+	var persistedStatus domain.AcademicYearStatus
+	if err := db.QueryRowContext(
+		ctx,
+		`SELECT status FROM academic_years WHERE id = $1`,
+		fixture.academicYear.ID,
+	).Scan(&persistedStatus); err != nil {
+		t.Fatalf("read persisted academic year status: %v", err)
+	}
+	if persistedStatus != domain.AcademicYearClosed {
+		t.Fatalf("persisted academic year status = %q, want CLOSED", persistedStatus)
+	}
+
+	var accountCount int
+	if err := db.QueryRowContext(
+		ctx,
+		`SELECT COUNT(*) FROM savings_accounts WHERE academic_year_id = $1`,
+		fixture.academicYear.ID,
+	).Scan(&accountCount); err != nil {
+		t.Fatalf("count persisted savings accounts: %v", err)
+	}
+	if accountCount != 0 {
+		t.Fatalf("persisted savings account count = %d, want 0", accountCount)
+	}
+}
+
 func TestAcademicYearRepository_GetByIDNotFound(t *testing.T) {
 	db := openTestDatabase(t)
 	repo := postgres.NewAcademicYearRepository(db)
@@ -101,14 +198,14 @@ func TestAcademicYearRepository_List(t *testing.T) {
 		t,
 		"2024/2025",
 		time.Date(2024, 7, 1, 0, 0, 0, 0, time.UTC),
-		time.Date(2025, 6, 30, 0, 0, 0, 0, time.UTC),
+		time.Date(2025, 7, 1, 0, 0, 0, 0, time.UTC),
 		domain.AcademicYearClosed,
 	)
 	second := newTestAcademicYearWithDates(
 		t,
 		"2025/2026",
 		time.Date(2025, 7, 1, 0, 0, 0, 0, time.UTC),
-		time.Date(2026, 6, 30, 0, 0, 0, 0, time.UTC),
+		time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC),
 		domain.AcademicYearClosing,
 	)
 
@@ -159,14 +256,14 @@ func TestAcademicYearRepository_ListPagination(t *testing.T) {
 		t,
 		"2024/2025",
 		time.Date(2024, 7, 1, 0, 0, 0, 0, time.UTC),
-		time.Date(2025, 6, 30, 0, 0, 0, 0, time.UTC),
+		time.Date(2025, 7, 1, 0, 0, 0, 0, time.UTC),
 		domain.AcademicYearClosed,
 	)
 	third := newTestAcademicYearWithDates(
 		t,
 		"2025/2026",
 		time.Date(2025, 7, 1, 0, 0, 0, 0, time.UTC),
-		time.Date(2026, 6, 30, 0, 0, 0, 0, time.UTC),
+		time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC),
 		domain.AcademicYearClosed,
 	)
 
@@ -344,7 +441,7 @@ func TestAcademicYearRepository_CreateDuplicateOpen(t *testing.T) {
 		t,
 		"2026/2027",
 		time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC),
-		time.Date(2027, 6, 30, 0, 0, 0, 0, time.UTC),
+		time.Date(2027, 7, 1, 0, 0, 0, 0, time.UTC),
 		domain.AcademicYearOpen,
 	)
 
@@ -424,7 +521,7 @@ func newTestAcademicYear(t *testing.T) domain.AcademicYear {
 		t,
 		"2025/2026",
 		time.Date(2025, 7, 1, 0, 0, 0, 0, time.UTC),
-		time.Date(2026, 6, 30, 0, 0, 0, 0, time.UTC),
+		time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC),
 		domain.AcademicYearOpen,
 	)
 }

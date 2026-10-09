@@ -594,6 +594,88 @@ func TestClassTransferServiceRequestAdmin(t *testing.T) {
 	}
 }
 
+func TestClassTransferServiceRequestRejectsClosedAcademicYear(t *testing.T) {
+	studentID := uuid.New()
+	yearID := uuid.New()
+	student := domain.Student{ID: studentID, Name: "Active", Status: domain.StudentActive}
+	studentRepo := &classTransferServiceFakeStudentRepository{
+		getByIDFn: func(context.Context, uuid.UUID) (domain.Student, error) { return student, nil },
+	}
+	yearRepo := &classAssignmentFakeAcademicYearRepository{
+		getByIDFn: func(context.Context, uuid.UUID) (domain.AcademicYear, error) {
+			return newTestAcademicYear(yearID, domain.AcademicYearClosed), nil
+		},
+	}
+	manager := &classTransferServiceFakeUnitOfWorkManager{}
+	svc := newClassTransferServiceForTest(t, repository.RepositorySet{Students: studentRepo, AcademicYears: yearRepo}, manager)
+
+	_, err := svc.Request(context.Background(), RequestTransferInput{
+		Actor:     Actor{UserID: uuid.New(), Role: domain.RoleAdmin},
+		StudentID: studentID, AcademicYearID: yearID, FromClassID: uuid.New(), ToClassID: uuid.New(),
+	})
+	if !errors.Is(err, domain.ErrInvalidTransition) {
+		t.Fatalf("Request() error = %v, want %v", err, domain.ErrInvalidTransition)
+	}
+	if manager.beginCount != 0 {
+		t.Fatalf("Begin() calls = %d, want 0", manager.beginCount)
+	}
+}
+
+func TestClassTransferServiceApproveRejectsClosedAcademicYear(t *testing.T) {
+	yearID := uuid.New()
+	request := newTestTransferRequest(t, uuid.New(), yearID, uuid.New(), uuid.New(), uuid.New())
+	updated := false
+	requestRepo := &classTransferServiceFakeClassTransferRepository{
+		getByIDForUpdateFn: func(context.Context, uuid.UUID) (domain.ClassTransferRequest, error) { return request, nil },
+		updateFn:           func(context.Context, domain.ClassTransferRequest) error { updated = true; return nil },
+	}
+	yearRepo := &classAssignmentFakeAcademicYearRepository{
+		getByIDFn: func(context.Context, uuid.UUID) (domain.AcademicYear, error) {
+			return newTestAcademicYear(yearID, domain.AcademicYearClosed), nil
+		},
+	}
+	uow := &classTransferServiceFakeUnitOfWork{repos: repository.RepositorySet{ClassTransferRequests: requestRepo, AcademicYears: yearRepo}}
+	svc := newClassTransferServiceForTest(t, repository.RepositorySet{}, &classTransferServiceFakeUnitOfWorkManager{uow: uow})
+
+	_, err := svc.Approve(context.Background(), ApproveTransferInput{
+		Actor: Actor{UserID: uuid.New(), Role: domain.RoleAdmin}, TransferRequestID: request.ID,
+		EffectiveDate: time.Date(2026, 10, 15, 0, 0, 0, 0, time.UTC),
+	})
+	if !errors.Is(err, domain.ErrInvalidTransition) {
+		t.Fatalf("Approve() error = %v, want %v", err, domain.ErrInvalidTransition)
+	}
+	if updated || uow.commitCount != 0 || uow.rollbackCount != 1 {
+		t.Fatalf("update/commit/rollback = %v/%d/%d, want false/0/1", updated, uow.commitCount, uow.rollbackCount)
+	}
+}
+
+func TestClassTransferServiceRejectRejectsClosedAcademicYear(t *testing.T) {
+	yearID := uuid.New()
+	request := newTestTransferRequest(t, uuid.New(), yearID, uuid.New(), uuid.New(), uuid.New())
+	updated := false
+	requestRepo := &classTransferServiceFakeClassTransferRepository{
+		getByIDForUpdateFn: func(context.Context, uuid.UUID) (domain.ClassTransferRequest, error) { return request, nil },
+		updateFn:           func(context.Context, domain.ClassTransferRequest) error { updated = true; return nil },
+	}
+	yearRepo := &classAssignmentFakeAcademicYearRepository{
+		getByIDFn: func(context.Context, uuid.UUID) (domain.AcademicYear, error) {
+			return newTestAcademicYear(yearID, domain.AcademicYearClosed), nil
+		},
+	}
+	uow := &classTransferServiceFakeUnitOfWork{repos: repository.RepositorySet{ClassTransferRequests: requestRepo, AcademicYears: yearRepo}}
+	svc := newClassTransferServiceForTest(t, repository.RepositorySet{}, &classTransferServiceFakeUnitOfWorkManager{uow: uow})
+
+	_, err := svc.Reject(context.Background(), RejectTransferInput{
+		Actor: Actor{UserID: uuid.New(), Role: domain.RoleAdmin}, TransferRequestID: request.ID, RejectionReason: "Ditolak",
+	})
+	if !errors.Is(err, domain.ErrInvalidTransition) {
+		t.Fatalf("Reject() error = %v, want %v", err, domain.ErrInvalidTransition)
+	}
+	if updated || uow.commitCount != 0 || uow.rollbackCount != 1 {
+		t.Fatalf("update/commit/rollback = %v/%d/%d, want false/0/1", updated, uow.commitCount, uow.rollbackCount)
+	}
+}
+
 func TestClassTransferServiceRequestSiswaForbidden(t *testing.T) {
 	repo := &classTransferServiceFakeClassTransferRepository{}
 	manager := &classTransferServiceFakeUnitOfWorkManager{}
@@ -1067,8 +1149,8 @@ func TestClassTransferServiceApprove(t *testing.T) {
 		)
 	}
 
-	if createdHistory.Period.To != nil {
-		t.Fatal("new history Period.To must be nil")
+	if createdHistory.Period.To == nil || !createdHistory.Period.To.Equal(academicYear.EndDate) {
+		t.Fatalf("new history Period.To = %v, want academic year end %v", createdHistory.Period.To, academicYear.EndDate)
 	}
 
 	if oldHistory.ClassID == createdHistory.ClassID {
@@ -1355,8 +1437,16 @@ func TestClassTransferServiceRejectAdmin(t *testing.T) {
 		},
 	}
 
+	academicYear := newTestAcademicYear(uuid.New(), domain.AcademicYearOpen)
+	request.AcademicYearID = academicYear.ID
+	academicYearRepo := &classAssignmentFakeAcademicYearRepository{
+		getByIDFn: func(context.Context, uuid.UUID) (domain.AcademicYear, error) {
+			return academicYear, nil
+		},
+	}
 	uow := &classTransferServiceFakeUnitOfWork{
 		repos: repository.RepositorySet{
+			AcademicYears:         academicYearRepo,
 			ClassTransferRequests: repo,
 		},
 	}

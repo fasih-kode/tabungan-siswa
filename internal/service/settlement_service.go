@@ -328,6 +328,16 @@ func (s *settlementService) Reopen(
 		return ReopenSettlementOutput{}, domain.ErrInvalidTransition
 	}
 
+	if repos.AcademicYears != nil {
+		academicYear, err := repos.AcademicYears.GetByID(ctx, account.AcademicYearID)
+		if err != nil {
+			return ReopenSettlementOutput{}, err
+		}
+		if academicYear.IsClosed() {
+			return ReopenSettlementOutput{}, domain.ErrInvalidTransition
+		}
+	}
+
 	current, err := repos.Settlements.GetCompletedBySavingsAccount(ctx, account.ID)
 	if err != nil {
 		return ReopenSettlementOutput{}, err

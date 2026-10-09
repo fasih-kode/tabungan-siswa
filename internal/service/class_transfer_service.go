@@ -68,6 +68,9 @@ func (s *classTransferService) Request(
 	if err != nil {
 		return RequestTransferOutput{}, err
 	}
+	if !academicYear.IsOpen() {
+		return RequestTransferOutput{}, domain.ErrInvalidTransition
+	}
 
 	fromClass, err := s.deps.Repositories.Classes.GetByID(
 		ctx,
@@ -322,6 +325,9 @@ func (s *classTransferService) Approve(
 	if err != nil {
 		return ApproveTransferOutput{}, err
 	}
+	if !request.IsPending() {
+		return ApproveTransferOutput{}, domain.ErrInvalidTransition
+	}
 
 	academicYear, err :=
 		repos.AcademicYears.GetByID(
@@ -330,6 +336,9 @@ func (s *classTransferService) Approve(
 		)
 	if err != nil {
 		return ApproveTransferOutput{}, err
+	}
+	if !academicYear.IsOpen() {
+		return ApproveTransferOutput{}, domain.ErrInvalidTransition
 	}
 
 	if input.EffectiveDate.Before(academicYear.StartDate) ||
@@ -382,10 +391,13 @@ func (s *classTransferService) Approve(
 		request.ToClassID,
 		domain.DateRange{
 			From: input.EffectiveDate,
-			To:   nil,
+			To:   &academicYear.EndDate,
 		},
 	)
 	if err != nil {
+		return ApproveTransferOutput{}, err
+	}
+	if err := newHistory.ValidateWithinAcademicYear(academicYear.StartDate, academicYear.EndDate); err != nil {
 		return ApproveTransferOutput{}, err
 	}
 
@@ -456,6 +468,17 @@ func (s *classTransferService) Reject(
 		)
 	if err != nil {
 		return RejectTransferOutput{}, err
+	}
+	if !request.IsPending() {
+		return RejectTransferOutput{}, domain.ErrInvalidTransition
+	}
+
+	academicYear, err := repos.AcademicYears.GetByID(ctx, request.AcademicYearID)
+	if err != nil {
+		return RejectTransferOutput{}, err
+	}
+	if !academicYear.IsOpen() {
+		return RejectTransferOutput{}, domain.ErrInvalidTransition
 	}
 
 	if err := request.Reject(

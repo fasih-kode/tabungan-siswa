@@ -306,6 +306,32 @@ func TestTransactionServiceDepositAdmin(t *testing.T) {
 	}
 }
 
+func TestTransactionServiceDepositRejectsInvalidHistoricalBalance(t *testing.T) {
+	account := newTransactionTestAccount(t)
+	withdrawal, err := domain.NewWithdrawal(account.ID, 100_000, time.Date(2026, 9, 1, 0, 0, 0, 0, time.UTC), uuid.New())
+	if err != nil {
+		t.Fatalf("NewWithdrawal() error = %v", err)
+	}
+	transactionRepo := &transactionServiceFakeTransactionRepository{
+		listActiveBySavingsAccountFn: func(context.Context, uuid.UUID) ([]domain.Transaction, error) {
+			return []domain.Transaction{withdrawal}, nil
+		},
+	}
+	accountRepo := &transactionServiceFakeSavingsAccountRepository{
+		getByIDForUpdateFn: func(context.Context, uuid.UUID) (domain.SavingsAccount, error) { return account, nil },
+	}
+	uow := &transactionServiceFakeUnitOfWork{repos: newTransactionTestRepositories(accountRepo, transactionRepo, nil, nil, nil, &transactionServiceFakeAuditRepository{})}
+	svc := newTransactionServiceForTest(t, uow.repos, &transactionServiceFakeUnitOfWorkManager{uow: uow})
+
+	_, err = svc.Deposit(context.Background(), DepositInput{Actor: Actor{UserID: uuid.New(), Role: domain.RoleAdmin}, SavingsAccountID: account.ID, Amount: 200_000, TransactionDate: time.Date(2026, 10, 1, 0, 0, 0, 0, time.UTC)})
+	if !errors.Is(err, domain.ErrNegativeBalance) {
+		t.Fatalf("Deposit() error = %v, want %v", err, domain.ErrNegativeBalance)
+	}
+	if transactionRepo.createCalls != 0 || uow.commitCalls != 0 || uow.rollbackCalls != 1 {
+		t.Fatalf("create/commit/rollback = %d/%d/%d, want 0/0/1", transactionRepo.createCalls, uow.commitCalls, uow.rollbackCalls)
+	}
+}
+
 func TestTransactionServiceDepositReusesOuterTransaction(t *testing.T) {
 	account := newTransactionTestAccount(t)
 	accountRepo := &transactionServiceFakeSavingsAccountRepository{
@@ -544,6 +570,27 @@ func TestTransactionServiceEditRecalculatesBalanceAndAudits(t *testing.T) {
 	}
 }
 
+func TestTransactionServiceEditRejectsNonPositiveAmount(t *testing.T) {
+	account := newTransactionTestAccount(t)
+	original := newTransactionTestDeposit(t, account.ID, 100_000)
+	transactionRepo := &transactionServiceFakeTransactionRepository{
+		getByIDFn: func(context.Context, uuid.UUID) (domain.Transaction, error) { return original, nil },
+	}
+	accountRepo := &transactionServiceFakeSavingsAccountRepository{
+		getByIDForUpdateFn: func(context.Context, uuid.UUID) (domain.SavingsAccount, error) { return account, nil },
+	}
+	uow := &transactionServiceFakeUnitOfWork{repos: newTransactionTestRepositories(accountRepo, transactionRepo, nil, nil, nil, nil)}
+	manager := &transactionServiceFakeUnitOfWorkManager{uow: uow}
+	svc := newTransactionServiceForTest(t, uow.repos, manager)
+	_, err := svc.Edit(context.Background(), EditTransactionInput{Actor: Actor{UserID: uuid.New(), Role: domain.RoleAdmin}, TransactionID: original.ID, Amount: 0, TransactionDate: original.TransactionDate})
+	if !errors.Is(err, domain.ErrInvalidAmount) {
+		t.Fatalf("Edit() error = %v, want %v", err, domain.ErrInvalidAmount)
+	}
+	if manager.beginCalls != 0 || transactionRepo.updateCalls != 0 {
+		t.Fatalf("begin/update calls = %d/%d, want 0/0", manager.beginCalls, transactionRepo.updateCalls)
+	}
+}
+
 func TestTransactionServiceEditRejectsNegativeResultingBalance(t *testing.T) {
 	account := newTransactionTestAccount(t)
 	original := newTransactionTestDeposit(t, account.ID, 100_000)
@@ -579,16 +626,15 @@ func TestTransactionServiceEditRejectsNegativeResultingBalance(t *testing.T) {
 	}
 }
 
-func TestTransactionServiceCancel(t *testing.T) {
+func TestTransactionServiceCancelRejectsSettledAccount(t *testing.T) {
 	account := newTransactionTestAccount(t)
 	if err := account.Settle(time.Date(2026, 10, 5, 0, 0, 0, 0, time.UTC)); err != nil {
 		t.Fatalf("SavingsAccount.Settle() error = %v", err)
 	}
 
 	original := newTransactionTestDeposit(t, account.ID, 100_000)
-	current := original
 	transactionRepo := &transactionServiceFakeTransactionRepository{
-		getByIDFn: func(context.Context, uuid.UUID) (domain.Transaction, error) { return current, nil },
+		getByIDFn: func(context.Context, uuid.UUID) (domain.Transaction, error) { return original, nil },
 	}
 	accountRepo := &transactionServiceFakeSavingsAccountRepository{
 		getByIDForUpdateFn: func(context.Context, uuid.UUID) (domain.SavingsAccount, error) { return account, nil },
@@ -597,20 +643,41 @@ func TestTransactionServiceCancel(t *testing.T) {
 	uow := &transactionServiceFakeUnitOfWork{repos: newTransactionTestRepositories(accountRepo, transactionRepo, nil, nil, nil, auditRepo)}
 	svc := newTransactionServiceForTest(t, uow.repos, &transactionServiceFakeUnitOfWorkManager{uow: uow})
 
-	got, err := svc.Cancel(context.Background(), CancelTransactionInput{
+	_, err := svc.Cancel(context.Background(), CancelTransactionInput{
 		Actor: Actor{UserID: uuid.New(), Role: domain.RoleAdmin}, TransactionID: original.ID,
 	})
+	if !errors.Is(err, domain.ErrInvalidTransition) {
+		t.Fatalf("Cancel() error = %v, want %v", err, domain.ErrInvalidTransition)
+	}
+	if transactionRepo.updateCalls != 0 || auditRepo.createCalls != 0 || uow.commitCalls != 0 || uow.rollbackCalls != 1 {
+		t.Fatalf("calls = update %d audit %d commit %d rollback %d; want 0 0 0 1", transactionRepo.updateCalls, auditRepo.createCalls, uow.commitCalls, uow.rollbackCalls)
+	}
+}
+
+func TestTransactionServiceCancelRejectsInvalidHistoricalBalance(t *testing.T) {
+	account := newTransactionTestAccount(t)
+	deposit := newTransactionTestDeposit(t, account.ID, 100_000)
+	withdrawal, err := domain.NewWithdrawal(account.ID, 90_000, deposit.TransactionDate.AddDate(0, 0, 1), uuid.New())
 	if err != nil {
-		t.Fatalf("Cancel() error = %v", err)
+		t.Fatalf("NewWithdrawal() error = %v", err)
 	}
-	if got.Transaction.Status != domain.TransactionCancelled {
-		t.Fatalf("Cancel() status = %v, want %v", got.Transaction.Status, domain.TransactionCancelled)
+	transactionRepo := &transactionServiceFakeTransactionRepository{
+		getByIDFn: func(context.Context, uuid.UUID) (domain.Transaction, error) { return deposit, nil },
+		listActiveBySavingsAccountFn: func(context.Context, uuid.UUID) ([]domain.Transaction, error) {
+			return []domain.Transaction{deposit, withdrawal}, nil
+		},
 	}
-	if transactionRepo.updateCalls != 1 || auditRepo.createCalls != 1 || uow.commitCalls != 1 || uow.rollbackCalls != 0 {
-		t.Fatalf("calls = update %d audit %d commit %d rollback %d; want 1 1 1 0", transactionRepo.updateCalls, auditRepo.createCalls, uow.commitCalls, uow.rollbackCalls)
+	accountRepo := &transactionServiceFakeSavingsAccountRepository{
+		getByIDForUpdateFn: func(context.Context, uuid.UUID) (domain.SavingsAccount, error) { return account, nil },
 	}
-	if auditRepo.lastAudit.Action != "CANCEL" || len(auditRepo.lastAudit.BeforeData) == 0 || len(auditRepo.lastAudit.AfterData) == 0 {
-		t.Fatalf("audit = %#v, want CANCEL with before/after", auditRepo.lastAudit)
+	uow := &transactionServiceFakeUnitOfWork{repos: newTransactionTestRepositories(accountRepo, transactionRepo, nil, nil, nil, &transactionServiceFakeAuditRepository{})}
+	svc := newTransactionServiceForTest(t, uow.repos, &transactionServiceFakeUnitOfWorkManager{uow: uow})
+	_, err = svc.Cancel(context.Background(), CancelTransactionInput{Actor: Actor{UserID: uuid.New(), Role: domain.RoleAdmin}, TransactionID: deposit.ID})
+	if !errors.Is(err, domain.ErrNegativeBalance) {
+		t.Fatalf("Cancel() error = %v, want %v", err, domain.ErrNegativeBalance)
+	}
+	if transactionRepo.updateCalls != 0 || uow.commitCalls != 0 || uow.rollbackCalls != 1 {
+		t.Fatalf("update/commit/rollback = %d/%d/%d, want 0/0/1", transactionRepo.updateCalls, uow.commitCalls, uow.rollbackCalls)
 	}
 }
 

@@ -118,6 +118,7 @@ func (r *ClassTransferRequest) Reject(
 		return ErrEmptyRejectionReason
 	}
 
+	reason = strings.TrimSpace(reason)
 	r.Status = TransferRejected
 	r.ReviewedBy = &reviewedBy
 	r.ReviewedAt = &reviewedAt

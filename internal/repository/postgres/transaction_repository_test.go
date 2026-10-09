@@ -46,6 +46,41 @@ func TestTransactionRepository_CreateAndGetByID(t *testing.T) {
 	assertTransactionEqual(t, got, transaction)
 }
 
+func TestTransactionRepository_RejectsCancellationForSettledAccount(t *testing.T) {
+	db := openTestDatabase(t)
+	ctx := context.Background()
+	fixture := newTransactionFixture(t, db)
+	transactionRepo := postgres.NewTransactionRepository(db)
+	accountRepo := postgres.NewSavingsAccountRepository(db)
+	transaction, err := domain.NewDeposit(
+		fixture.account.ID,
+		100_000,
+		time.Date(2026, 9, 25, 0, 0, 0, 0, time.UTC),
+		fixture.user.ID,
+	)
+	if err != nil {
+		t.Fatalf("NewDeposit() error = %v", err)
+	}
+	if err := transactionRepo.Create(ctx, transaction); err != nil {
+		t.Fatalf("Create() transaction error = %v", err)
+	}
+	t.Cleanup(func() { deleteTestTransaction(t, db, transaction.ID) })
+
+	account := fixture.account
+	if err := account.Settle(time.Now()); err != nil {
+		t.Fatalf("Settle() error = %v", err)
+	}
+	if err := accountRepo.Update(ctx, account); err != nil {
+		t.Fatalf("Update(settled account) error = %v", err)
+	}
+	if err := transaction.Cancel(); err != nil {
+		t.Fatalf("Cancel() domain error = %v", err)
+	}
+	if err := transactionRepo.Update(ctx, transaction); !errors.Is(err, domain.ErrInvalidTransition) {
+		t.Fatalf("Update(cancel transaction on settled account) error = %v, want %v", err, domain.ErrInvalidTransition)
+	}
+}
+
 func TestTransactionRepository_GetByIDNotFound(t *testing.T) {
 	db := openTestDatabase(t)
 	repo := postgres.NewTransactionRepository(db)

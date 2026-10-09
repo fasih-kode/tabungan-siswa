@@ -227,12 +227,26 @@ func (s *academicYearService) Close(
 
 	repos := uow.Repositories()
 
-	academicYear, err := repos.AcademicYears.GetByID(
+	// Lock the academic-year row before checking accounts. Account creation
+	// takes FOR SHARE on this same row in the database trigger. This gives both
+	// paths one lock order and makes the subsequent account check observe any
+	// account creation that committed while this lock was being acquired.
+	academicYear, err := repos.AcademicYears.GetByIDForUpdate(
 		ctx,
 		input.AcademicYearID,
 	)
 	if err != nil {
 		return CloseAcademicYearOutput{}, err
+	}
+
+	if repos.SavingsAccounts != nil {
+		hasOpen, err := repos.SavingsAccounts.HasOpenByAcademicYear(ctx, academicYear.ID)
+		if err != nil {
+			return CloseAcademicYearOutput{}, err
+		}
+		if hasOpen {
+			return CloseAcademicYearOutput{}, domain.ErrInvalidTransition
+		}
 	}
 
 	if err := academicYear.Close(); err != nil {

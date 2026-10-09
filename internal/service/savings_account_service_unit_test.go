@@ -17,6 +17,7 @@ type savingsAccountServiceFakeSavingsAccountRepository struct {
 	getByIDFn                     func(context.Context, uuid.UUID) (domain.SavingsAccount, error)
 	getByStudentAndAcademicYearFn func(context.Context, uuid.UUID, uuid.UUID) (domain.SavingsAccount, error)
 	updateFn                      func(context.Context, domain.SavingsAccount) error
+	hasOpenByAcademicYearFn       func(context.Context, uuid.UUID) (bool, error)
 
 	createCalls int
 }
@@ -51,6 +52,16 @@ func (f *savingsAccountServiceFakeSavingsAccountRepository) GetByStudentAndAcade
 		return f.getByStudentAndAcademicYearFn(ctx, studentID, academicYearID)
 	}
 	return domain.SavingsAccount{}, repository.ErrNotFound
+}
+
+func (f *savingsAccountServiceFakeSavingsAccountRepository) HasOpenByAcademicYear(
+	ctx context.Context,
+	academicYearID uuid.UUID,
+) (bool, error) {
+	if f.hasOpenByAcademicYearFn != nil {
+		return f.hasOpenByAcademicYearFn(ctx, academicYearID)
+	}
+	return false, nil
 }
 
 func (f *savingsAccountServiceFakeSavingsAccountRepository) Update(
@@ -313,6 +324,54 @@ func TestSavingsAccountServiceCreateAdmin(t *testing.T) {
 	}
 	if uow.rollbackCount != 0 {
 		t.Fatalf("Rollback calls = %d, want 0", uow.rollbackCount)
+	}
+}
+
+func TestSavingsAccountServiceCreateRejectsLeftStudent(t *testing.T) {
+	studentID := uuid.New()
+	academicYearID := uuid.New()
+	student := domain.Student{ID: studentID, Name: "LEFT", Status: domain.StudentLeft}
+	studentRepo := &savingsAccountServiceFakeStudentRepository{
+		getByIDFn: func(context.Context, uuid.UUID) (domain.Student, error) { return student, nil },
+	}
+	savingsRepo := &savingsAccountServiceFakeSavingsAccountRepository{}
+	uow := &savingsAccountServiceFakeUnitOfWork{repos: repository.RepositorySet{SavingsAccounts: savingsRepo, Students: studentRepo}}
+	svc := newSavingsAccountServiceForTest(t, uow.repos, &savingsAccountServiceFakeUnitOfWorkManager{uow: uow})
+
+	_, err := svc.Create(context.Background(), CreateSavingsAccountInput{
+		Actor: Actor{UserID: uuid.New(), Role: domain.RoleAdmin}, StudentID: studentID, AcademicYearID: academicYearID,
+	})
+	if !errors.Is(err, domain.ErrInvalidTransition) {
+		t.Fatalf("Create(LEFT student) error = %v, want %v", err, domain.ErrInvalidTransition)
+	}
+	if savingsRepo.createCalls != 0 || uow.commitCount != 0 {
+		t.Fatalf("create calls = %d, commit calls = %d; want 0/0", savingsRepo.createCalls, uow.commitCount)
+	}
+}
+
+func TestSavingsAccountServiceCreateRejectsClosedAcademicYear(t *testing.T) {
+	studentID := uuid.New()
+	academicYearID := uuid.New()
+	student := domain.Student{ID: studentID, Name: "ACTIVE", Status: domain.StudentActive}
+	studentRepo := &savingsAccountServiceFakeStudentRepository{
+		getByIDFn: func(context.Context, uuid.UUID) (domain.Student, error) { return student, nil },
+	}
+	year := domain.AcademicYear{ID: academicYearID, Status: domain.AcademicYearClosed}
+	yearRepo := &classAssignmentFakeAcademicYearRepository{
+		getByIDFn: func(context.Context, uuid.UUID) (domain.AcademicYear, error) { return year, nil },
+	}
+	savingsRepo := &savingsAccountServiceFakeSavingsAccountRepository{}
+	uow := &savingsAccountServiceFakeUnitOfWork{repos: repository.RepositorySet{SavingsAccounts: savingsRepo, Students: studentRepo, AcademicYears: yearRepo}}
+	svc := newSavingsAccountServiceForTest(t, uow.repos, &savingsAccountServiceFakeUnitOfWorkManager{uow: uow})
+
+	_, err := svc.Create(context.Background(), CreateSavingsAccountInput{
+		Actor: Actor{UserID: uuid.New(), Role: domain.RoleAdmin}, StudentID: studentID, AcademicYearID: academicYearID,
+	})
+	if !errors.Is(err, domain.ErrInvalidTransition) {
+		t.Fatalf("Create(CLOSED year) error = %v, want %v", err, domain.ErrInvalidTransition)
+	}
+	if savingsRepo.createCalls != 0 || uow.commitCount != 0 {
+		t.Fatalf("create calls = %d, commit calls = %d; want 0/0", savingsRepo.createCalls, uow.commitCount)
 	}
 }
 

@@ -186,6 +186,25 @@ func (r *SavingsAccountRepository) Update(
 	return nil
 }
 
+func (r *SavingsAccountRepository) HasOpenByAcademicYear(
+	ctx context.Context,
+	academicYearID uuid.UUID,
+) (bool, error) {
+	const query = `
+		SELECT EXISTS (
+			SELECT 1
+			FROM savings_accounts
+			WHERE academic_year_id = $1
+				AND status <> 'SETTLED'
+		)
+	`
+	var hasOpen bool
+	if err := r.db.QueryRowContext(ctx, query, academicYearID).Scan(&hasOpen); err != nil {
+		return false, fmt.Errorf("check open savings accounts for academic year: %w", err)
+	}
+	return hasOpen, nil
+}
+
 func (r *SavingsAccountRepository) getOne(
 	ctx context.Context,
 	query string,
@@ -229,11 +248,12 @@ func translateSavingsAccountError(
 	if errors.As(err, &pgErr) {
 		switch pgErr.Code {
 		case "23505", "23P01":
-			return fmt.Errorf(
-				"%s: %w",
-				operation,
-				repository.ErrConflict,
-			)
+			return fmt.Errorf("%s: %w", operation, repository.ErrConflict)
+		case "23514":
+			switch pgErr.ConstraintName {
+			case "savings_accounts_academic_year_must_be_open", "savings_accounts_student_must_be_active", "savings_accounts_no_reopen_after_year_close":
+				return fmt.Errorf("%s: %w", operation, domain.ErrInvalidTransition)
+			}
 		}
 	}
 

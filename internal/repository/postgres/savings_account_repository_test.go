@@ -44,6 +44,59 @@ func TestSavingsAccountRepository_CreateAndGetByID(t *testing.T) {
 	assertSavingsAccountEqual(t, got, account)
 }
 
+func TestSavingsAccountRepository_RejectsAccountForLeftStudent(t *testing.T) {
+	db := openTestDatabase(t)
+	repo := postgres.NewSavingsAccountRepository(db)
+	fixture := newSavingsAccountFixture(t, db)
+	if _, err := db.ExecContext(context.Background(), "UPDATE students SET status = 'LEFT' WHERE id = $1", fixture.student.ID); err != nil {
+		t.Fatalf("mark student LEFT: %v", err)
+	}
+	account, err := domain.NewSavingsAccount(fixture.student.ID, fixture.academicYear.ID)
+	if err != nil {
+		t.Fatalf("NewSavingsAccount() error = %v", err)
+	}
+	if err := repo.Create(context.Background(), account); !errors.Is(err, domain.ErrInvalidTransition) {
+		t.Fatalf("Create(LEFT student) error = %v, want %v", err, domain.ErrInvalidTransition)
+	}
+}
+
+func TestSavingsAccountRepository_RejectsAccountForClosedYear(t *testing.T) {
+	db := openTestDatabase(t)
+	repo := postgres.NewSavingsAccountRepository(db)
+	fixture := newSavingsAccountFixture(t, db)
+	fixture.academicYear.Status = domain.AcademicYearClosed
+	fixture.academicYear.UpdatedAt = time.Now()
+	if err := postgres.NewAcademicYearRepository(db).Update(context.Background(), fixture.academicYear); err != nil {
+		t.Fatalf("close academic year fixture: %v", err)
+	}
+	account, err := domain.NewSavingsAccount(fixture.student.ID, fixture.academicYear.ID)
+	if err != nil {
+		t.Fatalf("NewSavingsAccount() error = %v", err)
+	}
+	if err := repo.Create(context.Background(), account); !errors.Is(err, domain.ErrInvalidTransition) {
+		t.Fatalf("Create(CLOSED year) error = %v, want %v", err, domain.ErrInvalidTransition)
+	}
+}
+
+func TestSavingsAccountRepository_CloseYearRequiresSettledAccounts(t *testing.T) {
+	db := openTestDatabase(t)
+	fixture := newSavingsAccountFixture(t, db)
+	account, err := domain.NewSavingsAccount(fixture.student.ID, fixture.academicYear.ID)
+	if err != nil {
+		t.Fatalf("NewSavingsAccount() error = %v", err)
+	}
+	if err := postgres.NewSavingsAccountRepository(db).Create(context.Background(), account); err != nil {
+		t.Fatalf("create open account: %v", err)
+	}
+	t.Cleanup(func() { deleteTestSavingsAccount(t, db, account.ID) })
+
+	fixture.academicYear.Status = domain.AcademicYearClosed
+	fixture.academicYear.UpdatedAt = time.Now()
+	if err := postgres.NewAcademicYearRepository(db).Update(context.Background(), fixture.academicYear); !errors.Is(err, domain.ErrInvalidTransition) {
+		t.Fatalf("Update(CLOSED with OPEN account) error = %v, want %v", err, domain.ErrInvalidTransition)
+	}
+}
+
 func TestSavingsAccountRepository_GetByIDNotFound(t *testing.T) {
 	db := openTestDatabase(t)
 	repo := postgres.NewSavingsAccountRepository(db)
@@ -160,6 +213,38 @@ func TestSavingsAccountRepository_CreateDuplicateStudentAcademicYear(
 			"Create(second) error = %v, want ErrConflict",
 			err,
 		)
+	}
+}
+
+func TestSavingsAccountRepository_RejectsReopenAfterYearClosed(t *testing.T) {
+	db := openTestDatabase(t)
+	ctx := context.Background()
+	fixture := newSavingsAccountFixture(t, db)
+	repo := postgres.NewSavingsAccountRepository(db)
+	account, err := domain.NewSavingsAccount(fixture.student.ID, fixture.academicYear.ID)
+	if err != nil {
+		t.Fatalf("NewSavingsAccount() error = %v", err)
+	}
+	if err := repo.Create(ctx, account); err != nil {
+		t.Fatalf("Create() error = %v", err)
+	}
+	t.Cleanup(func() { deleteTestSavingsAccount(t, db, account.ID) })
+	if err := account.Settle(time.Now()); err != nil {
+		t.Fatalf("Settle() error = %v", err)
+	}
+	if err := repo.Update(ctx, account); err != nil {
+		t.Fatalf("Update(settled) error = %v", err)
+	}
+	fixture.academicYear.Status = domain.AcademicYearClosed
+	fixture.academicYear.UpdatedAt = time.Now()
+	if err := postgres.NewAcademicYearRepository(db).Update(ctx, fixture.academicYear); err != nil {
+		t.Fatalf("close year after settlement: %v", err)
+	}
+	if err := account.Reopen(); err != nil {
+		t.Fatalf("Reopen() error = %v", err)
+	}
+	if err := repo.Update(ctx, account); !errors.Is(err, domain.ErrInvalidTransition) {
+		t.Fatalf("Update(reopen closed year) error = %v, want %v", err, domain.ErrInvalidTransition)
 	}
 }
 

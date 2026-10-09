@@ -754,6 +754,35 @@ func TestSettlementServiceReopen(t *testing.T) {
 	}
 }
 
+func TestSettlementServiceReopenRejectsClosedAcademicYear(t *testing.T) {
+	account := newSettlementTestAccount(t)
+	if err := account.Settle(time.Now()); err != nil {
+		t.Fatalf("SavingsAccount.Settle() error = %v", err)
+	}
+	settlement := newCompletedSettlement(t, account.ID, uuid.New(), 1000)
+	savingsRepo := &settlementServiceFakeSavingsAccountRepository{
+		getByIDForUpdateFn: func(context.Context, uuid.UUID) (domain.SavingsAccount, error) { return account, nil },
+	}
+	settlementRepo := &settlementServiceFakeSettlementRepository{
+		getByIDFn: func(context.Context, uuid.UUID) (domain.SavingsSettlement, error) { return settlement, nil },
+	}
+	yearRepo := &settlementServiceFakeAcademicYearRepository{
+		getByIDFn: func(context.Context, uuid.UUID) (domain.AcademicYear, error) {
+			return newSettlementTestAcademicYear(t, account.AcademicYearID, domain.AcademicYearClosed), nil
+		},
+	}
+	uow := &settlementServiceFakeUnitOfWork{repos: repository.RepositorySet{SavingsAccounts: savingsRepo, Settlements: settlementRepo, AcademicYears: yearRepo}}
+	svc := newSettlementServiceForTest(t, uow.repos, &settlementServiceFakeUnitOfWorkManager{uow: uow})
+
+	_, err := svc.Reopen(context.Background(), ReopenSettlementInput{Actor: Actor{UserID: uuid.New(), Role: domain.RoleAdmin}, SettlementID: settlement.ID})
+	if !errors.Is(err, domain.ErrInvalidTransition) {
+		t.Fatalf("Reopen() error = %v, want %v", err, domain.ErrInvalidTransition)
+	}
+	if savingsRepo.updateCalls != 0 || settlementRepo.updateCalls != 0 || uow.commitCalls != 0 || uow.rollbackCalls != 1 {
+		t.Fatalf("account update/settlement update/commit/rollback = %d/%d/%d/%d, want 0/0/0/1", savingsRepo.updateCalls, settlementRepo.updateCalls, uow.commitCalls, uow.rollbackCalls)
+	}
+}
+
 func TestSettlementServiceReopenRejectsNonAdmin(t *testing.T) {
 	svc := newSettlementServiceForTest(t, repository.RepositorySet{}, &settlementServiceFakeUnitOfWorkManager{})
 
