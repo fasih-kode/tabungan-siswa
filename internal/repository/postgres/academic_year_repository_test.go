@@ -271,6 +271,58 @@ func TestAcademicYearRepository_UpdateNotFound(t *testing.T) {
 	}
 }
 
+func TestAcademicYearRepository_PeriodsDoNotOverlap(t *testing.T) {
+	db := openTestDatabase(t)
+	repo := postgres.NewAcademicYearRepository(db)
+	ctx := context.Background()
+
+	cleanupAcademicYears(t, db)
+
+	first := newTestAcademicYearWithDates(
+		t,
+		"2020/2021",
+		time.Date(2020, 7, 1, 0, 0, 0, 0, time.UTC),
+		time.Date(2021, 7, 1, 0, 0, 0, 0, time.UTC),
+		domain.AcademicYearClosed,
+	)
+	adjacent := newTestAcademicYearWithDates(
+		t,
+		"2021/2022",
+		time.Date(2021, 7, 1, 0, 0, 0, 0, time.UTC),
+		time.Date(2022, 7, 1, 0, 0, 0, 0, time.UTC),
+		domain.AcademicYearClosing,
+	)
+
+	if err := repo.Create(ctx, first); err != nil {
+		t.Fatalf("Create(first) error = %v", err)
+	}
+	t.Cleanup(func() {
+		deleteTestAcademicYear(t, db, first.ID)
+		deleteTestAcademicYear(t, db, adjacent.ID)
+	})
+	if err := repo.Create(ctx, adjacent); err != nil {
+		t.Fatalf("Create(adjacent) error = %v; adjacent half-open periods should be allowed", err)
+	}
+
+	overlapping := newTestAcademicYearWithDates(
+		t,
+		"2021/2022-overlap",
+		time.Date(2021, 6, 1, 0, 0, 0, 0, time.UTC),
+		time.Date(2022, 6, 1, 0, 0, 0, 0, time.UTC),
+		domain.AcademicYearClosed,
+	)
+	if err := repo.Create(ctx, overlapping); !errors.Is(err, repository.ErrConflict) {
+		t.Fatalf("Create(overlapping) error = %v, want ErrConflict", err)
+	}
+
+	updated := adjacent
+	updated.StartDate = time.Date(2021, 6, 1, 0, 0, 0, 0, time.UTC)
+	updated.UpdatedAt = time.Now()
+	if err := repo.Update(ctx, updated); !errors.Is(err, repository.ErrConflict) {
+		t.Fatalf("Update(overlapping) error = %v, want ErrConflict", err)
+	}
+}
+
 func TestAcademicYearRepository_CreateDuplicateOpen(t *testing.T) {
 	db := openTestDatabase(t)
 	repo := postgres.NewAcademicYearRepository(db)
@@ -467,6 +519,10 @@ func cleanupScopedRepositoryFixtures(
 			query: "DELETE FROM academic_years",
 		},
 		{
+			name:  "sessions",
+			query: "DELETE FROM sessions",
+		},
+		{
 			name:  "users",
 			query: "DELETE FROM users",
 		},
@@ -534,6 +590,10 @@ func cleanupAcademicYears(
 		{
 			name:  "academic years",
 			query: "DELETE FROM academic_years",
+		},
+		{
+			name:  "sessions",
+			query: "DELETE FROM sessions",
 		},
 		{
 			name:  "users",

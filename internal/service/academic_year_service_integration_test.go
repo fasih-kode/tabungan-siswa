@@ -156,9 +156,10 @@ func TestAcademicYearServiceIntegration_GetAndList(t *testing.T) {
 		t.Fatalf("close first academic year: %v", err)
 	}
 
-	second := newServiceScopeAcademicYear(
+	second := newServiceScopeAcademicYearForStartYear(
 		t,
 		"Integration Second "+uuid.NewString(),
+		2027,
 	)
 
 	if err := academicYearRepo.Create(ctx, second); err != nil {

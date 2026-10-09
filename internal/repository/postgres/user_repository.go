@@ -205,7 +205,7 @@ func translateError(operation string, err error) error {
 	var pgErr *pgconn.PgError
 
 	if errors.As(err, &pgErr) {
-		if pgErr.Code == "23505" {
+		if pgErr.Code == "23505" || pgErr.Code == "23P01" {
 			return fmt.Errorf(
 				"%s: %w",
 				operation,

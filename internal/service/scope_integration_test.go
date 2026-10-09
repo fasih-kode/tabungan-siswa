@@ -176,7 +176,11 @@ func TestRequireClassScopeIntegration(t *testing.T) {
 	})
 
 	t.Run("wali A cannot access class A in another academic year", func(t *testing.T) {
-		otherYear := newServiceScopeAcademicYear(t, "2027/2028")
+		otherYear := newServiceScopeAcademicYearForStartYear(
+			t,
+			"2027/2028",
+			2027,
+		)
 
 		if err := otherYear.StartClosing(); err != nil {
 			t.Fatalf("start closing other academic year: %v", err)
@@ -464,12 +468,20 @@ func newServiceScopeAcademicYear(
 	t *testing.T,
 	name string,
 ) domain.AcademicYear {
+	return newServiceScopeAcademicYearForStartYear(t, name, 2026)
+}
+
+func newServiceScopeAcademicYearForStartYear(
+	t *testing.T,
+	name string,
+	startYear int,
+) domain.AcademicYear {
 	t.Helper()
 
 	academicYear, err := domain.NewAcademicYear(
 		name,
-		time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC),
-		time.Date(2027, 7, 1, 0, 0, 0, 0, time.UTC),
+		time.Date(startYear, 7, 1, 0, 0, 0, 0, time.UTC),
+		time.Date(startYear+1, 7, 1, 0, 0, 0, 0, time.UTC),
 	)
 	if err != nil {
 		t.Fatalf("NewAcademicYear() error = %v", err)
