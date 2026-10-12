@@ -93,8 +93,9 @@ Ketentuan:
 6. Login berhasil mengarahkan browser ke `/protected` dengan status 303.
 7. Logout berhasil mengarahkan browser ke `/login` dengan status 303 setelah
    service berhasil mencabut sesi dan cookie sesi dibersihkan.
-8. Logout tanpa cookie sesi tetap idempoten: cookie dibersihkan bila perlu,
-   lalu browser diarahkan ke `/login` dengan status 303.
+8. Logout tanpa cookie atau dengan cookie sesi tidak valid tetap idempoten:
+   cookie dibersihkan bila perlu, service logout tidak dipanggil tanpa token
+   yang valid, lalu browser diarahkan ke `/login` dengan status 303.
 9. Jika service logout gagal, handler mengembalikan error sesuai pemetaan
    HTTP yang berlaku dan tidak mengirim redirect sukses atau menghapus cookie.
 10. Pengecualian terhadap PRG hanya diperbolehkan jika kontrak endpoint secara

@@ -26,6 +26,7 @@ type authenticationHandlerServiceFake struct {
 	createSessionCalls int
 	logoutErr          error
 	logoutInput        service.LogoutInput
+	logoutCalls        int
 }
 
 func (f *authenticationHandlerServiceFake) Authenticate(
@@ -51,6 +52,7 @@ func (f *authenticationHandlerServiceFake) Logout(
 	input service.LogoutInput,
 ) error {
 	f.logoutInput = input
+	f.logoutCalls++
 	return f.logoutErr
 }
 
@@ -464,8 +466,40 @@ func TestAuthenticationHandlerLogoutWithoutCookieIsIdempotent(t *testing.T) {
 	if got := recorder.Header().Get("Location"); got != "/login" {
 		t.Fatalf("Location = %q, want %q", got, "/login")
 	}
-	if authentication.logoutInput.SessionTokenHash != "" {
-		t.Fatalf("logout service was called with hash %q, want empty", authentication.logoutInput.SessionTokenHash)
+	if authentication.logoutCalls != 0 {
+		t.Fatalf("logout service calls = %d, want 0", authentication.logoutCalls)
+	}
+}
+
+func TestAuthenticationHandlerLogoutWithInvalidCookieIsIdempotent(t *testing.T) {
+	authentication := &authenticationHandlerServiceFake{}
+	handler := newAuthenticationHandlerForTest(t, authentication)
+
+	req := httptest.NewRequest(http.MethodPost, "/logout", nil)
+	req.AddCookie(&http.Cookie{
+		Name:  security.DefaultSessionCookieName,
+		Value: "",
+	})
+	recorder := httptest.NewRecorder()
+
+	handler.Logout(recorder, req)
+
+	if recorder.Code != http.StatusSeeOther {
+		t.Fatalf("status = %d, want %d", recorder.Code, http.StatusSeeOther)
+	}
+	if got := recorder.Header().Get("Location"); got != "/login" {
+		t.Fatalf("Location = %q, want %q", got, "/login")
+	}
+	if authentication.logoutCalls != 0 {
+		t.Fatalf("logout service calls = %d, want 0", authentication.logoutCalls)
+	}
+
+	cookies := recorder.Result().Cookies()
+	if len(cookies) != 1 {
+		t.Fatalf("response cookies = %d, want 1", len(cookies))
+	}
+	if cookies[0].MaxAge != -1 {
+		t.Fatalf("cookie MaxAge = %d, want -1", cookies[0].MaxAge)
 	}
 }
 
