@@ -336,12 +336,15 @@ func TestAuthenticationIntegrationUsesRealServiceAndArgon2id(t *testing.T) {
 	}
 	logoutResponse.Body.Close()
 
-	if logoutResponse.StatusCode != http.StatusNoContent {
+	if logoutResponse.StatusCode != http.StatusOK {
 		t.Fatalf(
-			"POST /logout status = %d, want %d",
+			"POST /logout final status = %d, want %d after redirect",
 			logoutResponse.StatusCode,
-			http.StatusNoContent,
+			http.StatusOK,
 		)
+	}
+	if got := logoutResponse.Request.URL.Path; got != "/login" {
+		t.Fatalf("POST /logout final path = %q, want %q", got, "/login")
 	}
 
 	protectedAfterLogout, err := http.NewRequest(

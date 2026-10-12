@@ -90,13 +90,20 @@ Ketentuan:
    Post/Redirect/Get.
 5. Status 303 See Other menjadi status standar untuk redirect setelah POST
    form berhasil.
-6. Pengecualian hanya diperbolehkan jika kontrak endpoint secara eksplisit
-   menetapkan response lain, misalnya partial response untuk HTMX.
-7. Validation error dapat menampilkan kembali form dengan input aman dan
-   pesan yang sesuai.
-8. Error lain mengikuti kontrak HTTP dan kebutuhan halaman.
-9. Refresh halaman hasil redirect tidak boleh mengulangi operasi tulis.
-10. Authorization dan validasi domain tetap dilakukan oleh service, bukan
+6. Login berhasil mengarahkan browser ke `/protected` dengan status 303.
+7. Logout berhasil mengarahkan browser ke `/login` dengan status 303 setelah
+   service berhasil mencabut sesi dan cookie sesi dibersihkan.
+8. Logout tanpa cookie sesi tetap idempoten: cookie dibersihkan bila perlu,
+   lalu browser diarahkan ke `/login` dengan status 303.
+9. Jika service logout gagal, handler mengembalikan error sesuai pemetaan
+   HTTP yang berlaku dan tidak mengirim redirect sukses atau menghapus cookie.
+10. Pengecualian terhadap PRG hanya diperbolehkan jika kontrak endpoint secara
+    eksplisit menetapkan response lain, misalnya partial response untuk HTMX.
+11. Validation error dapat menampilkan kembali form dengan input aman dan
+    pesan yang sesuai.
+12. Error lain mengikuti kontrak HTTP dan kebutuhan halaman.
+13. Refresh halaman hasil redirect tidak boleh mengulangi operasi tulis.
+14. Authorization dan validasi domain tetap dilakukan oleh service, bukan
     hanya oleh handler.
 
 ## 7. Query Parameter

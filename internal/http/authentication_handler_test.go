@@ -430,8 +430,11 @@ func TestAuthenticationHandlerLogoutRevokesAndClearsCookie(t *testing.T) {
 
 	handler.Logout(recorder, req)
 
-	if recorder.Code != http.StatusNoContent {
-		t.Fatalf("status = %d, want %d", recorder.Code, http.StatusNoContent)
+	if recorder.Code != http.StatusSeeOther {
+		t.Fatalf("status = %d, want %d", recorder.Code, http.StatusSeeOther)
+	}
+	if got := recorder.Header().Get("Location"); got != "/login" {
+		t.Fatalf("Location = %q, want %q", got, "/login")
 	}
 	if authentication.logoutInput.SessionTokenHash != security.HashSessionToken("opaque-session-token") {
 		t.Fatalf("logout token hash = %q, want hashed token", authentication.logoutInput.SessionTokenHash)
@@ -455,8 +458,11 @@ func TestAuthenticationHandlerLogoutWithoutCookieIsIdempotent(t *testing.T) {
 
 	handler.Logout(recorder, req)
 
-	if recorder.Code != http.StatusNoContent {
-		t.Fatalf("status = %d, want %d", recorder.Code, http.StatusNoContent)
+	if recorder.Code != http.StatusSeeOther {
+		t.Fatalf("status = %d, want %d", recorder.Code, http.StatusSeeOther)
+	}
+	if got := recorder.Header().Get("Location"); got != "/login" {
+		t.Fatalf("Location = %q, want %q", got, "/login")
 	}
 	if authentication.logoutInput.SessionTokenHash != "" {
 		t.Fatalf("logout service was called with hash %q, want empty", authentication.logoutInput.SessionTokenHash)
@@ -480,6 +486,9 @@ func TestAuthenticationHandlerLogoutPropagatesServiceError(t *testing.T) {
 
 	if recorder.Code != http.StatusInternalServerError {
 		t.Fatalf("status = %d, want %d", recorder.Code, http.StatusInternalServerError)
+	}
+	if got := recorder.Header().Get("Location"); got != "" {
+		t.Fatalf("Location = %q, want no redirect on service failure", got)
 	}
 	if len(recorder.Result().Cookies()) != 0 {
 		t.Fatal("session cookie was cleared after logout failure")

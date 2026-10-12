@@ -116,7 +116,7 @@ func (h *AuthenticationHandler) Logout(w http.ResponseWriter, r *http.Request) {
 	token, err := h.cookie.Read(r)
 	if err != nil {
 		h.cookie.Clear(w)
-		w.WriteHeader(http.StatusNoContent)
+		http.Redirect(w, r, "/login", http.StatusSeeOther)
 		return
 	}
 
@@ -131,5 +131,5 @@ func (h *AuthenticationHandler) Logout(w http.ResponseWriter, r *http.Request) {
 	}
 
 	h.cookie.Clear(w)
-	w.WriteHeader(http.StatusNoContent)
+	http.Redirect(w, r, "/login", http.StatusSeeOther)
 }

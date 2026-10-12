@@ -300,8 +300,11 @@ func TestAuthenticationIntegrationLoginProtectLogout(t *testing.T) {
 	}
 	response.Body.Close()
 
-	if response.StatusCode != http.StatusNoContent {
-		t.Fatalf("POST /logout status = %d, want %d", response.StatusCode, http.StatusNoContent)
+	if response.StatusCode != http.StatusOK {
+		t.Fatalf("POST /logout final status = %d, want %d after redirect", response.StatusCode, http.StatusOK)
+	}
+	if got := response.Request.URL.Path; got != "/login" {
+		t.Fatalf("POST /logout final path = %q, want %q", got, "/login")
 	}
 
 	protectedRequest, err = http.NewRequest(
