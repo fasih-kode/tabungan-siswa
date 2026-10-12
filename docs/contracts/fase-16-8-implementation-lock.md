@@ -53,26 +53,26 @@ If migration preflight fails, do not delete records or manually bypass constrain
 
 The development database already contains the 000006 objects and its migration metadata was reconciled to version 6 (`dirty=false`) by the incident recovery script. **Do not run the 000006 up migration again against that database.** The `up.sql` file is not idempotent.
 
-Run the application checks against the configured development/test database:
+Inspect migration metadata on the development database without exporting its DSN as the integration-test `DATABASE_URL`:
 
 ```bash
 set -a
 . ./.env
 set +a
-export DATABASE_URL="$TABUNGAN_SISWA_DATABASE_DSN"
+psql "$TABUNGAN_SISWA_DATABASE_DSN" -X -P pager=off -c "TABLE public.schema_migrations;"
+```
 
-psql "$TABUNGAN_SISWA_DATABASE_DSN" -X -P pager=off -c \
-  "TABLE public.schema_migrations;"
+Run application checks separately. The standard integration-test command selects and verifies the approved disposable test database itself; do not manually point integration tests at the development DSN.
 
+```bash
 go test ./internal/domain -count=1
-go test ./internal/repository/postgres -count=1
-go test ./internal/service -count=1
-go test ./...
-go test -race ./...
 go vet ./...
 go build ./...
 git diff --check
+make test-integration
 ```
+
+`make test-integration` rewrites only the database path from `TABUNGAN_SISWA_DATABASE_DSN` to `tabungan_siswa_fase168_clean_test`, preserves the other connection options, verifies `current_database()` with PostgreSQL, and only then runs the full integration suite. The existing Go DSN guard remains an independent final safeguard.
 
 Test migration `up` and `down` only against a **disposable database** restored to schema version 5. Verify both directions, including rollback after a class-history row is modified or deleted after `up`: the down migration must preserve the backup table when any original range cannot safely be restored. Never experiment with rollback against the working development database.
 
