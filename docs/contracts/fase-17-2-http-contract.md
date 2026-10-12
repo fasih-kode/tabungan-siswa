@@ -1,6 +1,6 @@
 # FASE 17.2 — HTTP Feature Contract
 
-Status: DRAFT FOR IMPLEMENTATION
+Status: FINAL REVIEW — PENDING FINAL VERIFICATION AND COMMIT
 Fase: 17 — HTTP Feature Foundation
 Stack: Go, net/http, html/template, HTMX, Tailwind CSS, PostgreSQL
 
@@ -279,3 +279,13 @@ Deterministic Text Replacement.
 
 Jangan menyatakan test PASS, commit berhasil, atau fase LOCK sebelum ada
 bukti yang mendukung status tersebut.
+
+## 16. Hasil Review Penerimaan FASE 17
+
+Matriks bukti dan keputusan applicability dicatat pada
+`docs/contracts/fase-17-3-acceptance-review.md`. Dokumen tersebut merupakan
+bagian dari kontrak final dan harus ditinjau bersama source serta hasil test.
+
+Status kontrak ini tidak dengan sendirinya menyatakan FASE 17 LOCK. Final
+verification setelah perubahan dokumentasi, commit, dan pencatatan referensi
+commit pada dokumen lock tetap wajib dilakukan.
