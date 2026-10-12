@@ -32,11 +32,21 @@ func (f *authenticationServiceFakeUserRepository) GetByUsername(
 type authenticationServiceFakeSessionRepository struct {
 	repository.SessionRepository
 	session       domain.Session
+	created       domain.Session
+	createErr     error
 	getByHashErr  error
 	revokeCalls   int
 	revokeSession uuid.UUID
 	revokeAt      time.Time
 	revokeErr     error
+}
+
+func (f *authenticationServiceFakeSessionRepository) Create(
+	_ context.Context,
+	session domain.Session,
+) error {
+	f.created = session
+	return f.createErr
 }
 
 func (f *authenticationServiceFakeSessionRepository) GetByTokenHash(
@@ -429,6 +439,49 @@ func newAuthenticationServiceForLogoutTest(
 	}
 
 	return svc
+}
+
+func TestAuthenticationService_CreateSession(t *testing.T) {
+	sessions := &authenticationServiceFakeSessionRepository{}
+	svc, err := NewAuthenticationService(Dependencies{
+		Repositories: repository.RepositorySet{
+			Users:    &authenticationServiceFakeUserRepository{},
+			Sessions: sessions,
+		},
+		UOW:            foundationFakeUOWManager{},
+		PasswordHasher: &authenticationServiceFakePasswordHasher{},
+	})
+	if err != nil {
+		t.Fatalf("NewAuthenticationService() error = %v", err)
+	}
+
+	input := CreateSessionInput{
+		UserID:    uuid.New(),
+		TokenHash: "hashed-session-token",
+		ExpiresAt: time.Now().Add(time.Hour),
+	}
+	if err := svc.CreateSession(context.Background(), input); err != nil {
+		t.Fatalf("CreateSession() error = %v", err)
+	}
+	if sessions.created.UserID != input.UserID {
+		t.Fatalf("created UserID = %v, want %v", sessions.created.UserID, input.UserID)
+	}
+	if sessions.created.TokenHash != input.TokenHash {
+		t.Fatalf("created TokenHash = %q, want %q", sessions.created.TokenHash, input.TokenHash)
+	}
+	if !sessions.created.ExpiresAt.Equal(input.ExpiresAt) {
+		t.Fatalf("created ExpiresAt = %v, want %v", sessions.created.ExpiresAt, input.ExpiresAt)
+	}
+
+	if err := svc.CreateSession(context.Background(), CreateSessionInput{}); !errors.Is(err, domain.ErrInvalidID) {
+		t.Fatalf("CreateSession() invalid input error = %v, want %v", err, domain.ErrInvalidID)
+	}
+
+	repositoryErr := errors.New("database unavailable")
+	sessions.createErr = repositoryErr
+	if err := svc.CreateSession(context.Background(), input); !errors.Is(err, repositoryErr) {
+		t.Fatalf("CreateSession() repository error = %v, want %v", err, repositoryErr)
+	}
 }
 
 func TestAuthenticationService_Logout(t *testing.T) {

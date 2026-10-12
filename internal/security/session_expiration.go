@@ -22,6 +22,11 @@ func NewSessionExpirationPolicy(lifetime time.Duration) (SessionExpirationPolicy
 	}, nil
 }
 
+// IsValid reports whether the policy has a positive configured lifetime.
+func (p SessionExpirationPolicy) IsValid() bool {
+	return p.lifetime > 0
+}
+
 // ExpiresAt returns the absolute expiration time for a session created at now.
 func (p SessionExpirationPolicy) ExpiresAt(now time.Time) time.Time {
 	return now.Add(p.lifetime)

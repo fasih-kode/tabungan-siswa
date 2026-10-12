@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"github.com/fasih/tabungan-siswa/internal/domain"
-	"github.com/fasih/tabungan-siswa/internal/repository"
 	"github.com/fasih/tabungan-siswa/internal/security"
 	"github.com/fasih/tabungan-siswa/internal/service"
 	"github.com/google/uuid"
@@ -22,6 +21,9 @@ type authenticationHandlerServiceFake struct {
 	authenticateErr    error
 	authenticateInput  service.AuthenticateInput
 	authenticateCalls  int
+	createSessionInput service.CreateSessionInput
+	createSessionErr   error
+	createSessionCalls int
 	logoutErr          error
 	logoutInput        service.LogoutInput
 }
@@ -35,6 +37,15 @@ func (f *authenticationHandlerServiceFake) Authenticate(
 	return f.authenticateOutput, f.authenticateErr
 }
 
+func (f *authenticationHandlerServiceFake) CreateSession(
+	_ context.Context,
+	input service.CreateSessionInput,
+) error {
+	f.createSessionInput = input
+	f.createSessionCalls++
+	return f.createSessionErr
+}
+
 func (f *authenticationHandlerServiceFake) Logout(
 	_ context.Context,
 	input service.LogoutInput,
@@ -43,31 +54,9 @@ func (f *authenticationHandlerServiceFake) Logout(
 	return f.logoutErr
 }
 
-type authenticationHandlerSessionRepositoryFake struct {
-	created   domain.Session
-	createErr error
-}
-
-func (f *authenticationHandlerSessionRepositoryFake) Create(
-	_ context.Context,
-	session domain.Session,
-) error {
-	f.created = session
-	return f.createErr
-}
-
-func (f *authenticationHandlerSessionRepositoryFake) GetByTokenHash(context.Context, string) (domain.Session, error) {
-	return domain.Session{}, repository.ErrNotFound
-}
-
-func (f *authenticationHandlerSessionRepositoryFake) Revoke(context.Context, uuid.UUID, time.Time) error {
-	return nil
-}
-
 func newAuthenticationHandlerForTest(
 	t *testing.T,
 	authentication service.AuthenticationService,
-	sessions repository.SessionRepository,
 ) *AuthenticationHandler {
 	t.Helper()
 
@@ -78,7 +67,6 @@ func newAuthenticationHandlerForTest(
 
 	handler, err := NewAuthenticationHandler(
 		authentication,
-		sessions,
 		expiration,
 		security.NewDefaultSessionCookie(),
 	)
@@ -90,7 +78,6 @@ func newAuthenticationHandlerForTest(
 }
 
 func TestNewAuthenticationHandlerRejectsMissingDependencies(t *testing.T) {
-	sessions := &authenticationHandlerSessionRepositoryFake{}
 	authentication := &authenticationHandlerServiceFake{}
 	expiration, err := security.NewSessionExpirationPolicy(time.Hour)
 	if err != nil {
@@ -98,12 +85,14 @@ func TestNewAuthenticationHandlerRejectsMissingDependencies(t *testing.T) {
 	}
 	cookie := security.NewDefaultSessionCookie()
 
-	if _, err := NewAuthenticationHandler(nil, sessions, expiration, cookie); !errors.Is(err, service.ErrInvalidDependency) {
+	if _, err := NewAuthenticationHandler(nil, expiration, cookie); !errors.Is(err, service.ErrInvalidDependency) {
 		t.Fatalf("missing authentication service error = %v", err)
 	}
-
-	if _, err := NewAuthenticationHandler(authentication, nil, expiration, cookie); !errors.Is(err, service.ErrInvalidDependency) {
-		t.Fatalf("missing session repository error = %v", err)
+	if _, err := NewAuthenticationHandler(authentication, security.SessionExpirationPolicy{}, cookie); !errors.Is(err, service.ErrInvalidDependency) {
+		t.Fatalf("invalid expiration policy error = %v", err)
+	}
+	if _, err := NewAuthenticationHandler(authentication, expiration, security.SessionCookie{}); !errors.Is(err, service.ErrInvalidDependency) {
+		t.Fatalf("invalid cookie error = %v", err)
 	}
 }
 
@@ -114,8 +103,7 @@ func TestAuthenticationHandlerLoginCreatesSessionAndCookie(t *testing.T) {
 			Actor: service.Actor{UserID: userID, Role: domain.RoleAdmin},
 		},
 	}
-	sessions := &authenticationHandlerSessionRepositoryFake{}
-	handler := newAuthenticationHandlerForTest(t, authentication, sessions)
+	handler := newAuthenticationHandlerForTest(t, authentication)
 
 	form := url.Values{
 		"username": {"admin"},
@@ -133,13 +121,16 @@ func TestAuthenticationHandlerLoginCreatesSessionAndCookie(t *testing.T) {
 	if got := recorder.Header().Get("Location"); got != "/protected" {
 		t.Fatalf("Location = %q, want %q", got, "/protected")
 	}
-	if sessions.created.UserID != userID {
-		t.Fatalf("session user ID = %v, want %v", sessions.created.UserID, userID)
+	if authentication.createSessionCalls != 1 {
+		t.Fatalf("CreateSession calls = %d, want 1", authentication.createSessionCalls)
 	}
-	if sessions.created.TokenHash == "" {
+	if authentication.createSessionInput.UserID != userID {
+		t.Fatalf("session user ID = %v, want %v", authentication.createSessionInput.UserID, userID)
+	}
+	if authentication.createSessionInput.TokenHash == "" {
 		t.Fatal("session token hash is empty")
 	}
-	if sessions.created.ExpiresAt.IsZero() {
+	if authentication.createSessionInput.ExpiresAt.IsZero() {
 		t.Fatal("session expiration is zero")
 	}
 
@@ -154,7 +145,7 @@ func TestAuthenticationHandlerLoginCreatesSessionAndCookie(t *testing.T) {
 	if cookie.Value == "" {
 		t.Fatal("session cookie value is empty")
 	}
-	if security.HashSessionToken(cookie.Value) != sessions.created.TokenHash {
+	if security.HashSessionToken(cookie.Value) != authentication.createSessionInput.TokenHash {
 		t.Fatal("cookie token does not match persisted session hash")
 	}
 	if !cookie.HttpOnly || !cookie.Secure || cookie.SameSite != http.SameSiteLaxMode || cookie.Path != "/" {
@@ -168,11 +159,7 @@ func TestAuthenticationHandlerLoginReadsCredentialsFromPostForm(t *testing.T) {
 			Actor: service.Actor{UserID: uuid.New(), Role: domain.RoleAdmin},
 		},
 	}
-	handler := newAuthenticationHandlerForTest(
-		t,
-		authentication,
-		&authenticationHandlerSessionRepositoryFake{},
-	)
+	handler := newAuthenticationHandlerForTest(t, authentication)
 
 	req := httptest.NewRequest(
 		http.MethodPost,
@@ -206,11 +193,7 @@ func TestAuthenticationHandlerLoginAcceptsFormContentTypeWithCharset(t *testing.
 			Actor: service.Actor{UserID: uuid.New(), Role: domain.RoleAdmin},
 		},
 	}
-	handler := newAuthenticationHandlerForTest(
-		t,
-		authentication,
-		&authenticationHandlerSessionRepositoryFake{},
-	)
+	handler := newAuthenticationHandlerForTest(t, authentication)
 
 	req := httptest.NewRequest(
 		http.MethodPost,
@@ -243,11 +226,7 @@ func TestAuthenticationHandlerLoginAcceptsFormContentTypeWithCharset(t *testing.
 
 func TestAuthenticationHandlerLoginRejectsUnsupportedContentType(t *testing.T) {
 	authentication := &authenticationHandlerServiceFake{}
-	handler := newAuthenticationHandlerForTest(
-		t,
-		authentication,
-		&authenticationHandlerSessionRepositoryFake{},
-	)
+	handler := newAuthenticationHandlerForTest(t, authentication)
 
 	req := httptest.NewRequest(
 		http.MethodPost,
@@ -274,11 +253,7 @@ func TestAuthenticationHandlerLoginRejectsUnsupportedContentType(t *testing.T) {
 
 func TestAuthenticationHandlerLoginRejectsMalformedContentType(t *testing.T) {
 	authentication := &authenticationHandlerServiceFake{}
-	handler := newAuthenticationHandlerForTest(
-		t,
-		authentication,
-		&authenticationHandlerSessionRepositoryFake{},
-	)
+	handler := newAuthenticationHandlerForTest(t, authentication)
 
 	req := httptest.NewRequest(
 		http.MethodPost,
@@ -304,11 +279,7 @@ func TestAuthenticationHandlerLoginRejectsMalformedContentType(t *testing.T) {
 
 func TestAuthenticationHandlerLoginRejectsMissingContentType(t *testing.T) {
 	authentication := &authenticationHandlerServiceFake{}
-	handler := newAuthenticationHandlerForTest(
-		t,
-		authentication,
-		&authenticationHandlerSessionRepositoryFake{},
-	)
+	handler := newAuthenticationHandlerForTest(t, authentication)
 
 	req := httptest.NewRequest(
 		http.MethodPost,
@@ -330,11 +301,7 @@ func TestAuthenticationHandlerLoginRejectsMissingContentType(t *testing.T) {
 
 func TestAuthenticationHandlerLoginRejectsOversizedRequestBody(t *testing.T) {
 	authentication := &authenticationHandlerServiceFake{}
-	handler := newAuthenticationHandlerForTest(
-		t,
-		authentication,
-		&authenticationHandlerSessionRepositoryFake{},
-	)
+	handler := newAuthenticationHandlerForTest(t, authentication)
 
 	body := "username=" + strings.Repeat("a", int(maxLoginRequestBodyBytes))
 	req := httptest.NewRequest(
@@ -366,11 +333,7 @@ func TestAuthenticationHandlerLoginRejectsOversizedRequestBody(t *testing.T) {
 
 func TestAuthenticationHandlerLoginRejectsMalformedForm(t *testing.T) {
 	authentication := &authenticationHandlerServiceFake{}
-	handler := newAuthenticationHandlerForTest(
-		t,
-		authentication,
-		&authenticationHandlerSessionRepositoryFake{},
-	)
+	handler := newAuthenticationHandlerForTest(t, authentication)
 
 	req := httptest.NewRequest(
 		http.MethodPost,
@@ -399,8 +362,7 @@ func TestAuthenticationHandlerLoginRejectsInvalidCredentials(t *testing.T) {
 	authentication := &authenticationHandlerServiceFake{
 		authenticateErr: service.ErrInvalidCredentials,
 	}
-	sessions := &authenticationHandlerSessionRepositoryFake{}
-	handler := newAuthenticationHandlerForTest(t, authentication, sessions)
+	handler := newAuthenticationHandlerForTest(t, authentication)
 
 	req := httptest.NewRequest(http.MethodPost, "/login", strings.NewReader("username=admin&password=wrong"))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
@@ -411,17 +373,13 @@ func TestAuthenticationHandlerLoginRejectsInvalidCredentials(t *testing.T) {
 	if recorder.Code != http.StatusUnauthorized {
 		t.Fatalf("status = %d, want %d", recorder.Code, http.StatusUnauthorized)
 	}
-	if sessions.created.ID != uuid.Nil {
+	if authentication.createSessionCalls != 0 {
 		t.Fatal("session was created for invalid credentials")
 	}
 }
 
 func TestAuthenticationHandlerLoginRejectsNonPost(t *testing.T) {
-	handler := newAuthenticationHandlerForTest(
-		t,
-		&authenticationHandlerServiceFake{},
-		&authenticationHandlerSessionRepositoryFake{},
-	)
+	handler := newAuthenticationHandlerForTest(t, &authenticationHandlerServiceFake{})
 
 	req := httptest.NewRequest(http.MethodGet, "/login", nil)
 	recorder := httptest.NewRecorder()
@@ -442,10 +400,8 @@ func TestAuthenticationHandlerLoginPropagatesSessionCreateError(t *testing.T) {
 			Actor: service.Actor{UserID: uuid.New(), Role: domain.RoleAdmin},
 		},
 	}
-	sessions := &authenticationHandlerSessionRepositoryFake{
-		createErr: errors.New("database unavailable"),
-	}
-	handler := newAuthenticationHandlerForTest(t, authentication, sessions)
+	authentication.createSessionErr = errors.New("database unavailable")
+	handler := newAuthenticationHandlerForTest(t, authentication)
 
 	req := httptest.NewRequest(http.MethodPost, "/login", strings.NewReader("username=admin&password=secret"))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
@@ -463,11 +419,7 @@ func TestAuthenticationHandlerLoginPropagatesSessionCreateError(t *testing.T) {
 
 func TestAuthenticationHandlerLogoutRevokesAndClearsCookie(t *testing.T) {
 	authentication := &authenticationHandlerServiceFake{}
-	handler := newAuthenticationHandlerForTest(
-		t,
-		authentication,
-		&authenticationHandlerSessionRepositoryFake{},
-	)
+	handler := newAuthenticationHandlerForTest(t, authentication)
 
 	req := httptest.NewRequest(http.MethodPost, "/logout", nil)
 	req.AddCookie(&http.Cookie{
@@ -496,11 +448,7 @@ func TestAuthenticationHandlerLogoutRevokesAndClearsCookie(t *testing.T) {
 
 func TestAuthenticationHandlerLogoutWithoutCookieIsIdempotent(t *testing.T) {
 	authentication := &authenticationHandlerServiceFake{}
-	handler := newAuthenticationHandlerForTest(
-		t,
-		authentication,
-		&authenticationHandlerSessionRepositoryFake{},
-	)
+	handler := newAuthenticationHandlerForTest(t, authentication)
 
 	req := httptest.NewRequest(http.MethodPost, "/logout", nil)
 	recorder := httptest.NewRecorder()
@@ -519,11 +467,7 @@ func TestAuthenticationHandlerLogoutPropagatesServiceError(t *testing.T) {
 	authentication := &authenticationHandlerServiceFake{
 		logoutErr: errors.New("database unavailable"),
 	}
-	handler := newAuthenticationHandlerForTest(
-		t,
-		authentication,
-		&authenticationHandlerSessionRepositoryFake{},
-	)
+	handler := newAuthenticationHandlerForTest(t, authentication)
 
 	req := httptest.NewRequest(http.MethodPost, "/logout", nil)
 	req.AddCookie(&http.Cookie{
@@ -543,11 +487,7 @@ func TestAuthenticationHandlerLogoutPropagatesServiceError(t *testing.T) {
 }
 
 func TestAuthenticationHandlerLogoutRejectsNonPost(t *testing.T) {
-	handler := newAuthenticationHandlerForTest(
-		t,
-		&authenticationHandlerServiceFake{},
-		&authenticationHandlerSessionRepositoryFake{},
-	)
+	handler := newAuthenticationHandlerForTest(t, &authenticationHandlerServiceFake{})
 
 	req := httptest.NewRequest(http.MethodGet, "/logout", nil)
 	recorder := httptest.NewRecorder()

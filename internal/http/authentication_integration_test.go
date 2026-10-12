@@ -18,8 +18,9 @@ import (
 )
 
 type integrationAuthService struct {
-	userID uuid.UUID
-	role   domain.UserRole
+	userID   uuid.UUID
+	role     domain.UserRole
+	sessions *integrationSessionRepository
 }
 
 func (s *integrationAuthService) Authenticate(
@@ -32,6 +33,17 @@ func (s *integrationAuthService) Authenticate(
 			Role:   s.role,
 		},
 	}, nil
+}
+
+func (s *integrationAuthService) CreateSession(
+	ctx context.Context,
+	input service.CreateSessionInput,
+) error {
+	session, err := domain.NewSession(input.UserID, input.TokenHash, input.ExpiresAt)
+	if err != nil {
+		return err
+	}
+	return s.sessions.Create(ctx, session)
 }
 
 func (s *integrationAuthService) Logout(
@@ -135,8 +147,9 @@ func newIntegrationRouter(t *testing.T) *http.ServeMux {
 	}
 
 	authService := &integrationAuthService{
-		userID: userID,
-		role:   domain.RoleAdmin,
+		userID:   userID,
+		role:     domain.RoleAdmin,
+		sessions: sessions,
 	}
 
 	expiration, err := security.NewSessionExpirationPolicy(time.Hour)
@@ -147,7 +160,6 @@ func newIntegrationRouter(t *testing.T) *http.ServeMux {
 	sessionCookie := security.NewDefaultSessionCookie()
 	authHandler, err := NewAuthenticationHandler(
 		authService,
-		sessions,
 		expiration,
 		sessionCookie,
 	)

@@ -172,7 +172,6 @@ func TestAuthenticationIntegrationUsesRealServiceAndArgon2id(t *testing.T) {
 
 	authenticationHandler, err := NewAuthenticationHandler(
 		authentication,
-		sessions,
 		expiration,
 		sessionCookie,
 	)

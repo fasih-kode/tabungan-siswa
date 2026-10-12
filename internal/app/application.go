@@ -60,7 +60,6 @@ func NewApplication(
 
 	handlerSet, err := httpapp.NewHandlerSet(
 		serviceSet,
-		repositories,
 		securitySet,
 		templates,
 	)

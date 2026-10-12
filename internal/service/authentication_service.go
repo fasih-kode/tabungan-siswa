@@ -71,6 +71,22 @@ func (s *authenticationService) Authenticate(
 	}, nil
 }
 
+func (s *authenticationService) CreateSession(
+	ctx context.Context,
+	input CreateSessionInput,
+) error {
+	session, err := domain.NewSession(
+		input.UserID,
+		input.TokenHash,
+		input.ExpiresAt,
+	)
+	if err != nil {
+		return err
+	}
+
+	return s.deps.Repositories.Sessions.Create(ctx, session)
+}
+
 func (s *authenticationService) Logout(
 	ctx context.Context,
 	input LogoutInput,

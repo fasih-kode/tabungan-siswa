@@ -6,8 +6,6 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/fasih/tabungan-siswa/internal/domain"
-	"github.com/fasih/tabungan-siswa/internal/repository"
 	"github.com/fasih/tabungan-siswa/internal/security"
 	"github.com/fasih/tabungan-siswa/internal/service"
 )
@@ -16,24 +14,21 @@ const maxLoginRequestBodyBytes int64 = 16 << 10
 
 type AuthenticationHandler struct {
 	authentication service.AuthenticationService
-	sessions       repository.SessionRepository
 	expiration     security.SessionExpirationPolicy
 	cookie         security.SessionCookie
 }
 
 func NewAuthenticationHandler(
 	authentication service.AuthenticationService,
-	sessions repository.SessionRepository,
 	expiration security.SessionExpirationPolicy,
 	cookie security.SessionCookie,
 ) (*AuthenticationHandler, error) {
-	if authentication == nil || sessions == nil {
+	if authentication == nil || !expiration.IsValid() || !cookie.IsValid() {
 		return nil, service.ErrInvalidDependency
 	}
 
 	return &AuthenticationHandler{
 		authentication: authentication,
-		sessions:       sessions,
 		expiration:     expiration,
 		cookie:         cookie,
 	}, nil
@@ -89,17 +84,14 @@ func (h *AuthenticationHandler) Login(w http.ResponseWriter, r *http.Request) {
 	}
 
 	expiresAt := h.expiration.ExpiresAt(time.Now())
-	session, err := domain.NewSession(
-		output.Actor.UserID,
-		security.HashSessionToken(token),
-		expiresAt,
-	)
-	if err != nil {
-		WriteAuthenticationError(w, err)
-		return
-	}
-
-	if err := h.sessions.Create(r.Context(), session); err != nil {
+	if err := h.authentication.CreateSession(
+		r.Context(),
+		service.CreateSessionInput{
+			UserID:    output.Actor.UserID,
+			TokenHash: security.HashSessionToken(token),
+			ExpiresAt: expiresAt,
+		},
+	); err != nil {
 		WriteAuthenticationError(w, err)
 		return
 	}

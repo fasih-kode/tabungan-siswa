@@ -34,6 +34,11 @@ func NewDefaultSessionCookie() SessionCookie {
 	return cookie
 }
 
+// IsValid reports whether the cookie has the required host-only cookie settings.
+func (c SessionCookie) IsValid() bool {
+	return strings.HasPrefix(c.name, "__Host-") && c.path == "/"
+}
+
 func (c SessionCookie) Set(
 	w http.ResponseWriter,
 	token string,

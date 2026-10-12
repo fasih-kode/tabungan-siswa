@@ -22,10 +22,20 @@ type AuthenticationService interface {
 		ctx context.Context,
 		input AuthenticateInput,
 	) (AuthenticateOutput, error)
+	CreateSession(
+		ctx context.Context,
+		input CreateSessionInput,
+	) error
 	Logout(
 		ctx context.Context,
 		input LogoutInput,
 	) error
+}
+
+type CreateSessionInput struct {
+	UserID    uuid.UUID
+	TokenHash string
+	ExpiresAt time.Time
 }
 
 type AuthenticateInput struct {

@@ -3,7 +3,6 @@ package http
 import (
 	"html/template"
 
-	"github.com/fasih/tabungan-siswa/internal/repository"
 	"github.com/fasih/tabungan-siswa/internal/security"
 	"github.com/fasih/tabungan-siswa/internal/service"
 )
@@ -22,13 +21,11 @@ type HandlerSet struct {
 // disediakan oleh composition root.
 func NewHandlerSet(
 	services service.ServiceSet,
-	repositories repository.RepositorySet,
 	securitySet security.SecuritySet,
 	templates *template.Template,
 ) (HandlerSet, error) {
 	authentication, err := NewAuthenticationHandler(
 		services.Authentication,
-		repositories.Sessions,
 		securitySet.SessionExpiration,
 		securitySet.SessionCookie,
 	)
