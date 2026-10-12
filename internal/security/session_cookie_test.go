@@ -56,7 +56,7 @@ func TestNewDefaultSessionCookie(t *testing.T) {
 
 func TestSessionCookieSet(t *testing.T) {
 	cookie := NewDefaultSessionCookie()
-	expiresAt := time.Date(2026, 10, 7, 10, 0, 0, 0, time.UTC)
+	expiresAt := time.Now().Add(time.Hour).UTC()
 
 	recorder := httptest.NewRecorder()
 	err := cookie.Set(recorder, "opaque-session-token", expiresAt)
@@ -92,8 +92,9 @@ func TestSessionCookieSet(t *testing.T) {
 	if got.SameSite != http.SameSiteLaxMode {
 		t.Fatalf("SameSite = %v, want SameSiteLaxMode", got.SameSite)
 	}
-	if !got.Expires.Equal(expiresAt) {
-		t.Fatalf("Expires = %v, want %v", got.Expires, expiresAt)
+	wantExpires := expiresAt.Truncate(time.Second)
+	if !got.Expires.Equal(wantExpires) {
+		t.Fatalf("Expires = %v, want %v", got.Expires, wantExpires)
 	}
 	if got.Domain != "" {
 		t.Fatalf("Domain = %q, want empty", got.Domain)

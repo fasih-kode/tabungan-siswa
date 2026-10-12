@@ -477,6 +477,24 @@ func TestNewRouterUsesCanonicalPathsWithoutTrailingSlash(t *testing.T) {
 	}
 }
 
+func TestDashboardPageHandlerRejectsUnsupportedMethods(t *testing.T) {
+	handler := newTestDashboardPageHandler(t)
+
+	req := httptest.NewRequest(http.MethodPut, "/protected", nil)
+	recorder := httptest.NewRecorder()
+
+	handler.Get(recorder, req)
+
+	if recorder.Code != http.StatusMethodNotAllowed {
+		t.Fatalf("PUT /protected status = %d, want %d",
+			recorder.Code, http.StatusMethodNotAllowed)
+	}
+
+	if got := recorder.Header().Get("Allow"); got != "GET, HEAD" {
+		t.Fatalf("Allow = %q, want %q", got, "GET, HEAD")
+	}
+}
+
 func TestNewRouterProtectedRouteRequiresAuthentication(t *testing.T) {
 	cookie := newTestSessionCookie(t)
 	authMiddleware, err := middleware.NewAuthenticationMiddleware(
