@@ -1,11 +1,11 @@
 # FASE 17.3 — HTTP Acceptance Review
 
-**Status:** REVIEWED — PENDING FINAL VERIFICATION AND COMMIT
+**Status:** FINAL VERIFICATION PASSED — COMMITTED
 **Contract:** `docs/contracts/fase-17-2-http-contract.md`
 **Reviewed snapshot:** `21aa0d7 test(auth): cover invalid cookie logout behavior`
 **Scope:** Verify the applicable FASE 17 HTTP contract criteria against the source and tests in the reviewed repository snapshot.
 
-This review does not declare FASE 17 LOCK. Final verification after this documentation change and a commit reference are still required.
+Final verification passed and the contract and acceptance review were committed as `674f2a6`. This document records acceptance evidence; the separate phase-lock record captures the final lock decision.
 
 ## 1. Acceptance Matrix
 
@@ -19,10 +19,10 @@ This review does not declare FASE 17 LOCK. Final verification after this documen
 | Presentation follows page needs and does not assume flash-message support | PASS FOR CURRENT PAGES; GENERAL FLASH MESSAGES DEFERRED | `internal/http/login_page.go` and `internal/http/dashboard_page.go` use page-specific view models. No general flash-message mechanism is assumed or added. Form-specific validation presentation is to be specified with the relevant feature rather than invented for pages that do not yet exist. |
 | Full-page HTML works without HTMX | PASS FOR CURRENT PAGE FOUNDATION | The login and dashboard handlers render Go `html/template` templates (`internal/http/login_page.go`, `internal/http/dashboard_page.go`). Broad HTMX interactions are outside this phase. |
 | Partial responses have explicit endpoint contracts | NOT APPLICABLE IN FASE 17 | No partial-response endpoint is implemented in the reviewed HTTP foundation. Contract section 11 explicitly assigns broad HTMX interaction implementation to FASE 26. A partial response must not be added before a feature endpoint defines it. |
-| Relevant focused tests pass | PREVIOUSLY REPORTED PASS; RE-RUN REQUIRED FOR FINAL VERIFICATION | The latest recorded user run passed `go test ./internal/http -count=1`. The reviewed snapshot includes explicit tests for invalid-cookie logout and method handling. Rerun the verification commands in section 3 before committing this review. |
-| Formatting, diff checks, vet, and full tests pass | PREVIOUSLY REPORTED PASS; RE-RUN REQUIRED FOR FINAL VERIFICATION | The latest recorded user run passed `RUN_INTEGRATION_TESTS=1 go test ./... -count=1`, `go vet ./...`, and `git diff --check` before this documentation-only review. Rerun them after applying this review. |
+| Relevant focused tests pass | PASS | The final local verification passed `go test ./internal/http -count=1`. The reviewed snapshot includes explicit tests for invalid-cookie logout and method handling. |
+| Formatting, diff checks, vet, and full tests pass | PASS | Final local verification passed formatting checks, `go vet ./...`, `git diff --check`, and `make test-integration`, including the full Go test suite against the verified disposable test database. |
 | No unrelated domain/feature changes | PASS BY SCOPE REVIEW | The changes under review for this finalization are documentation-only. No domain contract or feature implementation is proposed. |
-| Commit exists before FASE 17 LOCK | PENDING | The implementation commits exist through `21aa0d7`; this acceptance review and contract status update must still be committed before a separate lock record can declare the phase locked. |
+| Commit exists before FASE 17 LOCK | PASS | Contract and acceptance review committed as `674f2a6`; the phase-lock record is finalized separately. |
 
 ## 2. Review Findings
 
