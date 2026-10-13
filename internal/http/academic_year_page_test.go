@@ -31,6 +31,64 @@ func requestWithActor(method, target string, actor service.Actor) *http.Request 
 	return r.WithContext(service.WithActor(r.Context(), actor))
 }
 
+func TestWaliKelasCanRenderAcademicYearListAndDetailWithHeaderContext(t *testing.T) {
+	year := academicYearsForTest(1)[0]
+	actor := service.Actor{
+		UserID:   uuid.New(),
+		Username: "wali-kelas-test",
+		Role:     domain.RoleWaliKelas,
+	}
+
+	tmpl := template.Must(template.New("academic-years").Parse(
+		`{{define "academic-years"}}{{.Username}}|{{.Role}}|{{.CSRFToken}}|{{.Heading}}{{end}}`,
+	))
+	fake := &academicYearServiceFake{years: []*domain.AcademicYear{year}}
+	handler, err := NewAcademicYearPageHandler(fake, tmpl)
+	if err != nil {
+		t.Fatal(err)
+	}
+	csrf := middleware.NewCSRFMiddleware(newTestCSRFCookie(t))
+
+	t.Run("list", func(t *testing.T) {
+		req := requestWithActor(http.MethodGet, "/academic-years", actor)
+		recorder := httptest.NewRecorder()
+		csrf.Protect(http.HandlerFunc(handler.List)).ServeHTTP(recorder, req)
+
+		if recorder.Code != http.StatusOK {
+			t.Fatalf("status = %d, want 200; body=%s", recorder.Code, recorder.Body.String())
+		}
+		body := recorder.Body.String()
+		for _, want := range []string{"wali-kelas-test", "WALI_KELAS", "Tahun Ajaran"} {
+			if !strings.Contains(body, want) {
+				t.Errorf("list body %q does not contain %q", body, want)
+			}
+		}
+		if strings.Count(body, "|") != 3 {
+			t.Errorf("list body %q does not include username, role, CSRF token and heading", body)
+		}
+	})
+
+	t.Run("detail", func(t *testing.T) {
+		req := requestWithActor(http.MethodGet, "/academic-years/"+year.ID.String(), actor)
+		req.SetPathValue("id", year.ID.String())
+		recorder := httptest.NewRecorder()
+		csrf.Protect(http.HandlerFunc(handler.Detail)).ServeHTTP(recorder, req)
+
+		if recorder.Code != http.StatusOK {
+			t.Fatalf("status = %d, want 200; body=%s", recorder.Code, recorder.Body.String())
+		}
+		body := recorder.Body.String()
+		for _, want := range []string{"wali-kelas-test", "WALI_KELAS", year.Name} {
+			if !strings.Contains(body, want) {
+				t.Errorf("detail body %q does not contain %q", body, want)
+			}
+		}
+		if strings.Count(body, "|") != 3 {
+			t.Errorf("detail body %q does not include username, role, CSRF token and heading", body)
+		}
+	})
+}
+
 func TestAcademicYearListUsesBoundedPagination(t *testing.T) {
 	fake := &academicYearServiceFake{}
 	handler := newAcademicYearHandlerForTest(t, fake)

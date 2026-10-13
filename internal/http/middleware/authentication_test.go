@@ -91,7 +91,7 @@ func TestNewAuthenticationMiddlewareRejectsMissingDependencies(t *testing.T) {
 
 func TestAuthenticationMiddlewareInjectsActor(t *testing.T) {
 	userID := uuid.New()
-	user := domain.User{ID: userID, Role: domain.RoleAdmin}
+	user := domain.User{ID: userID, Username: "admin-test", Role: domain.RoleAdmin}
 	session := domain.Session{
 		ID:        uuid.New(),
 		UserID:    userID,
@@ -111,8 +111,8 @@ func TestAuthenticationMiddlewareInjectsActor(t *testing.T) {
 		if !ok {
 			t.Fatal("ActorFromContext() ok = false, want true")
 		}
-		if actor.UserID != userID || actor.Role != domain.RoleAdmin {
-			t.Fatalf("actor = %+v, want user ID %v and role %v", actor, userID, domain.RoleAdmin)
+		if actor.UserID != userID || actor.Username != "admin-test" || actor.Role != domain.RoleAdmin {
+			t.Fatalf("actor = %+v, want user ID %v, username %q and role %v", actor, userID, "admin-test", domain.RoleAdmin)
 		}
 		w.WriteHeader(http.StatusNoContent)
 	})
