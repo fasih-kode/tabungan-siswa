@@ -123,6 +123,7 @@ func newAcademicYearRouterWithSession(
 			LoginPage:      newTestLoginPageHandler(t),
 			Dashboard:      dashboard,
 			AcademicYear:   academicYearHandler,
+			Class:          newTestClassPageHandler(t),
 		},
 		MiddlewareSet{
 			Authentication: auth,

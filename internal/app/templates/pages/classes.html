@@ -1,0 +1,65 @@
+{{define "classes"}}
+<!doctype html>
+<html lang="id">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{{.Title}} - Tabungan Siswa</title>
+    <link rel="stylesheet" href="/static/css/app.css">
+    <script src="/static/js/htmx.min.js" defer></script>
+</head>
+<body class="bg-gray-50 dark:bg-gray-900">
+<div class="flex h-screen overflow-hidden">
+    {{template "sidebar" .}}
+    <div class="relative flex min-w-0 flex-1 flex-col overflow-x-hidden overflow-y-auto">
+        {{template "header" .}}
+        <main class="min-w-0"><div class="mx-auto w-full max-w-(--breakpoint-2xl) p-4 md:p-6">
+            <div class="space-y-6">
+                <div><h1 class="text-2xl font-semibold text-gray-800 dark:text-white">{{.Heading}}</h1><p class="mt-1 text-sm text-gray-500 dark:text-gray-400">{{.Description}}</p></div>
+                {{if .Error}}<div role="alert" class="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{{.Error}}</div>{{end}}
+                {{if .IsDetail}}
+                <section class="rounded-2xl border border-gray-200 bg-white p-5 shadow-theme-sm dark:border-gray-800 dark:bg-gray-800">
+                    <form method="post" action="/classes/{{.ClassID}}" class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                        <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+                        <div><label class="form-label" for="class-name">Nama kelas</label><input class="form-input" id="class-name" name="name" maxlength="100" required value="{{.Name}}"></div>
+                        <div><label class="form-label" for="class-level">Tingkat</label><input class="form-input" id="class-level" name="level" type="number" min="1" max="12" required value="{{.Level}}"></div>
+                        {{if eq .Role "ADMIN"}}<div class="sm:col-span-2"><button class="form-button-primary" type="submit">Simpan Perubahan</button></div>{{end}}
+                    </form>
+                    <p class="mt-5"><a class="text-sm font-medium text-blue-600 hover:underline" href="/classes">Kembali ke daftar kelas</a></p>
+                </section>
+                {{else}}
+                {{if eq .Role "ADMIN"}}
+                <section class="rounded-2xl border border-gray-200 bg-white p-5 shadow-theme-sm dark:border-gray-800 dark:bg-gray-800">
+                    <h2 class="text-base font-semibold text-gray-800 dark:text-white">Tambah kelas</h2>
+                    <form method="post" action="/classes" class="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-3">
+                        <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+                        <div><label class="form-label" for="new-class-name">Nama kelas</label><input class="form-input" id="new-class-name" name="name" maxlength="100" required value="{{.Name}}" placeholder="VII A"></div>
+                        <div><label class="form-label" for="new-class-level">Tingkat</label><input class="form-input" id="new-class-level" name="level" type="number" min="1" max="12" required value="{{if .Level}}{{.Level}}{{end}}"></div>
+                        <div class="flex items-end"><button class="form-button-primary" type="submit">Simpan Kelas</button></div>
+                    </form>
+                </section>
+                {{end}}
+                <section class="rounded-2xl border border-gray-200 bg-white p-5 shadow-theme-sm dark:border-gray-800 dark:bg-gray-800">
+                    <form method="get" action="/classes" class="flex flex-wrap items-end gap-3">
+                        <div class="min-w-56 flex-1"><label class="form-label" for="academic-year-id">Tahun ajaran</label><select class="form-input" id="academic-year-id" name="academic_year_id" required>
+                            <option value="">Pilih tahun ajaran</option>{{range .AcademicYears}}<option value="{{.ID}}" {{if eq $.AcademicYearID .ID}}selected{{end}}>{{.Name}}</option>{{end}}
+                        </select></div><button class="form-button-primary" type="submit">Tampilkan</button>
+                    </form>
+                </section>
+                {{if .AcademicYearID}}
+                <section class="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-theme-sm dark:border-gray-800 dark:bg-gray-800">
+                    <div class="overflow-x-auto"><table class="min-w-full divide-y divide-gray-200 dark:divide-gray-800">
+                        <thead class="bg-gray-50 dark:bg-gray-900"><tr><th class="px-5 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Nama kelas</th><th class="px-5 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Tingkat</th>{{if eq $.Role "ADMIN"}}<th class="px-5 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Detail</th>{{end}}</tr></thead>
+                        <tbody class="divide-y divide-gray-200 dark:divide-gray-800">{{range .Rows}}<tr><td class="px-5 py-4 text-sm font-medium text-gray-800 dark:text-white">{{.Name}}</td><td class="px-5 py-4 text-sm text-gray-600 dark:text-gray-300">{{.Level}}</td>{{if eq $.Role "ADMIN"}}<td class="px-5 py-4 text-sm"><a class="font-medium text-blue-600 hover:underline" href="/classes/{{.ID}}">Lihat / Edit</a></td>{{end}}</tr>{{else}}<tr><td colspan="{{if eq $.Role "ADMIN"}}3{{else}}2{{end}}" class="px-5 py-12 text-center text-sm text-gray-500">Belum ada kelas untuk tahun ajaran ini atau kelas tidak berada dalam cakupan akun Anda.</td></tr>{{end}}</tbody>
+                    </table></div>
+                    <div class="flex items-center justify-between border-t border-gray-200 px-5 py-4 dark:border-gray-800">{{if .HasPrevious}}<a class="text-sm font-medium text-blue-600 hover:underline" href="/classes?academic_year_id={{.AcademicYearID}}&page={{.PreviousPage}}&limit={{.Limit}}">Sebelumnya</a>{{else}}<span></span>{{end}}<span class="text-sm text-gray-500">Halaman {{.Page}}</span>{{if .HasNext}}<a class="text-sm font-medium text-blue-600 hover:underline" href="/classes?academic_year_id={{.AcademicYearID}}&page={{.NextPage}}&limit={{.Limit}}">Berikutnya</a>{{else}}<span></span>{{end}}</div>
+                </section>
+                {{else}}<section class="rounded-2xl border border-dashed border-gray-300 bg-white p-10 text-center dark:border-gray-700 dark:bg-gray-800"><p class="text-sm text-gray-500">Pilih tahun ajaran untuk menampilkan kelas.</p></section>{{end}}
+                {{end}}
+            </div>
+        </div></main>
+    </div>
+</div>
+</body>
+</html>
+{{end}}

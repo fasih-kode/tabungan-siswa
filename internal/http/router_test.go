@@ -36,6 +36,7 @@ func TestNewRouterRejectsMissingDependencies(t *testing.T) {
 		LoginPage:      newTestLoginPageHandler(t),
 		Dashboard:      newTestDashboardPageHandler(t),
 		AcademicYear:   newTestAcademicYearPageHandler(t),
+		Class:          newTestClassPageHandler(t),
 	}
 	middlewares := MiddlewareSet{
 		Authentication: authMiddleware,
@@ -61,6 +62,12 @@ func TestNewRouterRejectsMissingDependencies(t *testing.T) {
 	handlers.Dashboard = nil
 	if _, err := NewRouter(handlers, middlewares, newTestStaticAssetHandler()); err != ErrInvalidRouterDependency {
 		t.Fatalf("missing dashboard handler error = %v, want %v", err, ErrInvalidRouterDependency)
+	}
+
+	handlers.Dashboard = newTestDashboardPageHandler(t)
+	handlers.Class = nil
+	if _, err := NewRouter(handlers, middlewares, newTestStaticAssetHandler()); err != ErrInvalidRouterDependency {
+		t.Fatalf("missing class handler error = %v, want %v", err, ErrInvalidRouterDependency)
 	}
 }
 
@@ -96,6 +103,7 @@ func TestNewRouterStaticRouteUsesStaticAssetHandler(t *testing.T) {
 			LoginPage:      newTestLoginPageHandler(t),
 			Dashboard:      newTestDashboardPageHandler(t),
 			AcademicYear:   newTestAcademicYearPageHandler(t),
+			Class:          newTestClassPageHandler(t),
 		},
 		MiddlewareSet{
 			Authentication: authMiddleware,
@@ -152,6 +160,7 @@ func TestNewRouterPublicLoginRoute(t *testing.T) {
 			LoginPage:      newTestLoginPageHandler(t),
 			Dashboard:      newTestDashboardPageHandler(t),
 			AcademicYear:   newTestAcademicYearPageHandler(t),
+			Class:          newTestClassPageHandler(t),
 		},
 		MiddlewareSet{
 			Authentication: authMiddleware,
@@ -201,6 +210,7 @@ func TestNewRouterAuthenticationRoutesRequireCSRF(t *testing.T) {
 			LoginPage:      newTestLoginPageHandler(t),
 			Dashboard:      newTestDashboardPageHandler(t),
 			AcademicYear:   newTestAcademicYearPageHandler(t),
+			Class:          newTestClassPageHandler(t),
 		},
 		MiddlewareSet{
 			Authentication: authMiddleware,
@@ -263,6 +273,7 @@ func TestNewRouterAuthenticationRoutesRejectUnsupportedMethods(t *testing.T) {
 			LoginPage:      newTestLoginPageHandler(t),
 			Dashboard:      newTestDashboardPageHandler(t),
 			AcademicYear:   newTestAcademicYearPageHandler(t),
+			Class:          newTestClassPageHandler(t),
 		},
 		MiddlewareSet{
 			Authentication: authMiddleware,
@@ -335,6 +346,7 @@ func TestNewRouterLogoutRouteUsesPostMethod(t *testing.T) {
 			LoginPage:      newTestLoginPageHandler(t),
 			Dashboard:      newTestDashboardPageHandler(t),
 			AcademicYear:   newTestAcademicYearPageHandler(t),
+			Class:          newTestClassPageHandler(t),
 		},
 		MiddlewareSet{
 			Authentication: authMiddleware,
@@ -382,6 +394,7 @@ func TestNewRouterReturnsNotFoundForUnknownRoute(t *testing.T) {
 			LoginPage:      newTestLoginPageHandler(t),
 			Dashboard:      newTestDashboardPageHandler(t),
 			AcademicYear:   newTestAcademicYearPageHandler(t),
+			Class:          newTestClassPageHandler(t),
 		},
 		MiddlewareSet{
 			Authentication: authMiddleware,
@@ -450,6 +463,7 @@ func TestNewRouterUsesCanonicalPathsWithoutTrailingSlash(t *testing.T) {
 			LoginPage:      newTestLoginPageHandler(t),
 			Dashboard:      newTestDashboardPageHandler(t),
 			AcademicYear:   newTestAcademicYearPageHandler(t),
+			Class:          newTestClassPageHandler(t),
 		},
 		MiddlewareSet{
 			Authentication: authMiddleware,
@@ -520,6 +534,7 @@ func TestNewRouterProtectedRouteRequiresAuthentication(t *testing.T) {
 			LoginPage:      newTestLoginPageHandler(t),
 			Dashboard:      newTestDashboardPageHandler(t),
 			AcademicYear:   newTestAcademicYearPageHandler(t),
+			Class:          newTestClassPageHandler(t),
 		},
 		MiddlewareSet{
 			Authentication: authMiddleware,
@@ -559,6 +574,7 @@ func TestNewRouterProtectedMiddlewareRunsAuthenticationBeforeCSRF(t *testing.T) 
 			LoginPage:      newTestLoginPageHandler(t),
 			Dashboard:      newTestDashboardPageHandler(t),
 			AcademicYear:   newTestAcademicYearPageHandler(t),
+			Class:          newTestClassPageHandler(t),
 		},
 		MiddlewareSet{
 			Authentication: authMiddleware,
@@ -604,6 +620,7 @@ func TestNewRouterProtectedRouteDoesNotPropagateActorWhenAuthenticationFails(t *
 			LoginPage:      newTestLoginPageHandler(t),
 			Dashboard:      newTestDashboardPageHandler(t),
 			AcademicYear:   newTestAcademicYearPageHandler(t),
+			Class:          newTestClassPageHandler(t),
 		},
 		MiddlewareSet{
 			Authentication: authMiddleware,
@@ -641,6 +658,7 @@ func TestNewRouterProtectedRouteMapsAuthenticationFailureToServerError(t *testin
 			LoginPage:      newTestLoginPageHandler(t),
 			Dashboard:      newTestDashboardPageHandler(t),
 			AcademicYear:   newTestAcademicYearPageHandler(t),
+			Class:          newTestClassPageHandler(t),
 		},
 		MiddlewareSet{
 			Authentication: authMiddleware,
@@ -709,6 +727,7 @@ func TestNewRouterProtectedRouteAllowsAuthenticatedRequest(t *testing.T) {
 			LoginPage:      newTestLoginPageHandler(t),
 			Dashboard:      newTestDashboardPageHandler(t),
 			AcademicYear:   newTestAcademicYearPageHandler(t),
+			Class:          newTestClassPageHandler(t),
 		},
 		MiddlewareSet{
 			Authentication: authMiddleware,
@@ -767,6 +786,7 @@ func TestNewRouterProtectedPostRequiresCSRFAfterAuthentication(t *testing.T) {
 			LoginPage:      newTestLoginPageHandler(t),
 			Dashboard:      newTestDashboardPageHandler(t),
 			AcademicYear:   newTestAcademicYearPageHandler(t),
+			Class:          newTestClassPageHandler(t),
 		},
 		MiddlewareSet{
 			Authentication: authMiddleware,
@@ -810,6 +830,7 @@ func TestNewRouterProtectedPostRequiresAuthenticationBeforeCSRF(t *testing.T) {
 			LoginPage:      newTestLoginPageHandler(t),
 			Dashboard:      newTestDashboardPageHandler(t),
 			AcademicYear:   newTestAcademicYearPageHandler(t),
+			Class:          newTestClassPageHandler(t),
 		},
 		MiddlewareSet{
 			Authentication: authMiddleware,

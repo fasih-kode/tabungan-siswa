@@ -49,6 +49,7 @@ func TestNewHandlerSet(t *testing.T) {
 		service.ServiceSet{
 			Authentication: handlerSetAuthenticationServiceFake{},
 			AcademicYear:   &academicYearServiceFake{},
+			Class:          &classServiceFake{},
 		},
 		security.SecuritySet{
 			SessionCookie:     security.NewDefaultSessionCookie(),
@@ -72,6 +73,9 @@ func TestNewHandlerSet(t *testing.T) {
 	}
 	if set.AcademicYear == nil {
 		t.Fatal("HandlerSet.AcademicYear is nil")
+	}
+	if set.Class == nil {
+		t.Fatal("HandlerSet.Class is nil")
 	}
 }
 

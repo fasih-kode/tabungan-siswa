@@ -186,6 +186,7 @@ func newIntegrationRouter(t *testing.T) *http.ServeMux {
 			LoginPage:      newTestLoginPageHandler(t),
 			Dashboard:      newTestDashboardPageHandler(t),
 			AcademicYear:   newTestAcademicYearPageHandler(t),
+			Class:          newTestClassPageHandler(t),
 		},
 		MiddlewareSet{
 			Authentication: authMiddleware,

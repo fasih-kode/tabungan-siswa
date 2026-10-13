@@ -198,6 +198,7 @@ func TestAuthenticationIntegrationUsesRealServiceAndArgon2id(t *testing.T) {
 			LoginPage:      newTestLoginPageHandler(t),
 			Dashboard:      newTestDashboardPageHandler(t),
 			AcademicYear:   newTestAcademicYearPageHandler(t),
+			Class:          newTestClassPageHandler(t),
 		},
 		MiddlewareSet{
 			Authentication: authMiddleware,

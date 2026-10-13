@@ -16,6 +16,7 @@ type HandlerSet struct {
 	LoginPage      *LoginPageHandler
 	Dashboard      *DashboardPageHandler
 	AcademicYear   *AcademicYearPageHandler
+	Class          *ClassPageHandler
 }
 
 // NewHandlerSet membangun seluruh HTTP handler dari dependency yang
@@ -49,10 +50,16 @@ func NewHandlerSet(
 		return HandlerSet{}, err
 	}
 
+	classHandler, err := NewClassPageHandler(services.Class, services.AcademicYear, templates)
+	if err != nil {
+		return HandlerSet{}, err
+	}
+
 	return HandlerSet{
 		Authentication: authentication,
 		LoginPage:      loginPage,
 		Dashboard:      dashboard,
 		AcademicYear:   academicYear,
+		Class:          classHandler,
 	}, nil
 }

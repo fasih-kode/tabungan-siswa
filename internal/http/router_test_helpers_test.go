@@ -109,3 +109,12 @@ func newTestDashboardPageHandler(t *testing.T) *DashboardPageHandler {
 
 	return handler
 }
+
+func newTestClassPageHandler(t *testing.T) *ClassPageHandler {
+	t.Helper()
+	handler, err := NewClassPageHandler(&classServiceFake{}, &academicYearServiceFake{}, newClassTestTemplate(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return handler
+}
