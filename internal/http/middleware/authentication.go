@@ -74,8 +74,9 @@ func (m *AuthenticationMiddleware) RequireAuthentication(
 		}
 
 		actor := service.Actor{
-			UserID: user.ID,
-			Role:   user.Role,
+			UserID:   user.ID,
+			Username: user.Username,
+			Role:     user.Role,
 		}
 		if err := actor.Validate(); err != nil {
 			autherror.Write(w, err)

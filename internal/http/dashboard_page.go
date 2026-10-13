@@ -4,6 +4,7 @@ import (
 	"html/template"
 	"net/http"
 
+	"github.com/fasih/tabungan-siswa/internal/http/middleware"
 	"github.com/fasih/tabungan-siswa/internal/service"
 )
 
@@ -11,6 +12,9 @@ type DashboardPageViewModel struct {
 	Title       string
 	Heading     string
 	Description string
+	Username    string
+	Role        string
+	CSRFToken   string
 }
 
 type DashboardPageHandler struct {
@@ -38,10 +42,24 @@ func (h *DashboardPageHandler) Get(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	actor, ok := service.ActorFromContext(r.Context())
+	if !ok {
+		http.Error(w, http.StatusText(http.StatusUnauthorized), http.StatusUnauthorized)
+		return
+	}
+	csrfToken, ok := middleware.CSRFToken(r)
+	if !ok {
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		return
+	}
+
 	viewModel := DashboardPageViewModel{
 		Title:       "Dashboard",
 		Heading:     "Dashboard",
 		Description: "Ringkasan aplikasi Tabungan Siswa.",
+		Username:    actor.Username,
+		Role:        string(actor.Role),
+		CSRFToken:   csrfToken,
 	}
 
 	if err := h.templates.ExecuteTemplate(w, "base", viewModel); err != nil {

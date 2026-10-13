@@ -6,8 +6,9 @@ import (
 )
 
 type Actor struct {
-	UserID uuid.UUID
-	Role   domain.UserRole
+	UserID   uuid.UUID
+	Username string
+	Role     domain.UserRole
 }
 
 func (a Actor) Validate() error {

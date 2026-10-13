@@ -38,6 +38,7 @@ type AcademicYearPageViewModel struct {
 	Description  string
 	CSRFToken    string
 	Role         string
+	Username     string
 	Rows         []AcademicYearRowViewModel
 	AcademicYear *AcademicYearRowViewModel
 	Name         string
@@ -108,7 +109,7 @@ func (h *AcademicYearPageHandler) List(w http.ResponseWriter, r *http.Request) {
 	vm := AcademicYearPageViewModel{
 		Title: "Tahun Ajaran", Heading: "Tahun Ajaran",
 		Description: "Kelola periode dan status tahun ajaran.", CSRFToken: csrfToken,
-		Role: string(actor.Role), Rows: rows, Page: page, Limit: limit,
+		Role: string(actor.Role), Username: actor.Username, Rows: rows, Page: page, Limit: limit,
 		HasPrevious: page > 1, HasNext: hasNext, PreviousPage: page - 1, NextPage: page + 1,
 	}
 	if err := h.templates.ExecuteTemplate(w, "academic-years", vm); err != nil {
@@ -178,7 +179,7 @@ func (h *AcademicYearPageHandler) Detail(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	row := academicYearRow(*output.AcademicYear)
-	vm := AcademicYearPageViewModel{Title: "Detail Tahun Ajaran", Heading: row.Name, Description: "Detail dan lifecycle tahun ajaran.", CSRFToken: csrfToken, Role: string(actor.Role), AcademicYear: &row}
+	vm := AcademicYearPageViewModel{Title: "Detail Tahun Ajaran", Heading: row.Name, Description: "Detail dan lifecycle tahun ajaran.", CSRFToken: csrfToken, Role: string(actor.Role), Username: actor.Username, AcademicYear: &row}
 	if err := h.templates.ExecuteTemplate(w, "academic-years", vm); err != nil {
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 	}
@@ -237,7 +238,7 @@ func (h *AcademicYearPageHandler) renderFormError(
 	vm := AcademicYearPageViewModel{
 		Title: "Tahun Ajaran", Heading: "Tahun Ajaran",
 		Description: "Kelola periode dan status tahun ajaran.",
-		CSRFToken:   csrfToken, Role: string(actor.Role), Name: name,
+		CSRFToken:   csrfToken, Role: string(actor.Role), Username: actor.Username, Name: name,
 		StartDate: startDate, EndDate: endDate, Error: message,
 	}
 	if err := h.templates.ExecuteTemplate(w, "academic-years", vm); err != nil {
