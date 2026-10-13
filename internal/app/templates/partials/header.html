@@ -1,6 +1,6 @@
 {{define "header"}}
-<header class="sticky top-0 z-30 flex w-full border-b border-gray-200 bg-white dark:border-gray-800 dark:bg-gray-900">
-    <div class="flex grow items-center justify-between px-4 py-3 sm:px-6 lg:px-0 lg:py-4">
+<header class="sticky top-0 z-30 flex min-h-[76px] w-full border-b border-gray-200 bg-white dark:border-gray-800 dark:bg-gray-900">
+    <div class="flex grow items-center justify-between gap-4 px-4 py-3 sm:px-6 lg:px-6 lg:py-4">
         <div class="flex min-w-0 items-center gap-3 sm:gap-4">
             <details class="relative lg:hidden">
                 <summary class="flex h-10 w-10 cursor-pointer list-none items-center justify-center rounded-lg text-gray-500 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-800">
@@ -20,13 +20,27 @@
             </a>
 
             <div class="hidden min-w-0 lg:block">
-                <p class="truncate text-sm font-medium text-gray-800 dark:text-white/90">{{.Title}}</p>
-                <p class="mt-0.5 truncate text-xs text-gray-500 dark:text-gray-400">Tabungan Siswa</p>
+                <p class="truncate text-sm font-semibold text-gray-800 dark:text-white/90">{{.Title}}</p>
+                <p class="mt-1 truncate text-xs text-gray-500 dark:text-gray-400">Tabungan Siswa <span class="px-1 text-gray-300">/</span> {{.Title}}</p>
             </div>
         </div>
 
-        <div class="ml-4 min-w-0 text-right lg:hidden">
-            <p class="truncate text-sm font-medium text-gray-800 dark:text-white/90">{{.Title}}</p>
+        <div class="ml-auto flex min-w-0 items-center gap-3 sm:gap-4">
+            <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-gray-200 bg-gray-100 text-gray-600 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300" aria-hidden="true">
+                <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M20 21a8 8 0 0 0-16 0m8-10a4 4 0 1 0 0-8 4 4 0 0 0 0 8Z"/>
+                </svg>
+            </div>
+            <div class="hidden min-w-0 sm:block">
+                <p class="max-w-40 truncate text-sm font-semibold text-gray-800 dark:text-white/90">{{.Username}}</p>
+                <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">{{.Role}}</p>
+            </div>
+            <form method="post" action="/logout" class="shrink-0">
+                <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+                <button type="submit" class="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm font-medium text-gray-700 shadow-theme-xs transition hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300 dark:hover:bg-gray-800">
+                    Keluar
+                </button>
+            </form>
         </div>
     </div>
 </header>
