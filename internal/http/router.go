@@ -14,6 +14,7 @@ func NewRouter(
 	if handlers.Authentication == nil ||
 		handlers.LoginPage == nil ||
 		handlers.Dashboard == nil ||
+		handlers.AcademicYear == nil ||
 		middlewares.Authentication == nil ||
 		middlewares.CSRF == nil ||
 		staticAssets == nil {
@@ -41,6 +42,7 @@ func registerRoutes(
 	registerStaticRoutes(mux, staticAssets)
 	registerPublicRoutes(mux, handlers.LoginPage, middlewares.CSRF)
 	registerAuthenticationRoutes(mux, handlers.Authentication, middlewares.CSRF)
+	registerAcademicYearRoutes(mux, handlers.AcademicYear, middlewares.Authentication, middlewares.CSRF)
 	registerProtectedRoutes(
 		mux,
 		middlewares.Authentication,
@@ -90,4 +92,16 @@ func registerPublicRoutes(
 	mux.HandleFunc("GET /login", csrf.Protect(http.HandlerFunc(
 		loginPage.Get,
 	)).ServeHTTP)
+}
+
+func registerAcademicYearRoutes(
+	mux *http.ServeMux,
+	handler *AcademicYearPageHandler,
+	authentication *middleware.AuthenticationMiddleware,
+	csrf *middleware.CSRFMiddleware,
+) {
+	mux.Handle("GET /academic-years", authentication.RequireAuthentication(csrf.Protect(http.HandlerFunc(handler.List))))
+	mux.Handle("POST /academic-years", authentication.RequireAuthentication(limitAcademicYearRequestBody(csrf.Protect(http.HandlerFunc(handler.Create)))))
+	mux.Handle("GET /academic-years/{id}", authentication.RequireAuthentication(csrf.Protect(http.HandlerFunc(handler.Detail))))
+	mux.Handle("POST /academic-years/{id}/{action}", authentication.RequireAuthentication(limitAcademicYearRequestBody(csrf.Protect(http.HandlerFunc(handler.Transition)))))
 }
