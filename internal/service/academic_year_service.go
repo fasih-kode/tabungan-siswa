@@ -168,12 +168,28 @@ func (s *academicYearService) StartClosing(
 
 	repos := uow.Repositories()
 
-	academicYear, err := repos.AcademicYears.GetByID(
+	// Lock the academic-year row before checking requests. Class-transfer
+	// writes take FOR SHARE on this row in the database trigger, so either the
+	// request commits first and is observed here, or it waits and sees CLOSING.
+	academicYear, err := repos.AcademicYears.GetByIDForUpdate(
 		ctx,
 		input.AcademicYearID,
 	)
 	if err != nil {
 		return StartClosingAcademicYearOutput{}, err
+	}
+	if repos.ClassTransferRequests != nil {
+		pending, err := repos.ClassTransferRequests.ListPending(
+			ctx,
+			academicYear.ID,
+			repository.ListOptions{Limit: 1},
+		)
+		if err != nil {
+			return StartClosingAcademicYearOutput{}, err
+		}
+		if len(pending) > 0 {
+			return StartClosingAcademicYearOutput{}, domain.ErrInvalidTransition
+		}
 	}
 
 	if err := academicYear.StartClosing(); err != nil {
@@ -245,6 +261,19 @@ func (s *academicYearService) Close(
 			return CloseAcademicYearOutput{}, err
 		}
 		if hasOpen {
+			return CloseAcademicYearOutput{}, domain.ErrInvalidTransition
+		}
+	}
+	if repos.ClassTransferRequests != nil {
+		pending, err := repos.ClassTransferRequests.ListPending(
+			ctx,
+			academicYear.ID,
+			repository.ListOptions{Limit: 1},
+		)
+		if err != nil {
+			return CloseAcademicYearOutput{}, err
+		}
+		if len(pending) > 0 {
 			return CloseAcademicYearOutput{}, domain.ErrInvalidTransition
 		}
 	}

@@ -127,6 +127,24 @@ type academicYearServiceFakeUnitOfWorkManager struct {
 	beginCount int
 }
 
+type academicYearServiceFakeClassTransferRepository struct {
+	repository.ClassTransferRequestRepository
+	pending   []domain.ClassTransferRequest
+	err       error
+	listCalls int
+	options   repository.ListOptions
+}
+
+func (f *academicYearServiceFakeClassTransferRepository) ListPending(
+	_ context.Context,
+	_ uuid.UUID,
+	options repository.ListOptions,
+) ([]domain.ClassTransferRequest, error) {
+	f.listCalls++
+	f.options = options
+	return f.pending, f.err
+}
+
 func (f *academicYearServiceFakeUnitOfWorkManager) Begin(
 	context.Context,
 ) (repository.UnitOfWork, error) {
@@ -737,6 +755,32 @@ func TestAcademicYearService_StartClosing(t *testing.T) {
 	)
 }
 
+func TestAcademicYearService_StartClosingRejectsPendingClassTransfers(t *testing.T) {
+	ctx := context.Background()
+	admin := Actor{UserID: uuid.New(), Role: domain.RoleAdmin}
+	yearID := uuid.New()
+	yearRepo := &academicYearServiceFakeAcademicYearRepository{
+		getByIDFn: func(context.Context, uuid.UUID) (domain.AcademicYear, error) {
+			return newTestAcademicYear(yearID, domain.AcademicYearOpen), nil
+		},
+	}
+	transferRepo := &academicYearServiceFakeClassTransferRepository{
+		pending: []domain.ClassTransferRequest{{ID: uuid.New(), Status: domain.TransferPending}},
+	}
+	uow := &academicYearServiceFakeUnitOfWork{repos: repository.RepositorySet{
+		AcademicYears: yearRepo, ClassTransferRequests: transferRepo,
+	}}
+	svc := newAcademicYearServiceForTest(t, repository.RepositorySet{AcademicYears: yearRepo}, &academicYearServiceFakeUnitOfWorkManager{uow: uow})
+
+	_, err := svc.StartClosing(ctx, StartClosingAcademicYearInput{Actor: admin, AcademicYearID: yearID})
+	if !errors.Is(err, domain.ErrInvalidTransition) {
+		t.Fatalf("StartClosing() error = %v, want %v", err, domain.ErrInvalidTransition)
+	}
+	if transferRepo.listCalls != 1 || transferRepo.options.Limit != 1 || yearRepo.updateCalls != 0 || uow.commitCount != 0 || uow.rollbackCount != 1 {
+		t.Fatalf("list/update/commit/rollback = %d/%d/%d/%d, want 1/0/0/1", transferRepo.listCalls, yearRepo.updateCalls, uow.commitCount, uow.rollbackCount)
+	}
+}
+
 func TestAcademicYearService_Close(t *testing.T) {
 	testAcademicYearLifecycleService(
 		t,
@@ -788,6 +832,32 @@ func TestAcademicYearService_CloseRejectsOpenAccounts(t *testing.T) {
 	}
 	if yearRepo.updateCalls != 0 || uow.commitCount != 0 || uow.rollbackCount != 1 {
 		t.Fatalf("update/commit/rollback = %d/%d/%d, want 0/0/1", yearRepo.updateCalls, uow.commitCount, uow.rollbackCount)
+	}
+}
+
+func TestAcademicYearService_CloseRejectsPendingClassTransfers(t *testing.T) {
+	ctx := context.Background()
+	admin := Actor{UserID: uuid.New(), Role: domain.RoleAdmin}
+	yearID := uuid.New()
+	yearRepo := &academicYearServiceFakeAcademicYearRepository{
+		getByIDFn: func(context.Context, uuid.UUID) (domain.AcademicYear, error) {
+			return newTestAcademicYear(yearID, domain.AcademicYearClosing), nil
+		},
+	}
+	transferRepo := &academicYearServiceFakeClassTransferRepository{
+		pending: []domain.ClassTransferRequest{{ID: uuid.New(), Status: domain.TransferPending}},
+	}
+	uow := &academicYearServiceFakeUnitOfWork{repos: repository.RepositorySet{
+		AcademicYears: yearRepo, ClassTransferRequests: transferRepo,
+	}}
+	svc := newAcademicYearServiceForTest(t, repository.RepositorySet{AcademicYears: yearRepo}, &academicYearServiceFakeUnitOfWorkManager{uow: uow})
+
+	_, err := svc.Close(ctx, CloseAcademicYearInput{Actor: admin, AcademicYearID: yearID})
+	if !errors.Is(err, domain.ErrInvalidTransition) {
+		t.Fatalf("Close() error = %v, want %v", err, domain.ErrInvalidTransition)
+	}
+	if transferRepo.listCalls != 1 || transferRepo.options.Limit != 1 || yearRepo.updateCalls != 0 || uow.commitCount != 0 || uow.rollbackCount != 1 {
+		t.Fatalf("list/update/commit/rollback = %d/%d/%d/%d, want 1/0/0/1", transferRepo.listCalls, yearRepo.updateCalls, uow.commitCount, uow.rollbackCount)
 	}
 }
 

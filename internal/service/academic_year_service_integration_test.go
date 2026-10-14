@@ -442,6 +442,187 @@ func TestAcademicYearServiceIntegration_Lifecycle(t *testing.T) {
 	})
 }
 
+func TestAcademicYearServiceIntegration_PendingTransferBlocksClosing(t *testing.T) {
+	db := openServiceScopeTestDatabase(t)
+	ctx := context.Background()
+	cleanupServiceScopeFixtures(t, db)
+
+	repos := postgres.NewRepositorySet(db)
+	uow := postgres.NewUnitOfWorkManager(db)
+	yearRepo := postgres.NewAcademicYearRepository(db)
+	admin := newServiceScopeUser(t, domain.RoleAdmin)
+	if err := repos.Users.Create(ctx, admin); err != nil {
+		t.Fatalf("create admin: %v", err)
+	}
+	year := newServiceScopeAcademicYear(t, "Pending transfer close guard "+uuid.NewString())
+	if err := yearRepo.Create(ctx, year); err != nil {
+		t.Fatalf("create academic year: %v", err)
+	}
+	fromClass := newServiceScopeClass(t, "From "+uuid.NewString(), 4)
+	toClass := newServiceScopeClass(t, "To "+uuid.NewString(), 5)
+	if err := repos.Classes.Create(ctx, fromClass); err != nil {
+		t.Fatalf("create source class: %v", err)
+	}
+	if err := repos.Classes.Create(ctx, toClass); err != nil {
+		t.Fatalf("create destination class: %v", err)
+	}
+	student := newServiceScopeStudent(t, "Transfer Student")
+	if err := repos.Students.Create(ctx, student); err != nil {
+		t.Fatalf("create student: %v", err)
+	}
+	if err := repos.StudentClassHistories.Create(ctx, newServiceScopeStudentHistory(t, student.ID, year.ID, fromClass.ID)); err != nil {
+		t.Fatalf("create student class history: %v", err)
+	}
+
+	adminActor := service.Actor{UserID: admin.ID, Role: domain.RoleAdmin}
+	transferSvc, err := service.NewClassTransferService(service.Dependencies{Repositories: repos, UOW: uow})
+	if err != nil {
+		t.Fatalf("NewClassTransferService() error = %v", err)
+	}
+	request, err := transferSvc.Request(ctx, service.RequestTransferInput{
+		Actor: adminActor, StudentID: student.ID, AcademicYearID: year.ID,
+		FromClassID: fromClass.ID, ToClassID: toClass.ID,
+	})
+	if err != nil {
+		t.Fatalf("Request() error = %v", err)
+	}
+
+	yearSvc, err := service.NewAcademicYearService(service.Dependencies{Repositories: repos, UOW: uow})
+	if err != nil {
+		t.Fatalf("NewAcademicYearService() error = %v", err)
+	}
+	if _, err := yearSvc.StartClosing(ctx, service.StartClosingAcademicYearInput{Actor: adminActor, AcademicYearID: year.ID}); !errors.Is(err, domain.ErrInvalidTransition) {
+		t.Fatalf("StartClosing() error = %v, want %v", err, domain.ErrInvalidTransition)
+	}
+	persistedYear, err := yearRepo.GetByID(ctx, year.ID)
+	if err != nil {
+		t.Fatalf("get academic year after rejected StartClosing(): %v", err)
+	}
+	if persistedYear.Status != domain.AcademicYearOpen {
+		t.Fatalf("academic year status = %q, want OPEN", persistedYear.Status)
+	}
+	persistedRequest, err := postgres.NewClassTransferRequestRepository(db).GetByID(ctx, request.TransferRequest.ID)
+	if err != nil {
+		t.Fatalf("get request after rejected StartClosing(): %v", err)
+	}
+	if persistedRequest.Status != domain.TransferPending {
+		t.Fatalf("transfer status = %q, want PENDING", persistedRequest.Status)
+	}
+
+	// Preserve the Close guard for legacy/inconsistent CLOSING years that may
+	// already contain a pending request.
+	persistedYear.Status = domain.AcademicYearClosing
+	if err := yearRepo.Update(ctx, persistedYear); err != nil {
+		t.Fatalf("set legacy CLOSING status: %v", err)
+	}
+	if _, err := yearSvc.Close(ctx, service.CloseAcademicYearInput{Actor: adminActor, AcademicYearID: year.ID}); !errors.Is(err, domain.ErrInvalidTransition) {
+		t.Fatalf("Close() error = %v, want %v", err, domain.ErrInvalidTransition)
+	}
+	persistedYear, err = yearRepo.GetByID(ctx, year.ID)
+	if err != nil {
+		t.Fatalf("get academic year after rejected Close(): %v", err)
+	}
+	if persistedYear.Status != domain.AcademicYearClosing {
+		t.Fatalf("academic year status after rejected Close() = %q, want CLOSING", persistedYear.Status)
+	}
+}
+
+func TestAcademicYearServiceIntegration_StartClosingSerializesWithTransferRequest(t *testing.T) {
+	db := openServiceScopeTestDatabase(t)
+	ctx := context.Background()
+	cleanupServiceScopeFixtures(t, db)
+
+	repos := postgres.NewRepositorySet(db)
+	uow := postgres.NewUnitOfWorkManager(db)
+	yearRepo := postgres.NewAcademicYearRepository(db)
+	admin := newServiceScopeUser(t, domain.RoleAdmin)
+	if err := repos.Users.Create(ctx, admin); err != nil {
+		t.Fatalf("create admin: %v", err)
+	}
+	year := newServiceScopeAcademicYear(t, "Transfer close serialization "+uuid.NewString())
+	if err := yearRepo.Create(ctx, year); err != nil {
+		t.Fatalf("create academic year: %v", err)
+	}
+	fromClass := newServiceScopeClass(t, "From "+uuid.NewString(), 4)
+	toClass := newServiceScopeClass(t, "To "+uuid.NewString(), 5)
+	if err := repos.Classes.Create(ctx, fromClass); err != nil {
+		t.Fatalf("create source class: %v", err)
+	}
+	if err := repos.Classes.Create(ctx, toClass); err != nil {
+		t.Fatalf("create destination class: %v", err)
+	}
+	student := newServiceScopeStudent(t, "Concurrent Transfer Student")
+	if err := repos.Students.Create(ctx, student); err != nil {
+		t.Fatalf("create student: %v", err)
+	}
+	request, err := domain.NewClassTransferRequest(student.ID, year.ID, fromClass.ID, toClass.ID, admin.ID)
+	if err != nil {
+		t.Fatalf("NewClassTransferRequest() error = %v", err)
+	}
+
+	requestTx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		t.Fatalf("begin request transaction: %v", err)
+	}
+	defer func() { _ = requestTx.Rollback() }()
+	if err := postgres.NewClassTransferRequestRepository(requestTx).Create(ctx, request); err != nil {
+		t.Fatalf("create pending request in open transaction: %v", err)
+	}
+
+	yearSvc, err := service.NewAcademicYearService(service.Dependencies{Repositories: repos, UOW: uow})
+	if err != nil {
+		t.Fatalf("NewAcademicYearService() error = %v", err)
+	}
+	result := make(chan error, 1)
+	go func() {
+		_, closeErr := yearSvc.StartClosing(ctx, service.StartClosingAcademicYearInput{
+			Actor: service.Actor{UserID: admin.ID, Role: domain.RoleAdmin}, AcademicYearID: year.ID,
+		})
+		result <- closeErr
+	}()
+
+	waitCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	for {
+		var waiting bool
+		if err := db.QueryRowContext(waitCtx, `
+			SELECT EXISTS (
+				SELECT 1 FROM pg_stat_activity
+				WHERE datname = current_database()
+				  AND wait_event_type = 'Lock'
+				  AND query ILIKE '%FROM academic_years%'
+				  AND query ILIKE '%FOR UPDATE%'
+			)
+		`).Scan(&waiting); err != nil {
+			t.Fatalf("check waiting academic-year lock: %v", err)
+		}
+		if waiting {
+			break
+		}
+		select {
+		case err := <-result:
+			t.Fatalf("StartClosing() returned before request transaction released its year lock: %v", err)
+		case <-waitCtx.Done():
+			t.Fatal("StartClosing() did not wait for the pending request transaction")
+		case <-time.After(10 * time.Millisecond):
+		}
+	}
+
+	if err := requestTx.Commit(); err != nil {
+		t.Fatalf("commit request transaction: %v", err)
+	}
+	if err := <-result; !errors.Is(err, domain.ErrInvalidTransition) {
+		t.Fatalf("StartClosing() error = %v, want %v", err, domain.ErrInvalidTransition)
+	}
+	persistedYear, err := yearRepo.GetByID(ctx, year.ID)
+	if err != nil {
+		t.Fatalf("get academic year after serialized StartClosing(): %v", err)
+	}
+	if persistedYear.Status != domain.AcademicYearOpen {
+		t.Fatalf("academic year status = %q, want OPEN", persistedYear.Status)
+	}
+}
+
 func TestAcademicYearServiceIntegration_Authorization(t *testing.T) {
 	db := openServiceScopeTestDatabase(t)
 	ctx := context.Background()

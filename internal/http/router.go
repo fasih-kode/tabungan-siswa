@@ -45,6 +45,9 @@ func registerRoutes(
 	registerAuthenticationRoutes(mux, handlers.Authentication, middlewares.CSRF)
 	registerAcademicYearRoutes(mux, handlers.AcademicYear, middlewares.Authentication, middlewares.CSRF)
 	registerClassRoutes(mux, handlers.Class, middlewares.Authentication, middlewares.CSRF)
+	if handlers.ClassTransfer != nil {
+		registerClassTransferRoutes(mux, handlers.ClassTransfer, middlewares.Authentication, middlewares.CSRF)
+	}
 	if handlers.TeacherAssignment != nil {
 		registerTeacherAssignmentRoutes(mux, handlers.TeacherAssignment, middlewares.Authentication, middlewares.CSRF)
 	}
@@ -54,6 +57,20 @@ func registerRoutes(
 		middlewares.CSRF,
 		handlers.Dashboard,
 	)
+}
+
+func registerClassTransferRoutes(
+	mux *http.ServeMux,
+	handler *ClassTransferPageHandler,
+	authentication *middleware.AuthenticationMiddleware,
+	csrf *middleware.CSRFMiddleware,
+) {
+	mux.Handle("GET /students/{student_id}/class-transfer-requests", authentication.RequireAuthentication(csrf.Protect(http.HandlerFunc(handler.ListStudent))))
+	mux.Handle("GET /class-transfer-requests/pending", authentication.RequireAuthentication(csrf.Protect(http.HandlerFunc(handler.ListPending))))
+	mux.Handle("GET /class-transfer-requests/{id}", authentication.RequireAuthentication(csrf.Protect(http.HandlerFunc(handler.Detail))))
+	mux.Handle("POST /class-transfer-requests", authentication.RequireAuthentication(limitAcademicYearRequestBody(csrf.Protect(http.HandlerFunc(handler.Request)))))
+	mux.Handle("POST /class-transfer-requests/{id}/approve", authentication.RequireAuthentication(limitAcademicYearRequestBody(csrf.Protect(http.HandlerFunc(handler.Approve)))))
+	mux.Handle("POST /class-transfer-requests/{id}/reject", authentication.RequireAuthentication(limitAcademicYearRequestBody(csrf.Protect(http.HandlerFunc(handler.Reject)))))
 }
 
 func registerStaticRoutes(

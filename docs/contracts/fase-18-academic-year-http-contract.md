@@ -41,11 +41,24 @@ Known service/domain/repository errors use the shared `httperror` mapping. Form 
 
 ## Presentation
 
-Pages use `html/template` and the shared `base` layout with the `page-content` template block. View models contain presentation values only. Create and transition actions are standard HTML forms with CSRF tokens. HTMX behavior is not introduced by this phase.
+Pages use `html/template`, the shared sidebar/header partials, and isolated
+page-content template names so one feature page cannot replace another page's
+content in the shared template namespace. View models contain presentation
+values only. Create and transition actions are standard HTML forms with CSRF
+tokens. HTMX behavior is not introduced by this phase.
+
+`StartClosing` is rejected while the year contains pending class transfer
+requests. This keeps the year `OPEN` so the existing transfer approval and
+rejection service operations remain available. `Close` also checks for
+pending requests as a defensive lifecycle guard.
 
 ## Verification requirements
 
 - Unit tests for route wiring, form validation, pagination (including lookahead boundary behavior), role context, redirects, error mapping, and rendering.
 - Full `go test ./...` and `go vet ./...`.
 - Integration tests must use the approved isolated test database via `make test-integration` / `scripts/test-integration.sh`. Never point integration tests at the development database.
-- Verification was run with the required project Go toolchain. `go test ./internal/http -count=1`, `go vet ./...`, and `make test-integration` all passed. The integration target verified the isolated database `tabungan_siswa_fase168_clean_test`.
+- The academic-year template rendering test confirms Admin and Wali Kelas
+  receive the academic-year page rather than dashboard content.
+- `make test-integration` and `go test -race ./... -count=1` passed; both
+  targets verified the isolated database `tabungan_siswa_fase168_clean_test`.
+- `go vet ./...`, `go build ./...`, and `git diff --check` passed.

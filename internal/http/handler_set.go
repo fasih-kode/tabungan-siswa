@@ -17,6 +17,7 @@ type HandlerSet struct {
 	Dashboard         *DashboardPageHandler
 	AcademicYear      *AcademicYearPageHandler
 	Class             *ClassPageHandler
+	ClassTransfer     *ClassTransferPageHandler
 	TeacherAssignment *TeacherAssignmentPageHandler
 }
 
@@ -55,6 +56,13 @@ func NewHandlerSet(
 	if err != nil {
 		return HandlerSet{}, err
 	}
+	var classTransfer *ClassTransferPageHandler
+	if services.ClassTransfer != nil {
+		classTransfer, err = NewClassTransferPageHandler(services.ClassTransfer, templates)
+		if err != nil {
+			return HandlerSet{}, err
+		}
+	}
 
 	var teacherAssignment *TeacherAssignmentPageHandler
 	if services.ClassAssignment != nil && services.User != nil && services.Class != nil && services.AcademicYear != nil {
@@ -70,6 +78,7 @@ func NewHandlerSet(
 		Dashboard:         dashboard,
 		AcademicYear:      academicYear,
 		Class:             classHandler,
+		ClassTransfer:     classTransfer,
 		TeacherAssignment: teacherAssignment,
 	}, nil
 }

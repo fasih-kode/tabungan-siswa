@@ -1,7 +1,29 @@
 {{define "academic-years"}}
-{{template "base" .}}
+<!doctype html>
+<html lang="id">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{{.Title}} - Tabungan Siswa</title>
+    <link rel="stylesheet" href="/static/css/app.css">
+    <script src="/static/js/htmx.min.js" defer></script>
+</head>
+<body class="bg-gray-50 dark:bg-gray-900">
+    <div class="flex h-screen overflow-hidden">
+        {{template "sidebar" .}}
+        <div class="relative flex min-w-0 flex-1 flex-col overflow-x-hidden overflow-y-auto">
+            {{template "header" .}}
+            <main class="min-w-0">
+                <div class="mx-auto w-full max-w-(--breakpoint-2xl) p-4 md:p-6">
+                    {{template "academic-years-content" .}}
+                </div>
+            </main>
+        </div>
+    </div>
+</body>
+</html>
 {{end}}
-{{define "page-content"}}
+{{define "academic-years-content"}}
 <div class="space-y-6">
     <div>
         <h1 class="text-2xl font-semibold text-gray-800 dark:text-white">{{.Heading}}</h1>
