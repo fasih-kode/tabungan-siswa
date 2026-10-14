@@ -103,6 +103,52 @@ func (r *UserRepository) GetByUsername(
 	return r.getOne(ctx, query, username, "get user by username")
 }
 
+func (r *UserRepository) ListByRole(
+	ctx context.Context,
+	role domain.UserRole,
+	options repository.ListOptions,
+) ([]domain.User, error) {
+	const query = `
+		SELECT
+			id,
+			username,
+			role,
+			created_at,
+			updated_at
+		FROM users
+		WHERE role = $1
+		ORDER BY username ASC, id ASC
+		LIMIT $2
+		OFFSET $3
+	`
+
+	rows, err := r.db.QueryContext(ctx, query, role, options.Limit, options.Offset)
+	if err != nil {
+		return nil, fmt.Errorf("list users by role: %w", err)
+	}
+	defer rows.Close()
+
+	users := make([]domain.User, 0)
+	for rows.Next() {
+		var user domain.User
+		if err := rows.Scan(
+			&user.ID,
+			&user.Username,
+			&user.Role,
+			&user.CreatedAt,
+			&user.UpdatedAt,
+		); err != nil {
+			return nil, fmt.Errorf("scan user by role: %w", err)
+		}
+		users = append(users, user)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate users by role: %w", err)
+	}
+
+	return users, nil
+}
+
 func (r *UserRepository) Update(
 	ctx context.Context,
 	user domain.User,

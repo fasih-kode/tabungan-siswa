@@ -16,6 +16,7 @@ type academicYearServiceFake struct {
 	listErr        error
 	transitionErr  error
 	lastListInput  service.ListAcademicYearsInput
+	listCalled     bool
 	lastTransition string
 }
 
@@ -39,6 +40,7 @@ func (f *academicYearServiceFake) Get(_ context.Context, _ service.GetAcademicYe
 	return service.GetAcademicYearOutput{AcademicYear: f.years[0]}, nil
 }
 func (f *academicYearServiceFake) List(_ context.Context, input service.ListAcademicYearsInput) (service.ListAcademicYearsOutput, error) {
+	f.listCalled = true
 	f.lastListInput = input
 	if f.listErr != nil {
 		return service.ListAcademicYearsOutput{}, f.listErr

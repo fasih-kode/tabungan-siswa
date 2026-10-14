@@ -49,6 +49,12 @@ func (f *authenticationUserRepositoryFake) GetByUsername(context.Context, string
 	return domain.User{}, nil
 }
 
+func (f *authenticationUserRepositoryFake) ListByRole(
+	ctx context.Context, role domain.UserRole, options repository.ListOptions,
+) ([]domain.User, error) {
+	return nil, nil
+}
+
 func (f *authenticationUserRepositoryFake) Update(context.Context, domain.User) error {
 	return nil
 }

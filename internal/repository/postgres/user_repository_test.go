@@ -323,3 +323,57 @@ func deleteTestUser(
 		t.Errorf("delete test user: %v", err)
 	}
 }
+
+func TestUserRepository_ListByRoleFiltersAndPaginates(t *testing.T) {
+	db := openTestDatabase(t)
+	repo := postgres.NewUserRepository(db)
+	ctx := context.Background()
+	role := domain.RoleWaliKelas
+	users := []domain.User{
+		newTestUser(t),
+		newTestUser(t),
+		newTestUser(t),
+	}
+	for i := range users {
+		users[i].Username = "list-role-" + string(rune('a'+i)) + "-" + uuid.NewString()
+		users[i].Role = role
+		if err := repo.Create(ctx, users[i]); err != nil {
+			t.Fatalf("Create(%q): %v", users[i].Username, err)
+		}
+		id := users[i].ID
+		t.Cleanup(func() { deleteTestUser(t, db, id) })
+	}
+	other := newTestUser(t)
+	other.Username = "list-role-other-" + uuid.NewString()
+	other.Role = domain.RoleSiswa
+	if err := repo.Create(ctx, other); err != nil {
+		t.Fatalf("Create(other): %v", err)
+	}
+	t.Cleanup(func() { deleteTestUser(t, db, other.ID) })
+
+	all, err := repo.ListByRole(ctx, role, repository.ListOptions{Limit: 100, Offset: 0})
+	if err != nil {
+		t.Fatalf("ListByRole(): %v", err)
+	}
+	found := make([]domain.User, 0, len(users))
+	for _, got := range all {
+		for _, want := range users {
+			if got.ID == want.ID {
+				found = append(found, got)
+			}
+		}
+		if got.ID == other.ID {
+			t.Fatal("ListByRole returned user with a different role")
+		}
+	}
+	if len(found) != len(users) {
+		t.Fatalf("found %d inserted role users, want %d", len(found), len(users))
+	}
+	page, err := repo.ListByRole(ctx, role, repository.ListOptions{Limit: 1, Offset: 1})
+	if err != nil {
+		t.Fatalf("ListByRole page: %v", err)
+	}
+	if len(page) != 1 {
+		t.Fatalf("page length = %d, want 1", len(page))
+	}
+}

@@ -13,6 +13,7 @@ import (
 
 type userServiceFakeUserRepository struct {
 	repository.UserRepository
+	listByRoleFn func(context.Context, domain.UserRole, repository.ListOptions) ([]domain.User, error)
 
 	getByIDFn          func(context.Context, uuid.UUID) (domain.User, error)
 	getByUsernameFn    func(context.Context, string) (domain.User, error)
@@ -52,6 +53,15 @@ func (f *userServiceFakeUserRepository) Create(
 	}
 
 	return nil
+}
+
+func (f *userServiceFakeUserRepository) ListByRole(
+	ctx context.Context, role domain.UserRole, options repository.ListOptions,
+) ([]domain.User, error) {
+	if f.listByRoleFn != nil {
+		return f.listByRoleFn(ctx, role, options)
+	}
+	return nil, nil
 }
 
 func (f *userServiceFakeUserRepository) Update(
@@ -1451,4 +1461,59 @@ func TestUserService_Update(t *testing.T) {
 			)
 		}
 	})
+}
+
+func TestUserService_ListByRoleRequiresAdminAndRedactsPasswordHash(t *testing.T) {
+	ctx := context.Background()
+	admin := Actor{UserID: uuid.New(), Role: domain.RoleAdmin}
+	user := newTestDomainUser(t, uuid.New(), "wali-1", domain.RoleWaliKelas)
+	repos := repository.RepositorySet{Users: &userServiceFakeUserRepository{
+		listByRoleFn: func(_ context.Context, role domain.UserRole, options repository.ListOptions) ([]domain.User, error) {
+			if role != domain.RoleWaliKelas {
+				t.Fatalf("role = %q", role)
+			}
+			if options.Limit != 10 || options.Offset != 20 {
+				t.Fatalf("options = %+v", options)
+			}
+			return []domain.User{user}, nil
+		},
+	}}
+	svc := newUserServiceForTest(t, repos, &userServiceFakeUnitOfWorkManager{})
+	got, err := svc.ListByRole(ctx, ListUsersByRoleInput{Actor: admin, Role: domain.RoleWaliKelas, Options: ListOptions{Limit: 10, Offset: 20}})
+	if err != nil {
+		t.Fatalf("ListByRole() error = %v", err)
+	}
+	if len(got.Users) != 1 || got.Users[0].ID != user.ID {
+		t.Fatalf("users = %+v", got.Users)
+	}
+	if got.Users[0].PasswordHash != "" {
+		t.Fatal("password hash leaked from listing service")
+	}
+
+	_, err = svc.ListByRole(ctx, ListUsersByRoleInput{Actor: Actor{UserID: uuid.New(), Role: domain.RoleWaliKelas}, Role: domain.RoleWaliKelas, Options: ListOptions{Limit: 10}})
+	if !errors.Is(err, ErrForbidden) {
+		t.Fatalf("non-admin error = %v, want ErrForbidden", err)
+	}
+}
+
+func TestUserService_ListByRoleRejectsInvalidOptionsAndRole(t *testing.T) {
+	svc := newUserServiceForTest(t, repository.RepositorySet{Users: &userServiceFakeUserRepository{}}, &userServiceFakeUnitOfWorkManager{})
+	actor := Actor{UserID: uuid.New(), Role: domain.RoleAdmin}
+	for _, tc := range []struct {
+		name    string
+		role    domain.UserRole
+		options ListOptions
+	}{
+		{name: "invalid role", role: domain.UserRole("INVALID"), options: ListOptions{Limit: 10}},
+		{name: "zero limit", role: domain.RoleWaliKelas, options: ListOptions{Limit: 0}},
+		{name: "oversized limit", role: domain.RoleWaliKelas, options: ListOptions{Limit: 101}},
+		{name: "negative offset", role: domain.RoleWaliKelas, options: ListOptions{Limit: 10, Offset: -1}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := svc.ListByRole(context.Background(), ListUsersByRoleInput{Actor: actor, Role: tc.role, Options: tc.options})
+			if !errors.Is(err, domain.ErrInvalidValue) {
+				t.Fatalf("error = %v, want ErrInvalidValue", err)
+			}
+		})
+	}
 }

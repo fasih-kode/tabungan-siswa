@@ -42,6 +42,15 @@
             </a>
         </li>
 
+        {{if eq .Role "ADMIN"}}
+        <li>
+            <a href="/teacher-assignments" class="flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-gray-600 transition-colors hover:bg-gray-100 hover:text-gray-900 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-white">
+                <svg class="h-5 w-5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><circle cx="9" cy="7" r="4"/><path stroke-linecap="round" stroke-linejoin="round" d="M2 21v-2a7 7 0 0 1 14 0v2M19 8v6m3-3h-6"/></svg>
+                <span>Penugasan Wali Kelas</span>
+            </a>
+        </li>
+        {{end}}
+
         <li>
             <a
                 href="/students"

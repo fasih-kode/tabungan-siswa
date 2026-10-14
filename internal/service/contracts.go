@@ -58,8 +58,19 @@ type LogoutInput struct {
 type UserService interface {
 	Get(ctx context.Context, input GetUserInput) (GetUserOutput, error)
 	GetByUsername(ctx context.Context, input GetUserByUsernameInput) (GetUserByUsernameOutput, error)
+	ListByRole(ctx context.Context, input ListUsersByRoleInput) (ListUsersByRoleOutput, error)
 	Create(ctx context.Context, input CreateUserInput) (CreateUserOutput, error)
 	Update(ctx context.Context, input UpdateUserInput) (UpdateUserOutput, error)
+}
+
+type ListUsersByRoleInput struct {
+	Actor   Actor
+	Role    domain.UserRole
+	Options ListOptions
+}
+
+type ListUsersByRoleOutput struct {
+	Users []*domain.User
 }
 
 type GetUserInput struct {

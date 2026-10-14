@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/fasih/tabungan-siswa/internal/domain"
+	"github.com/fasih/tabungan-siswa/internal/repository"
 	"github.com/fasih/tabungan-siswa/internal/security"
 	"github.com/google/uuid"
 )
@@ -44,6 +45,12 @@ func (f *routerUserRepositoryFake) GetByID(context.Context, uuid.UUID) (domain.U
 
 func (f *routerUserRepositoryFake) GetByUsername(context.Context, string) (domain.User, error) {
 	return domain.User{}, f.err
+}
+
+func (f *routerUserRepositoryFake) ListByRole(
+	ctx context.Context, role domain.UserRole, options repository.ListOptions,
+) ([]domain.User, error) {
+	return nil, nil
 }
 
 func (f *routerUserRepositoryFake) Update(context.Context, domain.User) error {

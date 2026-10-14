@@ -1,0 +1,26 @@
+{{define "teacher-assignments"}}
+<!doctype html>
+<html lang="id">
+<head>
+    <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{{.Title}} - Tabungan Siswa</title><link rel="stylesheet" href="/static/css/app.css">
+</head>
+<body class="bg-gray-50 dark:bg-gray-900">
+<div class="flex h-screen overflow-hidden">{{template "sidebar" .}}<div class="relative flex min-w-0 flex-1 flex-col overflow-x-hidden overflow-y-auto">{{template "header" .}}
+<main class="min-w-0"><div class="mx-auto w-full max-w-(--breakpoint-2xl) p-4 md:p-6"><div class="space-y-6">
+<div><h1 class="text-2xl font-semibold text-gray-800 dark:text-white">{{.Heading}}</h1><p class="mt-1 text-sm text-gray-500 dark:text-gray-400">{{.Description}}</p></div>
+{{if .Error}}<div role="alert" class="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{{.Error}}</div>{{end}}
+<section class="rounded-2xl border border-gray-200 bg-white p-5 shadow-theme-sm dark:border-gray-800 dark:bg-gray-800">
+<form method="get" action="/teacher-assignments" class="flex flex-wrap items-end gap-3"><div class="min-w-56 flex-1"><label class="form-label" for="academic-year-id">Tahun ajaran</label><select class="form-input" id="academic-year-id" name="academic_year_id" required><option value="">Pilih tahun ajaran</option>{{range .AcademicYears}}<option value="{{.ID}}" {{if eq $.AcademicYearID .ID}}selected{{end}}>{{.Name}}</option>{{end}}</select></div><button class="form-button-primary" type="submit">Tampilkan</button></form>
+</section>
+{{if .AcademicYearID}}
+<section class="rounded-2xl border border-gray-200 bg-white p-5 shadow-theme-sm dark:border-gray-800 dark:bg-gray-800"><h2 class="text-base font-semibold text-gray-800 dark:text-white">Buat penugasan</h2>
+<form method="post" action="/teacher-assignments" class="mt-4 grid grid-cols-1 gap-4 md:grid-cols-4"><input type="hidden" name="csrf_token" value="{{.CSRFToken}}"><input type="hidden" name="academic_year_id" value="{{.AcademicYearID}}">
+<div><label class="form-label" for="assignment-class">Kelas</label><select class="form-input" id="assignment-class" name="class_id" required><option value="">Pilih kelas</option>{{range .Rows}}<option value="{{.ClassID}}" {{if eq $.ClassID .ClassID}}selected{{end}}>{{.ClassName}} ({{.Level}})</option>{{end}}</select></div>
+<div><label class="form-label" for="assignment-teacher">Wali kelas</label><select class="form-input" id="assignment-teacher" name="teacher_id" required><option value="">Pilih wali kelas</option>{{range .Teachers}}<option value="{{.ID}}" {{if eq $.TeacherID .ID}}selected{{end}}>{{.Name}}</option>{{end}}</select></div>
+<div class="flex items-end"><button class="form-button-primary" type="submit">Simpan Penugasan</button></div></form>
+</section>
+<section class="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-theme-sm dark:border-gray-800 dark:bg-gray-800"><div class="overflow-x-auto"><table class="min-w-full divide-y divide-gray-200 dark:divide-gray-800"><thead class="bg-gray-50 dark:bg-gray-900"><tr><th class="px-5 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Kelas</th><th class="px-5 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Tingkat</th><th class="px-5 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Wali kelas saat ini</th></tr></thead><tbody class="divide-y divide-gray-200 dark:divide-gray-800">{{range .Rows}}<tr><td class="px-5 py-4 text-sm font-medium text-gray-800 dark:text-white">{{.ClassName}}</td><td class="px-5 py-4 text-sm text-gray-600 dark:text-gray-300">{{.Level}}</td><td class="px-5 py-4 text-sm text-gray-600 dark:text-gray-300">{{if .Assigned}}{{if .TeacherUsername}}{{.TeacherUsername}}{{else}}Akun wali kelas tidak tersedia pada pilihan saat ini{{end}}{{else}}Belum ditugaskan{{end}}</td></tr>{{else}}<tr><td colspan="3" class="px-5 py-12 text-center text-sm text-gray-500">Belum ada kelas untuk tahun ajaran ini.</td></tr>{{end}}</tbody></table></div></section>
+{{else}}<section class="rounded-2xl border border-dashed border-gray-300 bg-white p-10 text-center dark:border-gray-700 dark:bg-gray-800"><p class="text-sm text-gray-500">Pilih tahun ajaran untuk menampilkan kelas dan penugasan.</p></section>{{end}}
+</div></div></main></div></div></body></html>
+{{end}}

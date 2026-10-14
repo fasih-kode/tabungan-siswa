@@ -111,6 +111,42 @@ func (s *userService) GetByUsername(
 	}, nil
 }
 
+func (s *userService) ListByRole(
+	ctx context.Context,
+	input ListUsersByRoleInput,
+) (ListUsersByRoleOutput, error) {
+	if err := RequireRole(input.Actor, domain.RoleAdmin); err != nil {
+		return ListUsersByRoleOutput{}, err
+	}
+	if !input.Role.IsValid() {
+		return ListUsersByRoleOutput{}, domain.ErrInvalidValue
+	}
+	if input.Options.Limit < 1 || input.Options.Limit > 100 || input.Options.Offset < 0 {
+		return ListUsersByRoleOutput{}, domain.ErrInvalidValue
+	}
+
+	users, err := s.deps.Repositories.Users.ListByRole(
+		ctx,
+		input.Role,
+		repository.ListOptions{
+			Limit:  input.Options.Limit,
+			Offset: input.Options.Offset,
+		},
+	)
+	if err != nil {
+		return ListUsersByRoleOutput{}, err
+	}
+
+	result := make([]*domain.User, 0, len(users))
+	for i := range users {
+		user := users[i]
+		// Password hash is never needed by callers listing users.
+		user.PasswordHash = ""
+		result = append(result, &user)
+	}
+	return ListUsersByRoleOutput{Users: result}, nil
+}
+
 func (s *userService) Create(
 	ctx context.Context,
 	input CreateUserInput,

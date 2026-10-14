@@ -23,6 +23,7 @@ type classServiceFake struct {
 	updated                               service.UpdateClassInput
 	createErr, updateErr, getErr, listErr error
 	listInput                             service.ListClassesInput
+	listCalled                            bool
 }
 
 func (f *classServiceFake) Create(_ context.Context, in service.CreateClassInput) (service.CreateClassOutput, error) {
@@ -46,6 +47,7 @@ func (f *classServiceFake) Get(_ context.Context, in service.GetClassInput) (ser
 	return service.GetClassOutput{}, errors.New("not found")
 }
 func (f *classServiceFake) List(_ context.Context, in service.ListClassesInput) (service.ListClassesOutput, error) {
+	f.listCalled = true
 	f.listInput = in
 	if f.listErr != nil {
 		return service.ListClassesOutput{}, f.listErr

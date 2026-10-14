@@ -125,6 +125,12 @@ func (r *integrationUserRepository) GetByUsername(
 	return r.user, nil
 }
 
+func (r *integrationUserRepository) ListByRole(
+	ctx context.Context, role domain.UserRole, options repository.ListOptions,
+) ([]domain.User, error) {
+	return nil, nil
+}
+
 func (r *integrationUserRepository) Update(context.Context, domain.User) error {
 	return nil
 }

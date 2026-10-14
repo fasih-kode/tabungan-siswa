@@ -45,6 +45,9 @@ func registerRoutes(
 	registerAuthenticationRoutes(mux, handlers.Authentication, middlewares.CSRF)
 	registerAcademicYearRoutes(mux, handlers.AcademicYear, middlewares.Authentication, middlewares.CSRF)
 	registerClassRoutes(mux, handlers.Class, middlewares.Authentication, middlewares.CSRF)
+	if handlers.TeacherAssignment != nil {
+		registerTeacherAssignmentRoutes(mux, handlers.TeacherAssignment, middlewares.Authentication, middlewares.CSRF)
+	}
 	registerProtectedRoutes(
 		mux,
 		middlewares.Authentication,
@@ -118,4 +121,14 @@ func registerClassRoutes(
 	mux.Handle("POST /classes", authentication.RequireAuthentication(limitAcademicYearRequestBody(csrf.Protect(http.HandlerFunc(handler.Create)))))
 	mux.Handle("GET /classes/{id}", authentication.RequireAuthentication(csrf.Protect(http.HandlerFunc(handler.Detail))))
 	mux.Handle("POST /classes/{id}", authentication.RequireAuthentication(limitAcademicYearRequestBody(csrf.Protect(http.HandlerFunc(handler.Update)))))
+}
+
+func registerTeacherAssignmentRoutes(
+	mux *http.ServeMux,
+	handler *TeacherAssignmentPageHandler,
+	authentication *middleware.AuthenticationMiddleware,
+	csrf *middleware.CSRFMiddleware,
+) {
+	mux.Handle("GET /teacher-assignments", authentication.RequireAuthentication(csrf.Protect(http.HandlerFunc(handler.List))))
+	mux.Handle("POST /teacher-assignments", authentication.RequireAuthentication(limitAcademicYearRequestBody(csrf.Protect(http.HandlerFunc(handler.Create)))))
 }

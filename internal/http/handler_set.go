@@ -12,11 +12,12 @@ import (
 // HandlerSet hanya menjadi container hasil construction.
 // Ia tidak menjalankan routing, middleware, atau business logic.
 type HandlerSet struct {
-	Authentication *AuthenticationHandler
-	LoginPage      *LoginPageHandler
-	Dashboard      *DashboardPageHandler
-	AcademicYear   *AcademicYearPageHandler
-	Class          *ClassPageHandler
+	Authentication    *AuthenticationHandler
+	LoginPage         *LoginPageHandler
+	Dashboard         *DashboardPageHandler
+	AcademicYear      *AcademicYearPageHandler
+	Class             *ClassPageHandler
+	TeacherAssignment *TeacherAssignmentPageHandler
 }
 
 // NewHandlerSet membangun seluruh HTTP handler dari dependency yang
@@ -55,11 +56,20 @@ func NewHandlerSet(
 		return HandlerSet{}, err
 	}
 
+	var teacherAssignment *TeacherAssignmentPageHandler
+	if services.ClassAssignment != nil && services.User != nil && services.Class != nil && services.AcademicYear != nil {
+		teacherAssignment, err = NewTeacherAssignmentPageHandler(services.ClassAssignment, services.User, services.Class, services.AcademicYear, templates)
+		if err != nil {
+			return HandlerSet{}, err
+		}
+	}
+
 	return HandlerSet{
-		Authentication: authentication,
-		LoginPage:      loginPage,
-		Dashboard:      dashboard,
-		AcademicYear:   academicYear,
-		Class:          classHandler,
+		Authentication:    authentication,
+		LoginPage:         loginPage,
+		Dashboard:         dashboard,
+		AcademicYear:      academicYear,
+		Class:             classHandler,
+		TeacherAssignment: teacherAssignment,
 	}, nil
 }
