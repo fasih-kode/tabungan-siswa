@@ -1,6 +1,16 @@
 # FASE 18: Teacher Class Assignment HTTP Contract
 
-Status: IMPLEMENTED IN PATCH; VERIFICATION PENDING
+Status: VERIFIED AND COMMITTED
+
+Implementation commit: `f6b9a33` (`feat(teacher-assignment): add HTTP management workflow`)
+Verification completed in the project environment on 2026-10-14:
+- Full `go test ./... -count=1`: passed through `make test-integration`.
+- `go vet ./...`: passed.
+- `go build ./...`: passed.
+- `git diff --check`: passed.
+- Integration test target verified database `tabungan_siswa_fase168_clean_test`.
+
+The contract and verification record were committed after these checks.
 
 ## Scope
 
