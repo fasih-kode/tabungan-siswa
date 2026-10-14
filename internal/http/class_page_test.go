@@ -12,6 +12,7 @@ import (
 
 	"github.com/fasih/tabungan-siswa/internal/domain"
 	"github.com/fasih/tabungan-siswa/internal/http/middleware"
+	"github.com/fasih/tabungan-siswa/internal/repository"
 	"github.com/fasih/tabungan-siswa/internal/service"
 	"github.com/google/uuid"
 )
@@ -49,7 +50,15 @@ func (f *classServiceFake) List(_ context.Context, in service.ListClassesInput) 
 	if f.listErr != nil {
 		return service.ListClassesOutput{}, f.listErr
 	}
-	return service.ListClassesOutput{Classes: f.classes}, nil
+	start := in.Options.Offset
+	if start < 0 || start >= len(f.classes) {
+		return service.ListClassesOutput{Classes: []*domain.Class{}}, nil
+	}
+	end := start + in.Options.Limit
+	if in.Options.Limit <= 0 || end > len(f.classes) {
+		end = len(f.classes)
+	}
+	return service.ListClassesOutput{Classes: f.classes[start:end]}, nil
 }
 func (f *classServiceFake) Update(_ context.Context, in service.UpdateClassInput) (service.UpdateClassOutput, error) {
 	f.updated = in
@@ -157,4 +166,132 @@ func newClassTestTemplate(t *testing.T) *template.Template {
 		t.Fatal(err)
 	}
 	return tmpl
+}
+
+func TestClassPageListRejectsInvalidPagination(t *testing.T) {
+	yearID := uuid.New()
+	for _, target := range []string{
+		"/classes?academic_year_id=" + yearID.String() + "&page=0",
+		"/classes?academic_year_id=" + yearID.String() + "&page=abc",
+		"/classes?academic_year_id=" + yearID.String() + "&limit=0",
+		"/classes?academic_year_id=" + yearID.String() + "&limit=101",
+	} {
+		t.Run(target, func(t *testing.T) {
+			classes := &classServiceFake{}
+			h, err := NewClassPageHandler(classes, &academicYearServiceFake{}, newClassTestTemplate(t))
+			if err != nil {
+				t.Fatal(err)
+			}
+			req := requestWithActor(http.MethodGet, target, service.Actor{UserID: uuid.New(), Role: domain.RoleAdmin})
+			recorder := httptest.NewRecorder()
+			middleware.NewCSRFMiddleware(newTestCSRFCookie(t)).Protect(http.HandlerFunc(h.List)).ServeHTTP(recorder, req)
+			if recorder.Code != http.StatusBadRequest {
+				t.Fatalf("status = %d, want 400; body=%s", recorder.Code, recorder.Body.String())
+			}
+			if classes.listInput.AcademicYearID != uuid.Nil {
+				t.Fatalf("class service called for invalid pagination: %+v", classes.listInput)
+			}
+		})
+	}
+}
+
+func TestClassPageListUsesLookaheadAtPaginationBoundary(t *testing.T) {
+	yearID := uuid.New()
+	classes := &classServiceFake{classes: []*domain.Class{
+		{ID: uuid.New(), Name: "VII A", Level: 7},
+		{ID: uuid.New(), Name: "VII B", Level: 7},
+		{ID: uuid.New(), Name: "VII C", Level: 7},
+	}}
+	tmpl, err := template.New("classes").Parse(`{{define "classes"}}{{.HasPrevious}}|{{.HasNext}}|{{.Page}}|{{.Limit}}|{{len .Rows}}{{end}}`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	h, err := NewClassPageHandler(classes, &academicYearServiceFake{}, tmpl)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req := requestWithActor(http.MethodGet, "/classes?academic_year_id="+yearID.String()+"&page=1&limit=2", service.Actor{UserID: uuid.New(), Role: domain.RoleAdmin})
+	recorder := httptest.NewRecorder()
+	middleware.NewCSRFMiddleware(newTestCSRFCookie(t)).Protect(http.HandlerFunc(h.List)).ServeHTTP(recorder, req)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200; body=%s", recorder.Code, recorder.Body.String())
+	}
+	if got, want := recorder.Body.String(), "false|true|1|2|2"; got != want {
+		t.Fatalf("view model = %q, want %q", got, want)
+	}
+	if classes.listInput.Options.Limit != 3 || classes.listInput.Options.Offset != 0 {
+		t.Fatalf("service pagination = %+v, want limit 3 offset 0", classes.listInput.Options)
+	}
+}
+
+func TestClassPageListMapsServiceFailure(t *testing.T) {
+	yearID := uuid.New()
+	classes := &classServiceFake{listErr: errors.New("internal repository detail")}
+	h, err := NewClassPageHandler(classes, &academicYearServiceFake{}, newClassTestTemplate(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	req := requestWithActor(http.MethodGet, "/classes?academic_year_id="+yearID.String(), service.Actor{UserID: uuid.New(), Role: domain.RoleAdmin})
+	recorder := httptest.NewRecorder()
+	middleware.NewCSRFMiddleware(newTestCSRFCookie(t)).Protect(http.HandlerFunc(h.List)).ServeHTTP(recorder, req)
+	if recorder.Code != http.StatusInternalServerError {
+		t.Fatalf("status = %d, want 500; body=%s", recorder.Code, recorder.Body.String())
+	}
+	if strings.Contains(recorder.Body.String(), "internal repository detail") {
+		t.Fatalf("internal service detail leaked to response: %s", recorder.Body.String())
+	}
+}
+
+func TestClassPageCreateRetainsSubmittedValuesOnServiceValidationError(t *testing.T) {
+	classes := &classServiceFake{createErr: repository.ErrConflict}
+	tmpl, err := template.New("classes").Parse(`{{define "classes"}}{{.Name}}|{{.Level}}|{{.CSRFToken}}|{{.Error}}{{end}}`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	h, err := NewClassPageHandler(classes, &academicYearServiceFake{}, tmpl)
+	if err != nil {
+		t.Fatal(err)
+	}
+	form := url.Values{"name": {"VII B"}, "level": {"8"}, "csrf_token": {"valid-token"}}
+	req := httptest.NewRequest(http.MethodPost, "/classes", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req = req.WithContext(service.WithActor(req.Context(), service.Actor{UserID: uuid.New(), Role: domain.RoleAdmin}))
+	recorder := httptest.NewRecorder()
+	h.Create(recorder, req)
+	if recorder.Code != http.StatusConflict {
+		t.Fatalf("status = %d, want 409; body=%s", recorder.Code, recorder.Body.String())
+	}
+	for _, want := range []string{"VII B", "8", "valid-token", "Nama kelas dengan tingkat tersebut sudah digunakan."} {
+		if !strings.Contains(recorder.Body.String(), want) {
+			t.Errorf("response %q does not contain %q", recorder.Body.String(), want)
+		}
+	}
+}
+
+func TestClassPageUpdateRetainsSubmittedValuesOnServiceValidationError(t *testing.T) {
+	id := uuid.New()
+	classes := &classServiceFake{updateErr: repository.ErrConflict}
+	tmpl, err := template.New("classes").Parse(`{{define "classes"}}{{.ClassID}}|{{.Name}}|{{.Level}}|{{.CSRFToken}}|{{.Error}}{{end}}`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	h, err := NewClassPageHandler(classes, &academicYearServiceFake{}, tmpl)
+	if err != nil {
+		t.Fatal(err)
+	}
+	form := url.Values{"name": {"VII C"}, "level": {"9"}, "csrf_token": {"valid-token"}}
+	req := httptest.NewRequest(http.MethodPost, "/classes/"+id.String(), strings.NewReader(form.Encode()))
+	req.SetPathValue("id", id.String())
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req = req.WithContext(service.WithActor(req.Context(), service.Actor{UserID: uuid.New(), Role: domain.RoleAdmin}))
+	recorder := httptest.NewRecorder()
+	h.Update(recorder, req)
+	if recorder.Code != http.StatusConflict {
+		t.Fatalf("status = %d, want 409; body=%s", recorder.Code, recorder.Body.String())
+	}
+	for _, want := range []string{id.String(), "VII C", "9", "valid-token", "Nama kelas dengan tingkat tersebut sudah digunakan."} {
+		if !strings.Contains(recorder.Body.String(), want) {
+			t.Errorf("response %q does not contain %q", recorder.Body.String(), want)
+		}
+	}
 }

@@ -1,6 +1,16 @@
 # FASE 18: Class Management HTTP Contract
 
-Status: IMPLEMENTED IN SOURCE ARCHIVE; VERIFICATION PENDING
+Status: VERIFIED AND COMMITTED
+
+Implementation commit: `cb890c7` (`feat(class): add class management HTTP pages`)
+Remote: `origin/main` was updated successfully.
+
+Verification completed in the project environment on 2026-10-13:
+- `go test ./internal/http -run 'TestClassRoutes' -count=1`: passed.
+- `go vet ./...`: passed.
+- `git diff --check`: passed.
+- `make test-integration`: passed all packages.
+- Integration test target verified database `tabungan_siswa_fase168_clean_test`.
 
 ## Scope
 
@@ -33,6 +43,12 @@ All routes require authentication. Unsafe methods pass through CSRF middleware a
 
 The class page uses `html/template`, includes an academic-year selector, a class table, an empty state, Admin create/edit forms, and validation feedback. No HTMX behavior is introduced in this slice.
 
+## Acceptance-test coverage
+
+The route authorization tests cover authenticated list access for Admin, Wali Kelas, and Siswa; non-Admin denial for create/detail/update; Admin create redirect; CSRF rejection before service invocation; and unauthenticated rejection before service invocation.
+
+Handler tests cover class list rendering, service input scoping, create/update redirects, invalid class level, bounded pagination and lookahead boundaries, invalid pagination, service errors, and retention of submitted values after validation/service errors.
+
 ## Verification status
 
-Source-level implementation and tests are included. The required Go tests, `go vet ./...`, and `make test-integration` must pass in the project environment before this slice is LOCKED. Do not treat source creation alone as a lock.
+The implementation was verified in the project environment and committed as `cb890c7`. The follow-up contract/test hardening is a separate change and must pass the relevant Go tests, `go vet ./...`, `git diff --check`, and `make test-integration` before it is committed.

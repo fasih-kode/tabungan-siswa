@@ -298,3 +298,31 @@ func TestClassRoutesRejectUnauthenticatedRequestsBeforeService(t *testing.T) {
 }
 
 var _ service.ClassService = (*routeAuthorizationClassService)(nil)
+
+func TestClassRoutesRejectAllUnauthenticatedRequestsBeforeService(t *testing.T) {
+	classID := uuid.New()
+	for _, tc := range []struct {
+		name   string
+		method string
+		target string
+		form   url.Values
+	}{
+		{name: "list", method: http.MethodGet, target: "/classes"},
+		{name: "create", method: http.MethodPost, target: "/classes", form: url.Values{"name": {"VII A"}, "level": {"7"}}},
+		{name: "detail", method: http.MethodGet, target: "/classes/" + classID.String()},
+		{name: "update", method: http.MethodPost, target: "/classes/" + classID.String(), form: url.Values{"name": {"VII B"}, "level": {"7"}}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			fake := &routeAuthorizationClassService{}
+			router, _, _ := newClassRouterWithSession(t, domain.RoleAdmin, "class-no-session-"+tc.name, fake)
+			recorder := classRouteRequest(router, tc.method, tc.target, "", "", tc.form, false)
+			if recorder.Code != http.StatusUnauthorized {
+				t.Fatalf("%s %s without session status = %d, want 401; body=%s", tc.method, tc.target, recorder.Code, recorder.Body.String())
+			}
+			if fake.listCalls != 0 || fake.createCalls != 0 || fake.getCalls != 0 || fake.updateCalls != 0 {
+				t.Fatalf("service calls without session = list:%d create:%d get:%d update:%d; want all zero",
+					fake.listCalls, fake.createCalls, fake.getCalls, fake.updateCalls)
+			}
+		})
+	}
+}
