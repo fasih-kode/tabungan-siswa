@@ -703,10 +703,11 @@ func TestUserService_Create(t *testing.T) {
 		)
 
 		got, err := svc.Create(ctx, CreateUserInput{
-			Actor:        admin,
-			Username:     "new-user",
-			PasswordHash: "password-hash",
-			Role:         domain.RoleSiswa,
+			Actor:                  admin,
+			Username:               "new-user",
+			PasswordHash:           "password-hash",
+			Role:                   domain.RoleWaliKelas,
+			PasswordChangeRequired: true,
 		})
 		if err != nil {
 			t.Fatalf("Create() error = %v, want nil", err)
@@ -722,6 +723,9 @@ func TestUserService_Create(t *testing.T) {
 				created.ID,
 				got.User.ID,
 			)
+		}
+		if !created.PasswordChangeRequired || !got.User.PasswordChangeRequired {
+			t.Fatal("created user is not marked to change the temporary password")
 		}
 
 		if uow.commitCount != 1 {
@@ -1072,11 +1076,12 @@ func TestUserService_Update(t *testing.T) {
 		before := time.Now()
 
 		got, err := svc.Update(ctx, UpdateUserInput{
-			Actor:        admin,
-			UserID:       userID,
-			Username:     "updated-user",
-			PasswordHash: "updated-password",
-			Role:         domain.RoleAdmin,
+			Actor:                  admin,
+			UserID:                 userID,
+			Username:               "updated-user",
+			PasswordHash:           "updated-password",
+			Role:                   domain.RoleAdmin,
+			PasswordChangeRequired: true,
 		})
 
 		after := time.Now()
@@ -1094,6 +1099,9 @@ func TestUserService_Update(t *testing.T) {
 				"updated Username = %q, want updated-user",
 				updated.Username,
 			)
+		}
+		if !updated.PasswordChangeRequired {
+			t.Fatal("admin password reset did not require a password change")
 		}
 
 		if updated.UpdatedAt.Before(before) ||

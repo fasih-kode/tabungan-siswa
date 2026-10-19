@@ -9,8 +9,11 @@ import (
 )
 
 type ListOptions struct {
-	Limit  int
-	Offset int
+	IncludeTotal  bool
+	Limit         int
+	Offset        int
+	Search        string
+	StudentStatus string
 }
 
 // =========================
@@ -60,6 +63,7 @@ type UserService interface {
 	GetByUsername(ctx context.Context, input GetUserByUsernameInput) (GetUserByUsernameOutput, error)
 	ListByRole(ctx context.Context, input ListUsersByRoleInput) (ListUsersByRoleOutput, error)
 	Create(ctx context.Context, input CreateUserInput) (CreateUserOutput, error)
+	CreateStudentAccount(ctx context.Context, input CreateStudentAccountInput) (CreateStudentAccountOutput, error)
 	Update(ctx context.Context, input UpdateUserInput) (UpdateUserOutput, error)
 }
 
@@ -70,6 +74,7 @@ type ListUsersByRoleInput struct {
 }
 
 type ListUsersByRoleOutput struct {
+	Total int
 	Users []*domain.User
 }
 
@@ -93,22 +98,37 @@ type GetUserByUsernameOutput struct {
 }
 
 type CreateUserInput struct {
-	Actor        Actor
-	Username     string
-	PasswordHash string
-	Role         domain.UserRole
+	Actor                  Actor
+	Username               string
+	PasswordHash           string
+	Role                   domain.UserRole
+	PasswordChangeRequired bool
 }
 
 type CreateUserOutput struct {
 	User *domain.User
 }
 
-type UpdateUserInput struct {
+type CreateStudentAccountInput struct {
 	Actor        Actor
-	UserID       uuid.UUID
+	StudentID    uuid.UUID
 	Username     string
 	PasswordHash string
-	Role         domain.UserRole
+}
+
+type CreateStudentAccountOutput struct {
+	User    *domain.User
+	Student *domain.Student
+}
+
+type UpdateUserInput struct {
+	Actor                  Actor
+	UserID                 uuid.UUID
+	Username               string
+	PasswordHash           string
+	Role                   domain.UserRole
+	CurrentPassword        string
+	PasswordChangeRequired bool
 }
 
 type UpdateUserOutput struct {
@@ -154,6 +174,7 @@ type ListAcademicYearsInput struct {
 }
 
 type ListAcademicYearsOutput struct {
+	Total         int
 	AcademicYears []*domain.AcademicYear
 }
 
@@ -196,9 +217,11 @@ type ClassService interface {
 }
 
 type CreateClassInput struct {
-	Actor Actor
-	Name  string
-	Level int
+	AcademicYearID uuid.UUID
+	EffectiveDate  time.Time
+	Actor          Actor
+	Name           string
+	Level          int
 }
 
 type CreateClassOutput struct {
@@ -221,14 +244,17 @@ type ListClassesInput struct {
 }
 
 type ListClassesOutput struct {
+	Total   int
 	Classes []*domain.Class
 }
 
 type UpdateClassInput struct {
-	Actor   Actor
-	ClassID uuid.UUID
-	Name    string
-	Level   int
+	AcademicYearID uuid.UUID
+	EffectiveDate  time.Time
+	Actor          Actor
+	ClassID        uuid.UUID
+	Name           string
+	Level          int
 }
 
 type UpdateClassOutput struct {
@@ -246,16 +272,71 @@ type StudentService interface {
 	GetByNISN(ctx context.Context, input GetStudentByNISNInput) (GetStudentByNISNOutput, error)
 	GetByUserID(ctx context.Context, input GetStudentByUserIDInput) (GetStudentByUserIDOutput, error)
 	List(ctx context.Context, input ListStudentsInput) (ListStudentsOutput, error)
+	Import(ctx context.Context, input ImportStudentsInput) (ImportStudentsOutput, error)
+	ListClassHistory(ctx context.Context, input ListStudentClassHistoryInput) (ListStudentClassHistoryOutput, error)
+	AssignClass(ctx context.Context, input AssignStudentClassInput) (AssignStudentClassOutput, error)
+	Reactivate(ctx context.Context, input ReactivateStudentInput) (ReactivateStudentOutput, error)
 	Update(ctx context.Context, input UpdateStudentInput) (UpdateStudentOutput, error)
 	Leave(ctx context.Context, input LeaveStudentInput) (LeaveStudentOutput, error)
 }
 
+// StudentPromotionService previews and applies bulk year-end placement decisions.
+type StudentPromotionService interface {
+	Preview(ctx context.Context, input PreviewStudentPromotionInput) (PreviewStudentPromotionOutput, error)
+	Process(ctx context.Context, input ProcessStudentPromotionInput) (ProcessStudentPromotionOutput, error)
+}
+
+type PreviewStudentPromotionInput struct {
+	Actor              Actor
+	FromAcademicYearID uuid.UUID
+	ToAcademicYearID   uuid.UUID
+}
+
+type StudentPromotionCandidate struct {
+	StudentID, StudentName     string
+	Status                     string
+	FromClassID, FromClassName string
+	FromLevel                  int
+	DefaultTargetID            string
+	GraduationCandidate        bool
+}
+
+type StudentPromotionClassOption struct {
+	ID, Name string
+	Level    int
+}
+
+type PreviewStudentPromotionOutput struct {
+	FromAcademicYear, ToAcademicYear *domain.AcademicYear
+	Students                         []StudentPromotionCandidate
+	Excluded                         []StudentPromotionCandidate
+	TargetClasses                    []StudentPromotionClassOption
+	MaxSourceLevel                   int
+}
+
+type StudentPromotionDecision struct {
+	StudentID     uuid.UUID
+	FromClassID   uuid.UUID
+	TargetClassID uuid.UUID
+	Graduate      bool
+}
+
+type ProcessStudentPromotionInput struct {
+	Actor                                Actor
+	FromAcademicYearID, ToAcademicYearID uuid.UUID
+	Decisions                            []StudentPromotionDecision
+}
+
+type ProcessStudentPromotionOutput struct{ Promoted, Graduated int }
+
 type CreateStudentInput struct {
-	Actor  Actor
-	UserID *uuid.UUID
-	NIS    *string
-	NISN   *string
-	Name   string
+	AcademicYearID uuid.UUID
+	ClassID        uuid.UUID
+	Actor          Actor
+	UserID         *uuid.UUID
+	NIS            *string
+	NISN           *string
+	Name           string
 }
 
 type CreateStudentOutput struct {
@@ -303,14 +384,71 @@ type GetStudentByUserIDOutput struct {
 }
 
 type ListStudentsInput struct {
-	Actor          Actor
-	AcademicYearID uuid.UUID
-	ClassID        uuid.UUID
-	Options        ListOptions
+	IncludePlacement bool
+	Actor            Actor
+	AcademicYearID   uuid.UUID
+	ClassID          uuid.UUID
+	UnassignedOnly   bool
+	Options          ListOptions
+}
+
+type StudentPlacement struct {
+	AcademicYear, Class     string
+	AcademicYearID, ClassID uuid.UUID
 }
 
 type ListStudentsOutput struct {
+	Total      int
+	Placements map[uuid.UUID]StudentPlacement
+	Students   []*domain.Student
+}
+
+type ImportStudentsInput struct {
+	Actor Actor
+	Rows  []StudentImportRow
+}
+
+type StudentImportRow struct {
+	AcademicYear   string
+	Class          string
+	SpreadsheetRow int
+	Name           string
+	NIS            string
+	NISN           string
+}
+
+type StudentImportIssue struct {
+	SpreadsheetRow int
+	Message        string
+}
+
+type ImportStudentsOutput struct {
 	Students []*domain.Student
+	Issues   []StudentImportIssue
+}
+
+type ListStudentClassHistoryInput struct {
+	Actor          Actor
+	StudentID      uuid.UUID
+	AcademicYearID uuid.UUID
+	Options        ListOptions
+}
+
+type ListStudentClassHistoryOutput struct {
+	Total     int
+	Histories []*domain.StudentClassHistory
+}
+
+type AssignStudentClassInput struct {
+	Actor          Actor
+	StudentID      uuid.UUID
+	AcademicYearID uuid.UUID
+	ClassID        uuid.UUID
+	EffectiveDate  time.Time
+}
+
+type AssignStudentClassOutput struct {
+	History *domain.StudentClassHistory
 }
 
 type UpdateStudentInput struct {
@@ -327,12 +465,27 @@ type UpdateStudentOutput struct {
 }
 
 type LeaveStudentInput struct {
-	Actor     Actor
-	StudentID uuid.UUID
+	Actor          Actor
+	StudentID      uuid.UUID
+	AcademicYearID uuid.UUID
+	LeavingDate    time.Time
 }
 
 type LeaveStudentOutput struct {
 	Student *domain.Student
+}
+
+type ReactivateStudentInput struct {
+	Actor          Actor
+	StudentID      uuid.UUID
+	AcademicYearID uuid.UUID
+	ClassID        uuid.UUID
+	EffectiveDate  time.Time
+}
+
+type ReactivateStudentOutput struct {
+	Student *domain.Student
+	History *domain.StudentClassHistory
 }
 
 // =========================
@@ -406,11 +559,26 @@ type GetCurrentClassAssignmentOutput struct {
 
 type ClassTransferService interface {
 	Request(ctx context.Context, input RequestTransferInput) (RequestTransferOutput, error)
+	RequestOptions(ctx context.Context, input RequestTransferOptionsInput) (RequestTransferOptionsOutput, error)
 	Get(ctx context.Context, input GetTransferInput) (GetTransferOutput, error)
 	ListByStudent(ctx context.Context, input ListStudentTransfersInput) (ListStudentTransfersOutput, error)
 	ListPending(ctx context.Context, input ListPendingTransfersInput) (ListPendingTransfersOutput, error)
 	Approve(ctx context.Context, input ApproveTransferInput) (ApproveTransferOutput, error)
 	Reject(ctx context.Context, input RejectTransferInput) (RejectTransferOutput, error)
+}
+
+type RequestTransferOptionsInput struct {
+	Actor          Actor
+	StudentID      uuid.UUID
+	AcademicYearID uuid.UUID
+}
+
+type RequestTransferOptionsOutput struct {
+	CanRequest        bool
+	UnavailableReason string
+	FromClassID       uuid.UUID
+	FromClassName     string
+	TargetClasses     []*domain.Class
 }
 
 type RequestTransferInput struct {
@@ -442,6 +610,7 @@ type ListStudentTransfersInput struct {
 }
 
 type ListStudentTransfersOutput struct {
+	Total            int
 	TransferRequests []*domain.ClassTransferRequest
 }
 
@@ -452,6 +621,7 @@ type ListPendingTransfersInput struct {
 }
 
 type ListPendingTransfersOutput struct {
+	Total            int
 	TransferRequests []*domain.ClassTransferRequest
 }
 

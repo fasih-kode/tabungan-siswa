@@ -35,6 +35,7 @@ func (r *UserRepository) Create(
 			username,
 			password_hash,
 			role,
+			password_change_required,
 			created_at,
 			updated_at
 		)
@@ -44,7 +45,8 @@ func (r *UserRepository) Create(
 			$3,
 			$4,
 			$5,
-			$6
+			$6,
+			$7
 		)
 	`
 
@@ -55,6 +57,7 @@ func (r *UserRepository) Create(
 		user.Username,
 		user.PasswordHash,
 		user.Role,
+		user.PasswordChangeRequired,
 		user.CreatedAt,
 		user.UpdatedAt,
 	)
@@ -75,6 +78,7 @@ func (r *UserRepository) GetByID(
 			username,
 			password_hash,
 			role,
+			password_change_required,
 			created_at,
 			updated_at
 		FROM users
@@ -94,6 +98,7 @@ func (r *UserRepository) GetByUsername(
 			username,
 			password_hash,
 			role,
+			password_change_required,
 			created_at,
 			updated_at
 		FROM users
@@ -159,8 +164,9 @@ func (r *UserRepository) Update(
 			username = $1,
 			password_hash = $2,
 			role = $3,
-			updated_at = $4
-		WHERE id = $5
+			password_change_required = $4,
+			updated_at = $5
+		WHERE id = $6
 	`
 
 	result, err := r.db.ExecContext(
@@ -169,6 +175,7 @@ func (r *UserRepository) Update(
 		user.Username,
 		user.PasswordHash,
 		user.Role,
+		user.PasswordChangeRequired,
 		user.UpdatedAt,
 		user.ID,
 	)
@@ -233,6 +240,7 @@ func (r *UserRepository) getOne(
 		&user.Username,
 		&user.PasswordHash,
 		&user.Role,
+		&user.PasswordChangeRequired,
 		&user.CreatedAt,
 		&user.UpdatedAt,
 	)
@@ -256,9 +264,11 @@ func translateError(operation string, err error) error {
 		}
 		if pgErr.Code == "23514" {
 			switch pgErr.ConstraintName {
-			case "academic_years_close_requires_settled_accounts":
+			case "academic_years_close_requires_settled_accounts", "classes_referenced_year_check":
 				return fmt.Errorf("%s: %w", operation, domain.ErrInvalidTransition)
-			case "academic_years_history_bounds_check":
+			case "class_reference_academic_year_check":
+				return fmt.Errorf("%s: %w", operation, domain.ErrInvalidValue)
+			case "academic_years_history_bounds_check", "classes_effective_date_bounds_check", "academic_years_class_bounds_check":
 				return fmt.Errorf("%s: %w", operation, domain.ErrInvalidDateRange)
 			}
 		}

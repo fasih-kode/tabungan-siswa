@@ -36,7 +36,7 @@ func (s *classAssignmentService) Assign(
 		return AssignTeacherOutput{}, ErrInvalidDependency
 	}
 
-	_, err = s.deps.Repositories.Classes.GetByID(
+	class, err := s.deps.Repositories.Classes.GetByID(
 		ctx,
 		input.ClassID,
 	)
@@ -44,6 +44,9 @@ func (s *classAssignmentService) Assign(
 		return AssignTeacherOutput{}, err
 	}
 
+	if class.AcademicYearID != uuid.Nil && class.AcademicYearID != input.AcademicYearID {
+		return AssignTeacherOutput{}, domain.ErrInvalidValue
+	}
 	academicYear, err := s.deps.Repositories.AcademicYears.GetByID(
 		ctx,
 		input.AcademicYearID,

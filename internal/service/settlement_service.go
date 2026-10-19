@@ -161,7 +161,7 @@ func (s *settlementService) SettleStudentLeaving(
 		return SettleStudentLeavingOutput{}, err
 	}
 
-	if !student.IsLeft() {
+	if !student.IsLeft() && !student.IsGraduated() {
 		return SettleStudentLeavingOutput{}, domain.ErrInvalidTransition
 	}
 

@@ -144,7 +144,17 @@ func (s *userService) ListByRole(
 		user.PasswordHash = ""
 		result = append(result, &user)
 	}
-	return ListUsersByRoleOutput{Users: result}, nil
+	total := 0
+	if input.Options.IncludeTotal {
+		if s.deps.Repositories.ListTotals == nil {
+			return ListUsersByRoleOutput{}, ErrInvalidDependency
+		}
+		total, err = s.deps.Repositories.ListTotals.Users(ctx, input.Role)
+		if err != nil {
+			return ListUsersByRoleOutput{}, err
+		}
+	}
+	return ListUsersByRoleOutput{Users: result, Total: total}, nil
 }
 
 func (s *userService) Create(
@@ -163,6 +173,7 @@ func (s *userService) Create(
 	if err != nil {
 		return CreateUserOutput{}, err
 	}
+	user.PasswordChangeRequired = input.PasswordChangeRequired
 
 	exists, err := s.deps.Repositories.Users.ExistsByUsername(
 		ctx,
@@ -203,12 +214,76 @@ func (s *userService) Create(
 	}, nil
 }
 
+func (s *userService) CreateStudentAccount(
+	ctx context.Context,
+	input CreateStudentAccountInput,
+) (CreateStudentAccountOutput, error) {
+	if err := RequireRole(input.Actor, domain.RoleAdmin); err != nil {
+		return CreateStudentAccountOutput{}, err
+	}
+	if input.StudentID == uuid.Nil {
+		return CreateStudentAccountOutput{}, ErrScopeViolation
+	}
+
+	uow, err := s.deps.UOW.Begin(ctx)
+	if err != nil {
+		return CreateStudentAccountOutput{}, fmt.Errorf("begin create student account: %w", err)
+	}
+	committed := false
+	defer func() {
+		if !committed {
+			_ = uow.Rollback()
+		}
+	}()
+
+	repos := uow.Repositories()
+	student, err := repos.Students.GetByIDForUpdate(ctx, input.StudentID)
+	if err != nil {
+		return CreateStudentAccountOutput{}, err
+	}
+	if !student.IsActive() {
+		return CreateStudentAccountOutput{}, domain.ErrInvalidTransition
+	}
+	if student.UserID != nil {
+		return CreateStudentAccountOutput{}, repository.ErrConflict
+	}
+	user, err := domain.NewUser(input.Username, input.PasswordHash, domain.RoleSiswa)
+	if err != nil {
+		return CreateStudentAccountOutput{}, err
+	}
+	exists, err := repos.Users.ExistsByUsername(ctx, user.Username)
+	if err != nil {
+		return CreateStudentAccountOutput{}, err
+	}
+	if exists {
+		return CreateStudentAccountOutput{}, repository.ErrConflict
+	}
+	if err := repos.Users.Create(ctx, user); err != nil {
+		return CreateStudentAccountOutput{}, err
+	}
+	student.UserID = &user.ID
+	student.UpdatedAt = time.Now()
+	if err := repos.Students.Update(ctx, student); err != nil {
+		return CreateStudentAccountOutput{}, err
+	}
+	if err := uow.Commit(); err != nil {
+		return CreateStudentAccountOutput{}, fmt.Errorf("commit create student account: %w", err)
+	}
+	committed = true
+	return CreateStudentAccountOutput{User: &user, Student: &student}, nil
+}
+
 func (s *userService) Update(
 	ctx context.Context,
 	input UpdateUserInput,
 ) (UpdateUserOutput, error) {
-	if err := RequireRole(input.Actor, domain.RoleAdmin); err != nil {
+	if err := input.Actor.Validate(); err != nil {
 		return UpdateUserOutput{}, err
+	}
+	isAdmin := input.Actor.Role == domain.RoleAdmin
+	selfChange := input.Actor.UserID == input.UserID && input.CurrentPassword != ""
+	if !isAdmin && !selfChange {
+		return UpdateUserOutput{}, ErrForbidden
 	}
 
 	if input.UserID == uuid.Nil {
@@ -233,11 +308,26 @@ func (s *userService) Update(
 	if err != nil {
 		return UpdateUserOutput{}, err
 	}
+	if selfChange {
+		if input.Username != existing.Username || input.Role != existing.Role || s.deps.PasswordHasher == nil {
+			return UpdateUserOutput{}, ErrForbidden
+		}
+		if err := s.deps.PasswordHasher.Compare(existing.PasswordHash, input.CurrentPassword); err != nil {
+			return UpdateUserOutput{}, ErrInvalidCredentials
+		}
+	} else if !isAdmin {
+		return UpdateUserOutput{}, ErrForbidden
+	}
 
 	user := existing
 	user.Username = input.Username
 	user.PasswordHash = input.PasswordHash
 	user.Role = input.Role
+	if selfChange {
+		user.PasswordChangeRequired = false
+	} else if input.PasswordChangeRequired {
+		user.PasswordChangeRequired = true
+	}
 	user.UpdatedAt = time.Now()
 
 	if err := validateUserUpdate(user); err != nil {

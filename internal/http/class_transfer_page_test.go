@@ -19,36 +19,43 @@ import (
 )
 
 type classTransferPageServiceFake struct {
-	listStudentInput service.ListStudentTransfersInput
-	listPendingInput service.ListPendingTransfersInput
-	getInput         service.GetTransferInput
-	requestInput     service.RequestTransferInput
-	approveInput     service.ApproveTransferInput
-	rejectInput      service.RejectTransferInput
-	listStudentOut   service.ListStudentTransfersOutput
-	listPendingOut   service.ListPendingTransfersOutput
-	requestOut       service.RequestTransferOutput
-	getOut           service.GetTransferOutput
-	approveOut       service.ApproveTransferOutput
-	rejectOut        service.RejectTransferOutput
-	listStudentErr   error
-	listPendingErr   error
-	requestErr       error
-	getErr           error
-	approveErr       error
-	rejectErr        error
-	listStudentCalls int
-	listPendingCalls int
-	requestCalls     int
-	getCalls         int
-	approveCalls     int
-	rejectCalls      int
+	listStudentInput    service.ListStudentTransfersInput
+	listPendingInput    service.ListPendingTransfersInput
+	getInput            service.GetTransferInput
+	requestInput        service.RequestTransferInput
+	requestOptionsInput service.RequestTransferOptionsInput
+	approveInput        service.ApproveTransferInput
+	rejectInput         service.RejectTransferInput
+	listStudentOut      service.ListStudentTransfersOutput
+	listPendingOut      service.ListPendingTransfersOutput
+	requestOut          service.RequestTransferOutput
+	requestOptionsOut   service.RequestTransferOptionsOutput
+	getOut              service.GetTransferOutput
+	approveOut          service.ApproveTransferOutput
+	rejectOut           service.RejectTransferOutput
+	listStudentErr      error
+	listPendingErr      error
+	requestErr          error
+	requestOptionsErr   error
+	getErr              error
+	approveErr          error
+	rejectErr           error
+	listStudentCalls    int
+	listPendingCalls    int
+	requestCalls        int
+	getCalls            int
+	approveCalls        int
+	rejectCalls         int
 }
 
 func (f *classTransferPageServiceFake) Request(_ context.Context, input service.RequestTransferInput) (service.RequestTransferOutput, error) {
 	f.requestCalls++
 	f.requestInput = input
 	return f.requestOut, f.requestErr
+}
+func (f *classTransferPageServiceFake) RequestOptions(_ context.Context, input service.RequestTransferOptionsInput) (service.RequestTransferOptionsOutput, error) {
+	f.requestOptionsInput = input
+	return f.requestOptionsOut, f.requestOptionsErr
 }
 func (f *classTransferPageServiceFake) Get(_ context.Context, input service.GetTransferInput) (service.GetTransferOutput, error) {
 	f.getCalls++
@@ -97,6 +104,10 @@ func TestClassTransferPageListStudentPassesPaginationAndRenders(t *testing.T) {
 		{ID: uuid.New(), StudentID: studentID, AcademicYearID: yearID, Status: domain.TransferPending, CreatedAt: time.Now()},
 		{ID: uuid.New(), StudentID: studentID, AcademicYearID: yearID, Status: domain.TransferPending, CreatedAt: time.Now()},
 	}}}
+	for len(fake.listStudentOut.TransferRequests) < 11 {
+		fake.listStudentOut.TransferRequests = append(fake.listStudentOut.TransferRequests, &domain.ClassTransferRequest{ID: uuid.New(), StudentID: studentID, AcademicYearID: yearID, Status: domain.TransferPending})
+	}
+	fake.listStudentOut.Total = 21
 	handler := newClassTransferPageHandlerForTest(t, fake)
 	actor := service.Actor{UserID: uuid.New(), Username: "wali", Role: domain.RoleWaliKelas}
 	req := requestWithActor(http.MethodGet, "/students/"+studentID.String()+"/class-transfer-requests?academic_year_id="+yearID.String()+"&page=2&limit=2", actor)
@@ -106,17 +117,17 @@ func TestClassTransferPageListStudentPassesPaginationAndRenders(t *testing.T) {
 	if recorder.Code != http.StatusOK {
 		t.Fatalf("ListStudent() status = %d, want 200: %s", recorder.Code, recorder.Body.String())
 	}
-	if fake.listStudentInput.Actor != actor || fake.listStudentInput.StudentID != studentID || fake.listStudentInput.AcademicYearID != yearID || fake.listStudentInput.Options.Limit != 3 || fake.listStudentInput.Options.Offset != 2 {
+	if fake.listStudentInput.Actor != actor || fake.listStudentInput.StudentID != studentID || fake.listStudentInput.AcademicYearID != yearID || fake.listStudentInput.Options.Limit != 11 || fake.listStudentInput.Options.Offset != 10 {
 		t.Fatalf("ListByStudent input = %+v, want actor/student/year and lookahead limit/offset", fake.listStudentInput)
 	}
-	if !strings.Contains(recorder.Body.String(), "Transfer Kelas Siswa|WALI_KELAS|") || !strings.Contains(recorder.Body.String(), "next") || strings.Count(recorder.Body.String(), ":false") != 2 {
+	if !strings.Contains(recorder.Body.String(), "Transfer Kelas Siswa|WALI_KELAS|") || !strings.Contains(recorder.Body.String(), "next") || strings.Count(recorder.Body.String(), ":false") != 10 {
 		t.Fatalf("rendered list missing expected view model state: %s", recorder.Body.String())
 	}
 }
 
 func TestClassTransferPageListPendingRequiresAdminAndUsesYear(t *testing.T) {
 	yearID := uuid.New()
-	fake := &classTransferPageServiceFake{}
+	fake := &classTransferPageServiceFake{listPendingOut: service.ListPendingTransfersOutput{Total: 30}}
 	handler := newClassTransferPageHandlerForTest(t, fake)
 
 	waliReq := requestWithActor(http.MethodGet, "/class-transfer-requests/pending?academic_year_id="+yearID.String(), service.Actor{UserID: uuid.New(), Role: domain.RoleWaliKelas})
@@ -133,7 +144,7 @@ func TestClassTransferPageListPendingRequiresAdminAndUsesYear(t *testing.T) {
 	if adminRecorder.Code != http.StatusOK {
 		t.Fatalf("Admin pending list status = %d, want 200", adminRecorder.Code)
 	}
-	if fake.listPendingCalls != 1 || fake.listPendingInput.Actor != admin || fake.listPendingInput.AcademicYearID != yearID || fake.listPendingInput.Options.Limit != 6 || fake.listPendingInput.Options.Offset != 10 {
+	if fake.listPendingCalls != 1 || fake.listPendingInput.Actor != admin || fake.listPendingInput.AcademicYearID != yearID || fake.listPendingInput.Options.Limit != 11 || fake.listPendingInput.Options.Offset != 20 {
 		t.Fatalf("ListPending input/calls = %+v/%d, want year, actor, lookahead, and offset", fake.listPendingInput, fake.listPendingCalls)
 	}
 }
@@ -149,15 +160,24 @@ func TestClassTransferPageRequestParsesFormAndRedirects(t *testing.T) {
 	}
 	req := httptest.NewRequest(http.MethodPost, "/class-transfer-requests", strings.NewReader(form.Encode()))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	actor := service.Actor{UserID: uuid.New(), Username: "admin", Role: domain.RoleAdmin}
+	actor := service.Actor{UserID: uuid.New(), Username: "wali", Role: domain.RoleWaliKelas}
 	req = req.WithContext(service.WithActor(req.Context(), actor))
 	recorder := httptest.NewRecorder()
 	handler.Request(recorder, req)
 	if recorder.Code != http.StatusSeeOther || recorder.Header().Get("Location") != "/class-transfer-requests/"+requestID.String() {
-		t.Fatalf("Request() status/location = %d/%q, want 303/detail", recorder.Code, recorder.Header().Get("Location"))
+		t.Fatalf("Wali Request() status/location = %d/%q, want 303/detail", recorder.Code, recorder.Header().Get("Location"))
 	}
 	if fake.requestCalls != 1 || fake.requestInput.Actor != actor || fake.requestInput.StudentID != studentID || fake.requestInput.AcademicYearID != yearID || fake.requestInput.FromClassID != fromID || fake.requestInput.ToClassID != toID {
 		t.Fatalf("Request() input/calls = %+v/%d, want parsed values and authenticated actor", fake.requestInput, fake.requestCalls)
+	}
+
+	adminReq := httptest.NewRequest(http.MethodPost, "/class-transfer-requests", strings.NewReader(form.Encode()))
+	adminReq.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	adminReq = adminReq.WithContext(service.WithActor(adminReq.Context(), service.Actor{UserID: uuid.New(), Role: domain.RoleAdmin}))
+	adminRecorder := httptest.NewRecorder()
+	handler.Request(adminRecorder, adminReq)
+	if adminRecorder.Code != http.StatusForbidden || fake.requestCalls != 1 {
+		t.Fatalf("Admin Request() status/calls = %d/%d, want 403/no additional call", adminRecorder.Code, fake.requestCalls)
 	}
 }
 
@@ -314,21 +334,21 @@ func TestClassTransferRoutesEnforceAuthenticationRoleAndCSRF(t *testing.T) {
 		t.Fatalf("POST without CSRF status/calls = %d/%d, want 403/0", missingCSRFRecorder.Code, fake.requestCalls)
 	}
 
-	csrfToken, err := security.GenerateCSRFToken()
+	waliCSRF, err := security.GenerateCSRFToken()
 	if err != nil {
 		t.Fatal(err)
 	}
-	form.Set("csrf_token", csrfToken)
+	form.Set("csrf_token", waliCSRF)
 	validReq := httptest.NewRequest(http.MethodPost, "/class-transfer-requests", strings.NewReader(form.Encode()))
 	validReq.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	validReq.AddCookie(&http.Cookie{Name: security.DefaultSessionCookieName, Value: adminSession})
-	validReq.AddCookie(&http.Cookie{Name: security.DefaultCSRFCookieName, Value: csrfToken})
+	validReq.AddCookie(&http.Cookie{Name: security.DefaultSessionCookieName, Value: waliSession})
+	validReq.AddCookie(&http.Cookie{Name: security.DefaultCSRFCookieName, Value: waliCSRF})
 	validRecorder := httptest.NewRecorder()
-	adminRouter.ServeHTTP(validRecorder, validReq)
+	waliRouter.ServeHTTP(validRecorder, validReq)
 	if validRecorder.Code != http.StatusSeeOther || fake.requestCalls != 1 {
 		t.Fatalf("POST with valid auth/CSRF status/calls = %d/%d, want 303/1: %s", validRecorder.Code, fake.requestCalls, validRecorder.Body.String())
 	}
-	if fake.requestInput.Actor.Role != domain.RoleAdmin || fake.requestInput.Actor.Username != "class-transfer-test-user" {
-		t.Fatalf("request actor = %+v, want authenticated Admin", fake.requestInput.Actor)
+	if fake.requestInput.Actor.Role != domain.RoleWaliKelas || fake.requestInput.Actor.Username != "class-transfer-test-user" {
+		t.Fatalf("request actor = %+v, want authenticated Wali Kelas", fake.requestInput.Actor)
 	}
 }

@@ -17,8 +17,11 @@ type HandlerSet struct {
 	Dashboard         *DashboardPageHandler
 	AcademicYear      *AcademicYearPageHandler
 	Class             *ClassPageHandler
+	Student           *StudentPageHandler
+	StudentPromotion  *StudentPromotionPageHandler
 	ClassTransfer     *ClassTransferPageHandler
 	TeacherAssignment *TeacherAssignmentPageHandler
+	Users             *UserPageHandler
 }
 
 // NewHandlerSet membangun seluruh HTTP handler dari dependency yang
@@ -56,6 +59,20 @@ func NewHandlerSet(
 	if err != nil {
 		return HandlerSet{}, err
 	}
+	var studentHandler *StudentPageHandler
+	if services.Student != nil && services.AcademicYear != nil && services.Class != nil && services.User != nil {
+		studentHandler, err = NewStudentPageHandler(services.Student, services.AcademicYear, services.Class, services.User, templates)
+		if err != nil {
+			return HandlerSet{}, err
+		}
+	}
+	var studentPromotion *StudentPromotionPageHandler
+	if services.StudentPromotion != nil && services.AcademicYear != nil {
+		studentPromotion, err = NewStudentPromotionPageHandler(services.StudentPromotion, services.AcademicYear, templates)
+		if err != nil {
+			return HandlerSet{}, err
+		}
+	}
 	var classTransfer *ClassTransferPageHandler
 	if services.ClassTransfer != nil {
 		classTransfer, err = NewClassTransferPageHandler(services.ClassTransfer, templates)
@@ -71,6 +88,13 @@ func NewHandlerSet(
 			return HandlerSet{}, err
 		}
 	}
+	var userPage *UserPageHandler
+	if services.User != nil && services.Student != nil && services.AcademicYear != nil && services.Class != nil && securitySet.PasswordHasher != nil {
+		userPage, err = NewUserPageHandler(services.User, services.Student, services.AcademicYear, services.Class, securitySet.PasswordHasher, templates)
+		if err != nil {
+			return HandlerSet{}, err
+		}
+	}
 
 	return HandlerSet{
 		Authentication:    authentication,
@@ -78,7 +102,10 @@ func NewHandlerSet(
 		Dashboard:         dashboard,
 		AcademicYear:      academicYear,
 		Class:             classHandler,
+		Student:           studentHandler,
+		StudentPromotion:  studentPromotion,
 		ClassTransfer:     classTransfer,
 		TeacherAssignment: teacherAssignment,
+		Users:             userPage,
 	}, nil
 }

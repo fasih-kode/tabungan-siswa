@@ -10,6 +10,8 @@ import (
 	"github.com/google/uuid"
 )
 
+var testClassYearID = uuid.MustParse("10000000-0000-0000-0000-000000000001")
+
 type classServiceFakeClassRepository struct {
 	repository.ClassRepository
 
@@ -70,6 +72,7 @@ func (f *classServiceFakeClassRepository) ExistsByNameAndLevel(
 	ctx context.Context,
 	name string,
 	level int,
+	_ ...uuid.UUID,
 ) (bool, error) {
 	if f.existsByNameAndLevelFn != nil {
 		return f.existsByNameAndLevelFn(ctx, name, level)
@@ -158,6 +161,13 @@ func (f *classServiceFakeUOWManager) Begin(context.Context) (repository.UnitOfWo
 func newClassServiceForTest(t *testing.T, repos repository.RepositorySet, manager repository.UnitOfWorkManager) *classService {
 	t.Helper()
 
+	if manager, ok := manager.(*classServiceFakeUOWManager); ok {
+		if u, ok := manager.uow.(*classServiceFakeUOW); ok && u.repos.AcademicYears == nil {
+			u.repos.AcademicYears = &academicYearServiceFakeAcademicYearRepository{getByIDFn: func(context.Context, uuid.UUID) (domain.AcademicYear, error) {
+				return newTestAcademicYear(testClassYearID, domain.AcademicYearOpen), nil
+			}}
+		}
+	}
 	svc, err := NewClassService(Dependencies{
 		Repositories: repos,
 		UOW:          manager,
@@ -186,6 +196,7 @@ func TestClassServiceCreateAdmin(t *testing.T) {
 	svc := newClassServiceForTest(t, uow.repos, &classServiceFakeUOWManager{uow: uow})
 
 	got, err := svc.Create(context.Background(), CreateClassInput{
+		AcademicYearID: testClassYearID, EffectiveDate: newTestAcademicYear(testClassYearID, domain.AcademicYearOpen).StartDate,
 		Actor: Actor{UserID: uuid.New(), Role: domain.RoleAdmin},
 		Name:  "VII A",
 		Level: 7,
@@ -214,6 +225,7 @@ func TestClassServiceCreateRejectsInvalidLevel(t *testing.T) {
 	svc := newClassServiceForTest(t, uow.repos, &classServiceFakeUOWManager{uow: uow})
 
 	_, err := svc.Create(context.Background(), CreateClassInput{
+		AcademicYearID: testClassYearID, EffectiveDate: newTestAcademicYear(testClassYearID, domain.AcademicYearOpen).StartDate,
 		Actor: Actor{UserID: uuid.New(), Role: domain.RoleAdmin},
 		Name:  "VII A",
 		Level: 13,
@@ -234,6 +246,7 @@ func TestClassServiceCreateRejectsDuplicate(t *testing.T) {
 	svc := newClassServiceForTest(t, uow.repos, &classServiceFakeUOWManager{uow: uow})
 
 	_, err := svc.Create(context.Background(), CreateClassInput{
+		AcademicYearID: testClassYearID, EffectiveDate: newTestAcademicYear(testClassYearID, domain.AcademicYearOpen).StartDate,
 		Actor: Actor{UserID: uuid.New(), Role: domain.RoleAdmin},
 		Name:  "VII A",
 		Level: 7,
@@ -251,6 +264,7 @@ func TestClassServiceCreateRejectsStudent(t *testing.T) {
 	svc := newClassServiceForTest(t, repository.RepositorySet{}, manager)
 
 	_, err := svc.Create(context.Background(), CreateClassInput{
+		AcademicYearID: testClassYearID, EffectiveDate: newTestAcademicYear(testClassYearID, domain.AcademicYearOpen).StartDate,
 		Actor: Actor{UserID: uuid.New(), Role: domain.RoleSiswa},
 		Name:  "VII A",
 		Level: 7,
@@ -276,6 +290,7 @@ func TestClassServiceCreateRollsBackOnAuditFailure(t *testing.T) {
 	svc := newClassServiceForTest(t, uow.repos, &classServiceFakeUOWManager{uow: uow})
 
 	_, err := svc.Create(context.Background(), CreateClassInput{
+		AcademicYearID: testClassYearID, EffectiveDate: newTestAcademicYear(testClassYearID, domain.AcademicYearOpen).StartDate,
 		Actor: Actor{UserID: uuid.New(), Role: domain.RoleAdmin},
 		Name:  "VII A",
 		Level: 7,
@@ -586,6 +601,7 @@ func TestClassServiceCreateParticipatesInOuterTransaction(t *testing.T) {
 
 	err := WithinTransaction(context.Background(), manager, func(ctx context.Context, _ repository.RepositorySet) error {
 		_, err := svc.Create(ctx, CreateClassInput{
+			AcademicYearID: testClassYearID, EffectiveDate: newTestAcademicYear(testClassYearID, domain.AcademicYearOpen).StartDate,
 			Actor: Actor{UserID: uuid.New(), Role: domain.RoleAdmin},
 			Name:  "VII A",
 			Level: 7,

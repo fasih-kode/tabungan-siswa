@@ -12,6 +12,7 @@ import (
 
 	"github.com/fasih/tabungan-siswa/internal/domain"
 	"github.com/fasih/tabungan-siswa/internal/http/middleware"
+	"github.com/fasih/tabungan-siswa/internal/repository"
 	"github.com/fasih/tabungan-siswa/internal/service"
 	"github.com/google/uuid"
 )
@@ -90,7 +91,7 @@ func TestWaliKelasCanRenderAcademicYearListAndDetailWithHeaderContext(t *testing
 }
 
 func TestAcademicYearListUsesBoundedPagination(t *testing.T) {
-	fake := &academicYearServiceFake{}
+	fake := &academicYearServiceFake{total: 30}
 	handler := newAcademicYearHandlerForTest(t, fake)
 	csrf := middleware.NewCSRFMiddleware(newTestCSRFCookie(t))
 	actor := service.Actor{UserID: uuid.New(), Role: domain.RoleAdmin}
@@ -100,8 +101,8 @@ func TestAcademicYearListUsesBoundedPagination(t *testing.T) {
 	if recorder.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200; body=%s", recorder.Code, recorder.Body.String())
 	}
-	if fake.lastListInput.Options.Limit != 26 || fake.lastListInput.Options.Offset != 50 {
-		t.Fatalf("pagination = %+v, want limit 26 (25 visible + 1 lookahead) offset 50", fake.lastListInput.Options)
+	if fake.lastListInput.Options.Limit != 11 || fake.lastListInput.Options.Offset != 20 {
+		t.Fatalf("pagination = %+v, want limit 11 (10 visible + 1 lookahead) offset 20", fake.lastListInput.Options)
 	}
 	if fake.lastListInput.Actor != actor {
 		t.Fatalf("actor = %+v, want %+v", fake.lastListInput.Actor, actor)
@@ -155,6 +156,42 @@ func TestAcademicYearCreateRejectsInvalidDateRange(t *testing.T) {
 	}
 }
 
+func TestAcademicYearCreateConflictRendersExistingYears(t *testing.T) {
+	existing := academicYearsForTest(1)[0]
+	fake := &academicYearServiceFake{
+		years:     []*domain.AcademicYear{existing},
+		createErr: repository.ErrConflict,
+	}
+	tmpl := template.Must(template.New("academic-years").Parse(
+		`{{define "academic-years"}}{{.Error}}|{{range .Rows}}{{.Name}} {{.Status}}{{end}}{{end}}`,
+	))
+	handler, err := NewAcademicYearPageHandler(fake, tmpl)
+	if err != nil {
+		t.Fatal(err)
+	}
+	form := url.Values{"csrf_token": {"token"}, "name": {"2026/2027"}, "start_date": {"2026-07-01"}, "end_date": {"2027-06-30"}}
+	req := httptest.NewRequest(http.MethodPost, "/academic-years", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req = req.WithContext(service.WithActor(req.Context(), service.Actor{UserID: uuid.New(), Role: domain.RoleAdmin}))
+	recorder := httptest.NewRecorder()
+	handler.Create(recorder, req)
+
+	if recorder.Code != http.StatusConflict {
+		t.Fatalf("status = %d, want 409; body=%s", recorder.Code, recorder.Body.String())
+	}
+	for _, want := range []string{"Perubahan tidak dapat dilakukan", existing.Name, string(existing.Status)} {
+		if !strings.Contains(recorder.Body.String(), want) {
+			t.Errorf("body %q does not contain %q", recorder.Body.String(), want)
+		}
+	}
+	if !fake.listCalled {
+		t.Fatal("existing academic years were not reloaded after create conflict")
+	}
+	if fake.lastListInput.Options.Limit != defaultAcademicYearPageSize+1 || !fake.lastListInput.Options.IncludeTotal {
+		t.Fatalf("list options = %+v, want first page with lookahead and total", fake.lastListInput.Options)
+	}
+}
+
 func TestAcademicYearTransitionRedirectsToDetail(t *testing.T) {
 	fake := &academicYearServiceFake{}
 	handler := newAcademicYearHandlerForTest(t, fake)
@@ -186,8 +223,8 @@ func TestAcademicYearListUsesLookaheadForNextPage(t *testing.T) {
 		wantHasNext bool
 		wantRows    int
 	}{
-		{name: "more rows than page", count: 21, wantHasNext: true, wantRows: 20},
-		{name: "exact page boundary", count: 20, wantHasNext: false, wantRows: 20},
+		{name: "more rows than page", count: 11, wantHasNext: true, wantRows: 10},
+		{name: "exact page boundary", count: 10, wantHasNext: false, wantRows: 10},
 		{name: "last partial page", count: 7, wantHasNext: false, wantRows: 7},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -207,8 +244,8 @@ func TestAcademicYearListUsesLookaheadForNextPage(t *testing.T) {
 			if recorder.Body.String() != want {
 				t.Fatalf("rendered view model = %q, want %q", recorder.Body.String(), want)
 			}
-			if fake.lastListInput.Options.Limit != 21 {
-				t.Fatalf("service limit = %d, want 21 (20 visible + 1 lookahead)", fake.lastListInput.Options.Limit)
+			if fake.lastListInput.Options.Limit != 11 {
+				t.Fatalf("service limit = %d, want 11 (10 visible + 1 lookahead)", fake.lastListInput.Options.Limit)
 			}
 		})
 	}

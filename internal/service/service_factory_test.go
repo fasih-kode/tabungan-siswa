@@ -57,6 +57,9 @@ func TestNewServiceSetBuildsAllServices(t *testing.T) {
 	if services.Student == nil {
 		t.Error("ServiceSet.Student is nil")
 	}
+	if services.StudentPromotion == nil {
+		t.Error("ServiceSet.StudentPromotion is nil")
+	}
 	if services.ClassAssignment == nil {
 		t.Error("ServiceSet.ClassAssignment is nil")
 	}

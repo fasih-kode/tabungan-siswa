@@ -14,6 +14,7 @@ import (
 // dalam satu transaction boundary.
 func NewRepositorySet(db database.DBTX) repository.RepositorySet {
 	return repository.RepositorySet{
+		ListTotals:              NewListTotalsRepository(db),
 		Users:                   NewUserRepository(db),
 		Sessions:                NewSessionRepository(db),
 		AcademicYears:           NewAcademicYearRepository(db),

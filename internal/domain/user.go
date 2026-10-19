@@ -8,12 +8,13 @@ import (
 )
 
 type User struct {
-	ID           uuid.UUID
-	Username     string
-	PasswordHash string
-	Role         UserRole
-	CreatedAt    time.Time
-	UpdatedAt    time.Time
+	ID                     uuid.UUID
+	Username               string
+	PasswordHash           string
+	Role                   UserRole
+	PasswordChangeRequired bool
+	CreatedAt              time.Time
+	UpdatedAt              time.Time
 }
 
 func NewUser(

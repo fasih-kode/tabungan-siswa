@@ -9,8 +9,14 @@ import (
 )
 
 type ListOptions struct {
-	Limit  int
-	Offset int
+	AcademicYearID uuid.UUID
+	ClassID        uuid.UUID
+	TeacherID      uuid.UUID
+	Limit          int
+	Offset         int
+	Search         string
+	StudentStatus  string
+	UnassignedOnly bool
 }
 
 type UserRepository interface {
@@ -52,12 +58,23 @@ type ClassRepository interface {
 		ctx context.Context,
 		name string,
 		level int,
+		academicYearID ...uuid.UUID,
 	) (bool, error)
 }
 
+type StudentDirectoryEntry struct {
+	Student        domain.Student
+	AcademicYearID uuid.UUID
+	ClassID        uuid.UUID
+	AcademicYear   string
+	Class          string
+}
+
 type StudentRepository interface {
+	ListDirectory(ctx context.Context, options ListOptions) ([]StudentDirectoryEntry, error)
 	Create(ctx context.Context, student domain.Student) error
 	GetByID(ctx context.Context, id uuid.UUID) (domain.Student, error)
+	GetByIDForUpdate(ctx context.Context, id uuid.UUID) (domain.Student, error)
 	GetByNIS(ctx context.Context, nis string) (domain.Student, error)
 	GetByNISN(ctx context.Context, nisn string) (domain.Student, error)
 	GetByUserID(ctx context.Context, userID uuid.UUID) (domain.Student, error)
@@ -156,6 +173,7 @@ type ClassTransferRequestRepository interface {
 		academicYearID uuid.UUID,
 		options ListOptions,
 	) ([]domain.ClassTransferRequest, error)
+	HasPendingByStudent(ctx context.Context, studentID uuid.UUID) (bool, error)
 	Update(
 		ctx context.Context,
 		request domain.ClassTransferRequest,
@@ -269,7 +287,18 @@ type AuditRepository interface {
 //
 // Pada operasi yang membutuhkan atomic transaction, service
 // menggunakan RepositorySet yang diperoleh dari UnitOfWork.
+// ListTotalsRepository counts the same authorized scopes and filters as list queries.
+type ListTotalsRepository interface {
+	AcademicYears(context.Context) (int, error)
+	Classes(ctx context.Context, yearID, teacherID, studentID uuid.UUID) (int, error)
+	Users(ctx context.Context, role domain.UserRole) (int, error)
+	StudentDirectory(ctx context.Context, options ListOptions) (int, error)
+	StudentClassHistory(ctx context.Context, studentID, yearID uuid.UUID) (int, error)
+	Transfers(ctx context.Context, studentID, yearID uuid.UUID, pendingOnly bool) (int, error)
+}
+
 type RepositorySet struct {
+	ListTotals              ListTotalsRepository
 	Users                   UserRepository
 	Sessions                SessionRepository
 	AcademicYears           AcademicYearRepository

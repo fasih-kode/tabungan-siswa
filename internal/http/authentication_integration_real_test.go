@@ -3,6 +3,7 @@ package http
 import (
 	"bytes"
 	"context"
+	"html/template"
 	"net/http"
 	"net/http/cookiejar"
 	"net/http/httptest"
@@ -205,6 +206,9 @@ func TestAuthenticationIntegrationUsesRealServiceAndArgon2id(t *testing.T) {
 			Dashboard:      newTestDashboardPageHandler(t),
 			AcademicYear:   newTestAcademicYearPageHandler(t),
 			Class:          newTestClassPageHandler(t),
+			Users: &UserPageHandler{templates: template.Must(template.New("change-password").Parse(
+				`{{define "change-password"}}PASSWORD PAGE {{.Username}} {{.CSRFToken}}{{end}}`,
+			))},
 		},
 		MiddlewareSet{
 			Authentication: authMiddleware,
@@ -325,6 +329,17 @@ func TestAuthenticationIntegrationUsesRealServiceAndArgon2id(t *testing.T) {
 			protectedResponse.StatusCode,
 			http.StatusOK,
 		)
+	}
+
+	passwordPageResponse, err := httpClient.Get(server.URL + "/account/password")
+	if err != nil {
+		t.Fatalf("GET /account/password error = %v", err)
+	}
+	passwordPageBody := new(bytes.Buffer)
+	_, _ = passwordPageBody.ReadFrom(passwordPageResponse.Body)
+	passwordPageResponse.Body.Close()
+	if passwordPageResponse.StatusCode != http.StatusOK || !bytes.Contains(passwordPageBody.Bytes(), []byte("PASSWORD PAGE admin")) {
+		t.Fatalf("GET /account/password status = %d, want 200 with rendered page; body=%s", passwordPageResponse.StatusCode, passwordPageBody.String())
 	}
 
 	logoutRequest, err := http.NewRequest(

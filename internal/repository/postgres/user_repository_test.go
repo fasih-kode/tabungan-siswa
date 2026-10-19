@@ -21,6 +21,7 @@ func TestUserRepository_CreateAndGetByID(t *testing.T) {
 	ctx := context.Background()
 
 	user := newTestUser(t)
+	user.PasswordChangeRequired = true
 
 	if err := repo.Create(ctx, user); err != nil {
 		t.Fatalf("Create() error = %v", err)
@@ -146,6 +147,7 @@ func TestUserRepository_Update(t *testing.T) {
 	updated.Username = "updated-" + uuid.NewString()
 	updated.PasswordHash = "updated-password-hash"
 	updated.Role = domain.RoleSiswa
+	updated.PasswordChangeRequired = false
 	updated.UpdatedAt = time.Now()
 
 	if err := repo.Update(ctx, updated); err != nil {
@@ -238,6 +240,9 @@ func assertUserEqual(
 			got.Role,
 			want.Role,
 		)
+	}
+	if got.PasswordChangeRequired != want.PasswordChangeRequired {
+		t.Errorf("PasswordChangeRequired = %v, want %v", got.PasswordChangeRequired, want.PasswordChangeRequired)
 	}
 
 	if !got.CreatedAt.Equal(want.CreatedAt) {

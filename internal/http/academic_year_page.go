@@ -17,7 +17,7 @@ import (
 )
 
 const (
-	defaultAcademicYearPageSize = 20
+	defaultAcademicYearPageSize = tablePageSize
 	maxAcademicYearPageSize     = 100
 	maxAcademicYearFormBytes    = 16 << 10
 )
@@ -33,12 +33,14 @@ type AcademicYearRowViewModel struct {
 }
 
 type AcademicYearPageViewModel struct {
+	Pagination   PaginationViewModel
 	Title        string
 	Heading      string
 	Description  string
 	CSRFToken    string
 	Role         string
 	Username     string
+	ActiveNav    string
 	Rows         []AcademicYearRowViewModel
 	AcademicYear *AcademicYearRowViewModel
 	Name         string
@@ -84,7 +86,7 @@ func (h *AcademicYearPageHandler) List(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	output, err := h.academicYears.List(r.Context(), service.ListAcademicYearsInput{
-		Actor: actor, Options: service.ListOptions{Limit: limit + 1, Offset: (page - 1) * limit},
+		Actor: actor, Options: service.ListOptions{Limit: limit + 1, Offset: (page - 1) * limit, IncludeTotal: true},
 	})
 	if err != nil {
 		httperror.Write(w, err)
@@ -107,10 +109,14 @@ func (h *AcademicYearPageHandler) List(w http.ResponseWriter, r *http.Request) {
 		rows = rows[:limit]
 	}
 	vm := AcademicYearPageViewModel{
-		Title: "Tahun Ajaran", Heading: "Tahun Ajaran",
+		Title: "Tahun Ajaran", Heading: "Tahun Ajaran", ActiveNav: "academic-years",
 		Description: "Kelola periode dan status tahun ajaran.", CSRFToken: csrfToken,
 		Role: string(actor.Role), Username: actor.Username, Rows: rows, Page: page, Limit: limit,
 		HasPrevious: page > 1, HasNext: hasNext, PreviousPage: page - 1, NextPage: page + 1,
+	}
+	vm.Pagination = newPagination(r, page, output.Total, len(rows), hasNext)
+	if redirectMissingPage(w, r, vm.Pagination) {
+		return
 	}
 	if err := h.templates.ExecuteTemplate(w, "academic-years", vm); err != nil {
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
@@ -135,7 +141,7 @@ func (h *AcademicYearPageHandler) Create(w http.ResponseWriter, r *http.Request)
 	startDate, startErr := time.Parse("2006-01-02", r.PostForm.Get("start_date"))
 	endDate, endErr := time.Parse("2006-01-02", r.PostForm.Get("end_date"))
 	if startErr != nil || endErr != nil || strings.TrimSpace(r.PostForm.Get("name")) == "" {
-		h.renderFormError(w, actor, http.StatusBadRequest, "Nama dan tanggal tahun ajaran wajib diisi dengan format yang benar.", r.PostForm.Get("csrf_token"), r.PostForm.Get("name"), r.PostForm.Get("start_date"), r.PostForm.Get("end_date"))
+		h.renderFormError(w, r, actor, http.StatusBadRequest, "Nama dan tanggal tahun ajaran wajib diisi dengan format yang benar.", r.PostForm.Get("csrf_token"), r.PostForm.Get("name"), r.PostForm.Get("start_date"), r.PostForm.Get("end_date"))
 		return
 	}
 	_, err := h.academicYears.Create(r.Context(), service.CreateAcademicYearInput{
@@ -147,7 +153,7 @@ func (h *AcademicYearPageHandler) Create(w http.ResponseWriter, r *http.Request)
 			httperror.Write(w, err)
 			return
 		}
-		h.renderFormError(w, actor, status, safeAcademicYearError(err), r.PostForm.Get("csrf_token"), r.PostForm.Get("name"), r.PostForm.Get("start_date"), r.PostForm.Get("end_date"))
+		h.renderFormError(w, r, actor, status, safeAcademicYearError(err), r.PostForm.Get("csrf_token"), r.PostForm.Get("name"), r.PostForm.Get("start_date"), r.PostForm.Get("end_date"))
 		return
 	}
 	http.Redirect(w, r, "/academic-years", http.StatusSeeOther)
@@ -179,7 +185,7 @@ func (h *AcademicYearPageHandler) Detail(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	row := academicYearRow(*output.AcademicYear)
-	vm := AcademicYearPageViewModel{Title: "Detail Tahun Ajaran", Heading: row.Name, Description: "Detail dan lifecycle tahun ajaran.", CSRFToken: csrfToken, Role: string(actor.Role), Username: actor.Username, AcademicYear: &row}
+	vm := AcademicYearPageViewModel{Title: "Detail Tahun Ajaran", Heading: row.Name, Description: "Detail dan lifecycle tahun ajaran.", CSRFToken: csrfToken, Role: string(actor.Role), Username: actor.Username, ActiveNav: "academic-years", AcademicYear: &row}
 	if err := h.templates.ExecuteTemplate(w, "academic-years", vm); err != nil {
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 	}
@@ -226,6 +232,7 @@ func (h *AcademicYearPageHandler) Transition(w http.ResponseWriter, r *http.Requ
 
 func (h *AcademicYearPageHandler) renderFormError(
 	w http.ResponseWriter,
+	r *http.Request,
 	actor service.Actor,
 	status int,
 	message string,
@@ -234,13 +241,33 @@ func (h *AcademicYearPageHandler) renderFormError(
 	startDate string,
 	endDate string,
 ) {
-	w.WriteHeader(status)
 	vm := AcademicYearPageViewModel{
-		Title: "Tahun Ajaran", Heading: "Tahun Ajaran",
+		Title: "Tahun Ajaran", Heading: "Tahun Ajaran", ActiveNav: "academic-years",
 		Description: "Kelola periode dan status tahun ajaran.",
 		CSRFToken:   csrfToken, Role: string(actor.Role), Username: actor.Username, Name: name,
 		StartDate: startDate, EndDate: endDate, Error: message,
+		Page: 1, Limit: defaultAcademicYearPageSize,
 	}
+	output, err := h.academicYears.List(r.Context(), service.ListAcademicYearsInput{
+		Actor: actor,
+		Options: service.ListOptions{
+			Limit: defaultAcademicYearPageSize + 1, IncludeTotal: true,
+		},
+	})
+	if err == nil {
+		vm.Rows = make([]AcademicYearRowViewModel, 0, len(output.AcademicYears))
+		for _, year := range output.AcademicYears {
+			if year != nil {
+				vm.Rows = append(vm.Rows, academicYearRow(*year))
+			}
+		}
+		vm.HasNext = len(vm.Rows) > defaultAcademicYearPageSize
+		if vm.HasNext {
+			vm.Rows = vm.Rows[:defaultAcademicYearPageSize]
+		}
+		vm.Pagination = newPagination(r, 1, output.Total, len(vm.Rows), vm.HasNext)
+	}
+	w.WriteHeader(status)
 	if err := h.templates.ExecuteTemplate(w, "academic-years", vm); err != nil {
 		return
 	}
@@ -269,9 +296,9 @@ func parsePageOptions(r *http.Request) (int, int, error) {
 		if err != nil || value < 1 || value > maxAcademicYearPageSize {
 			return 0, 0, errors.New("invalid limit")
 		}
-		limit = value
+		// Legacy limit query values no longer change the shared table size.
 	}
-	if page-1 > int(^uint(0)>>1)/limit {
+	if page-1 > (int(^uint(0)>>1)-tablePageSize)/limit {
 		return 0, 0, errors.New("page offset overflow")
 	}
 	return page, limit, nil

@@ -134,7 +134,17 @@ func (s *academicYearService) List(
 		result = append(result, &academicYears[i])
 	}
 
-	return ListAcademicYearsOutput{
+	total := 0
+	if input.Options.IncludeTotal {
+		if s.deps.Repositories.ListTotals == nil {
+			return ListAcademicYearsOutput{}, ErrInvalidDependency
+		}
+		total, err = s.deps.Repositories.ListTotals.AcademicYears(ctx)
+		if err != nil {
+			return ListAcademicYearsOutput{}, err
+		}
+	}
+	return ListAcademicYearsOutput{Total: total,
 		AcademicYears: result,
 	}, nil
 }

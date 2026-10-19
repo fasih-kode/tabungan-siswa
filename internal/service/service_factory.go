@@ -52,6 +52,10 @@ func NewServiceSet(deps Dependencies) (ServiceSet, error) {
 			err,
 		)
 	}
+	promotion, err := NewStudentPromotionService(deps)
+	if err != nil {
+		return ServiceSet{}, fmt.Errorf("construct student promotion service: %w", err)
+	}
 
 	classAssignment, err := NewClassAssignmentService(deps)
 	if err != nil {
@@ -102,16 +106,17 @@ func NewServiceSet(deps Dependencies) (ServiceSet, error) {
 	}
 
 	return ServiceSet{
-		Authentication:  authentication,
-		User:            user,
-		AcademicYear:    academicYear,
-		Class:           class,
-		Student:         student,
-		ClassAssignment: classAssignment,
-		ClassTransfer:   classTransfer,
-		SavingsAccount:  savingsAccount,
-		Transaction:     transaction,
-		Settlement:      settlement,
-		Audit:           audit,
+		Authentication:   authentication,
+		User:             user,
+		AcademicYear:     academicYear,
+		Class:            class,
+		Student:          student,
+		StudentPromotion: promotion,
+		ClassAssignment:  classAssignment,
+		ClassTransfer:    classTransfer,
+		SavingsAccount:   savingsAccount,
+		Transaction:      transaction,
+		Settlement:       settlement,
+		Audit:            audit,
 	}, nil
 }

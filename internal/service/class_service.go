@@ -40,7 +40,18 @@ func (s *classService) Create(
 		}
 	}()
 
-	exists, err := repos.Classes.ExistsByNameAndLevel(ctx, class.Name, class.Level)
+	if input.AcademicYearID == uuid.Nil {
+		return CreateClassOutput{}, domain.ErrInvalidID
+	}
+	year, err := repos.AcademicYears.GetByIDForUpdate(ctx, input.AcademicYearID)
+	if err != nil {
+		return CreateClassOutput{}, err
+	}
+	if err := validateClassEffectiveDate(year, input.EffectiveDate); err != nil {
+		return CreateClassOutput{}, err
+	}
+	class.AcademicYearID, class.EffectiveDate = year.ID, input.EffectiveDate
+	exists, err := repos.Classes.ExistsByNameAndLevel(ctx, class.Name, class.Level, year.ID)
 	if err != nil {
 		return CreateClassOutput{}, err
 	}
@@ -98,6 +109,7 @@ func (s *classService) List(
 		return ListClassesOutput{}, domain.ErrInvalidID
 	}
 
+	var countTeacherID, countStudentID uuid.UUID
 	var classes []domain.Class
 	var err error
 
@@ -106,12 +118,14 @@ func (s *classService) List(
 		classes, err = s.deps.Repositories.Classes.List(
 			ctx,
 			repository.ListOptions{
-				Limit:  input.Options.Limit,
-				Offset: input.Options.Offset,
+				Limit:          input.Options.Limit,
+				Offset:         input.Options.Offset,
+				AcademicYearID: input.AcademicYearID,
 			},
 		)
 
 	case domain.RoleWaliKelas:
+		countTeacherID = input.Actor.UserID
 		classes, err = s.deps.Repositories.Classes.ListByTeacherAndAcademicYear(
 			ctx,
 			input.Actor.UserID,
@@ -131,6 +145,7 @@ func (s *classService) List(
 			return ListClassesOutput{}, studentErr
 		}
 
+		countStudentID = student.ID
 		histories, historyErr := s.deps.Repositories.StudentClassHistories.
 			ListByStudentAndAcademicYear(
 				ctx,
@@ -183,7 +198,17 @@ func (s *classService) List(
 		return ListClassesOutput{}, err
 	}
 
-	return ListClassesOutput{Classes: classPointers(classes)}, nil
+	total := 0
+	if input.Options.IncludeTotal {
+		if s.deps.Repositories.ListTotals == nil {
+			return ListClassesOutput{}, ErrInvalidDependency
+		}
+		total, err = s.deps.Repositories.ListTotals.Classes(ctx, input.AcademicYearID, countTeacherID, countStudentID)
+		if err != nil {
+			return ListClassesOutput{}, err
+		}
+	}
+	return ListClassesOutput{Classes: classPointers(classes), Total: total}, nil
 }
 
 func (s *classService) Update(
@@ -221,15 +246,36 @@ func (s *classService) Update(
 		return UpdateClassOutput{}, err
 	}
 
+	updated.AcademicYearID = existing.AcademicYearID
+	updated.EffectiveDate = existing.EffectiveDate
+	if input.AcademicYearID != uuid.Nil {
+		if existing.AcademicYearID != uuid.Nil && input.AcademicYearID != existing.AcademicYearID {
+			return UpdateClassOutput{}, domain.ErrInvalidTransition
+		}
+		updated.AcademicYearID = input.AcademicYearID
+	}
+	if !input.EffectiveDate.IsZero() {
+		updated.EffectiveDate = input.EffectiveDate
+	}
+	if updated.AcademicYearID != uuid.Nil {
+		year, err := repos.AcademicYears.GetByIDForUpdate(ctx, updated.AcademicYearID)
+		if err != nil {
+			return UpdateClassOutput{}, err
+		}
+		if err := validateClassEffectiveDate(year, updated.EffectiveDate); err != nil {
+			return UpdateClassOutput{}, err
+		}
+	}
 	updated.ID = existing.ID
 	updated.CreatedAt = existing.CreatedAt
 	updated.UpdatedAt = time.Now()
 
-	if updated.Name != existing.Name || updated.Level != existing.Level {
+	if updated.Name != existing.Name || updated.Level != existing.Level || updated.AcademicYearID != existing.AcademicYearID {
 		exists, err := repos.Classes.ExistsByNameAndLevel(
 			ctx,
 			updated.Name,
 			updated.Level,
+			updated.AcademicYearID,
 		)
 		if err != nil {
 			return UpdateClassOutput{}, err
@@ -305,4 +351,11 @@ func classPointers(classes []domain.Class) []*domain.Class {
 		result = append(result, &class)
 	}
 	return result
+}
+
+func validateClassEffectiveDate(year domain.AcademicYear, date time.Time) error {
+	if date.IsZero() || date.Before(year.StartDate) || !date.Before(year.EndDate) {
+		return domain.ErrInvalidDateRange
+	}
+	return nil
 }

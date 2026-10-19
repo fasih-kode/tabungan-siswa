@@ -3,8 +3,8 @@
 <html lang="id">
 <head>
     <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>{{.Title}} - Tabungan Siswa</title><link rel="stylesheet" href="/static/css/app.css">
-</head>
+    <title>{{.Title}} - Tabungan Siswa</title><link rel="stylesheet" href="/static/css/app.css?v=20261019-toast">
+<script src="/static/js/app.js?v=20261019-toast" defer></script><script src="/static/js/instant-search.js?v=20261019-toast" defer></script></head>
 <body class="bg-gray-50 dark:bg-gray-900">
 <div class="flex h-screen overflow-hidden">{{template "sidebar" .}}<div class="relative flex min-w-0 flex-1 flex-col overflow-x-hidden overflow-y-auto">{{template "header" .}}
 <main class="min-w-0"><div class="mx-auto w-full max-w-(--breakpoint-2xl) p-4 md:p-6"><div class="space-y-6">
@@ -14,7 +14,7 @@
 {{range .Rows}}
 <section class="rounded-2xl border border-gray-200 bg-white p-5 shadow-theme-sm dark:border-gray-800 dark:bg-gray-800">
 <dl class="grid grid-cols-1 gap-4 sm:grid-cols-2">
-<div><dt class="text-xs uppercase text-gray-500">Status</dt><dd class="mt-1 text-sm font-medium">{{.Status}}</dd></div>
+<div><dt class="text-xs uppercase text-gray-500">Status</dt><dd class="mt-1 text-sm font-medium">{{template "status-badge" .Status}}</dd></div>
 <div><dt class="text-xs uppercase text-gray-500">Diajukan</dt><dd class="mt-1 text-sm">{{.RequestedAt}}</dd></div>
 <div><dt class="text-xs uppercase text-gray-500">Siswa</dt><dd class="mt-1 break-all text-sm">{{.StudentID}}</dd></div>
 <div><dt class="text-xs uppercase text-gray-500">Tahun ajaran</dt><dd class="mt-1 break-all text-sm">{{$.AcademicYearID}}</dd></div>
@@ -32,18 +32,22 @@
 {{end}}
 <a class="text-sm font-medium text-blue-600 hover:underline" href="{{.ListURL}}">Kembali ke daftar</a>
 {{else}}
+<div id="transfer-directory" data-instant-region>
 {{if .IsStudentList}}
-{{if or (eq .Role "ADMIN") (eq .Role "WALI_KELAS")}}
-<section class="rounded-2xl border border-gray-200 bg-white p-5 shadow-theme-sm dark:border-gray-800 dark:bg-gray-800"><h2 class="text-base font-semibold">Ajukan transfer kelas</h2><p class="mt-1 text-sm text-gray-500">Isi ID kelas asal dan tujuan. Service akan memeriksa kelas aktif dan aturan transfer.</p>
-<form method="post" action="/class-transfer-requests" class="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2"><input type="hidden" name="csrf_token" value="{{.CSRFToken}}"><input type="hidden" name="student_id" value="{{.StudentID}}"><input type="hidden" name="academic_year_id" value="{{.AcademicYearID}}">
-<div><label class="form-label" for="from-class-id">ID kelas asal</label><input class="form-input" id="from-class-id" name="from_class_id" required value="{{.FromClassID}}"></div><div><label class="form-label" for="to-class-id">ID kelas tujuan</label><input class="form-input" id="to-class-id" name="to_class_id" required value="{{.ToClassID}}"></div><div class="sm:col-span-2"><button class="form-button-primary" type="submit">Ajukan transfer</button></div></form></section>
+<form hidden method="get" action="{{.ListURL}}" data-instant-filter><input type="hidden" name="academic_year_id" value="{{.AcademicYearID}}"></form>
+{{if eq .Role "WALI_KELAS"}}
+{{if .CanRequest}}<section class="rounded-2xl border border-gray-200 bg-white p-5 shadow-theme-sm dark:border-gray-800 dark:bg-gray-800"><h2 class="text-base font-semibold">Ajukan transfer kelas</h2><p class="mt-1 text-sm text-gray-500">Siswa saat ini berada di kelas {{.FromClassName}}. Admin akan meninjau permintaan ini.</p>
+<form method="post" action="/class-transfer-requests" class="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2"><input type="hidden" name="csrf_token" value="{{.CSRFToken}}"><input type="hidden" name="student_id" value="{{.StudentID}}"><input type="hidden" name="academic_year_id" value="{{.AcademicYearID}}"><input type="hidden" name="from_class_id" value="{{.FromClassID}}">
+<div><label class="form-label" for="to-class-id">Kelas tujuan</label><select class="form-input" id="to-class-id" name="to_class_id" required><option value="">Pilih kelas tujuan</option>{{range .TargetClasses}}<option value="{{.ID}}">{{.Name}}</option>{{end}}</select></div><div class="sm:col-span-2"><button class="form-button-primary" type="submit">Ajukan transfer</button></div></form></section>{{else}}<div role="status" class="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">{{if .RequestUnavailableReason}}{{.RequestUnavailableReason}}{{else}}Permintaan transfer belum dapat diajukan untuk siswa ini.{{end}} Periksa tahun ajaran, status siswa, dan riwayat kelasnya.</div>{{end}}
 {{end}}
 {{else}}
-<section class="rounded-2xl border border-gray-200 bg-white p-5 shadow-theme-sm dark:border-gray-800 dark:bg-gray-800"><form method="get" action="/class-transfer-requests/pending" class="flex flex-wrap items-end gap-3"><div><label class="form-label" for="academic-year-id">ID tahun ajaran</label><input class="form-input" id="academic-year-id" name="academic_year_id" required value="{{.AcademicYearID}}"></div><button class="form-button-primary" type="submit">Tampilkan</button></form></section>
+<section class="rounded-2xl border border-gray-200 bg-white p-5 shadow-theme-sm dark:border-gray-800 dark:bg-gray-800"><form data-instant-filter method="get" action="/class-transfer-requests/pending" class="flex flex-wrap items-end gap-3"><div><label class="form-label" for="academic-year-id">ID tahun ajaran</label><input class="form-input" id="academic-year-id" name="academic_year_id" required maxlength="36" pattern="[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}" value="{{.AcademicYearID}}"></div><noscript><button class="form-button-primary" type="submit">Tampilkan</button></noscript></form></section>
 {{end}}
+<p class="instant-feedback" data-instant-status role="status" aria-live="polite"></p><div data-instant-results>
 <section class="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-theme-sm dark:border-gray-800 dark:bg-gray-800"><div class="overflow-x-auto"><table class="min-w-full divide-y divide-gray-200 dark:divide-gray-800"><thead class="bg-gray-50 dark:bg-gray-900"><tr>{{if not .IsStudentList}}<th class="px-5 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Siswa</th>{{end}}<th class="px-5 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Kelas asal</th><th class="px-5 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Kelas tujuan</th><th class="px-5 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Status</th><th class="px-5 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Diajukan</th><th class="px-5 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Detail</th></tr></thead>
-<tbody class="divide-y divide-gray-200 dark:divide-gray-800">{{range .Rows}}<tr>{{if not $.IsStudentList}}<td class="px-5 py-4 break-all text-sm"><a class="font-medium text-blue-600 hover:underline" href="/students/{{.StudentID}}/class-transfer-requests?academic_year_id={{$.AcademicYearID}}">{{.StudentID}}</a></td>{{end}}<td class="px-5 py-4 break-all text-sm">{{.FromClassID}}</td><td class="px-5 py-4 break-all text-sm">{{.ToClassID}}</td><td class="px-5 py-4 text-sm">{{.Status}}</td><td class="px-5 py-4 text-sm">{{.RequestedAt}}</td><td class="px-5 py-4 text-sm"><a class="font-medium text-blue-600 hover:underline" href="/class-transfer-requests/{{.ID}}">Lihat</a></td></tr>{{else}}<tr><td colspan="{{if .IsStudentList}}5{{else}}6{{end}}" class="px-5 py-12 text-center text-sm text-gray-500">Tidak ada permintaan transfer kelas.</td></tr>{{end}}</tbody></table></div>
-<div class="flex items-center justify-between border-t border-gray-200 px-5 py-4 dark:border-gray-800">{{if .HasPrevious}}<a class="text-sm font-medium text-blue-600 hover:underline" href="{{.ListURL}}&page={{.PreviousPage}}&limit={{.Limit}}">Sebelumnya</a>{{else}}<span></span>{{end}}<span class="text-sm text-gray-500">Halaman {{.Page}}</span>{{if .HasNext}}<a class="text-sm font-medium text-blue-600 hover:underline" href="{{.ListURL}}&page={{.NextPage}}&limit={{.Limit}}">Berikutnya</a>{{else}}<span></span>{{end}}</div></section>
+<tbody class="divide-y divide-gray-200 dark:divide-gray-800">{{range .Rows}}<tr>{{if not $.IsStudentList}}<td class="px-5 py-4 break-all text-sm"><a class="font-medium text-blue-600 hover:underline" href="/students/{{.StudentID}}/class-transfer-requests?academic_year_id={{$.AcademicYearID}}">{{.StudentID}}</a></td>{{end}}<td class="px-5 py-4 break-all text-sm">{{.FromClassID}}</td><td class="px-5 py-4 break-all text-sm">{{.ToClassID}}</td><td class="px-5 py-4 text-sm">{{template "status-badge" .Status}}</td><td class="px-5 py-4 text-sm">{{.RequestedAt}}</td><td class="px-5 py-4 text-sm"><a class="font-medium text-blue-600 hover:underline" href="/class-transfer-requests/{{.ID}}">Lihat</a></td></tr>{{else}}<tr><td colspan="{{if .IsStudentList}}5{{else}}6{{end}}" class="px-5 py-12 text-center text-sm text-gray-500">Tidak ada permintaan transfer kelas.</td></tr>{{end}}</tbody></table></div>
+{{template "pagination" .Pagination}}</section>
+</div></div>
 {{end}}
 </div></div></main></div></div></body></html>
 {{end}}

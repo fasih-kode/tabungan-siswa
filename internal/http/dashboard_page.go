@@ -15,6 +15,7 @@ type DashboardPageViewModel struct {
 	Username    string
 	Role        string
 	CSRFToken   string
+	ActiveNav   string
 }
 
 type DashboardPageHandler struct {
@@ -60,6 +61,7 @@ func (h *DashboardPageHandler) Get(w http.ResponseWriter, r *http.Request) {
 		Username:    actor.Username,
 		Role:        string(actor.Role),
 		CSRFToken:   csrfToken,
+		ActiveNav:   "dashboard",
 	}
 
 	if err := h.templates.ExecuteTemplate(w, "base", viewModel); err != nil {

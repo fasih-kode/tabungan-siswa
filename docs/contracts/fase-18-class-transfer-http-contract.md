@@ -1,7 +1,13 @@
 # FASE 18: Class Transfer Request HTTP Contract
 
-Status: VERIFIED — LOCKED
+Status: LOCKED — AMENDED 2026-10-19
 Scope: expose the existing ClassTransferService through server-rendered HTML.
+
+The original implementation exposed request submission through a student
+transfer page, but did not link that page from the Wali Kelas navigation and
+required manual class UUID entry. The UI access gap is addressed by the Wali
+navigation entry, student-row/detail links, and class-name selector below;
+these additions still require verification.
 
 Verification completed on 2026-10-14:
 - Focused HTTP and template tests passed.
@@ -20,8 +26,9 @@ implement transfer authorization, lifecycle rules, or class-history changes.
 ## 1. Existing Business Contract
 
 - Requests start as `PENDING`. Source and destination classes must differ.
-- Admin and Wali Kelas may submit a request. Wali Kelas must have the student
-  in scope for the selected academic year. Siswa cannot submit requests.
+- Only Wali Kelas may submit a request, and the student must be in that Wali's
+  scope for the selected academic year. Admin reviews pending requests; Siswa
+  cannot submit requests.
 - A request may be created only while its academic year is `OPEN`, and the
   source class must match the student's class history active when requested.
 - At most one `PENDING` request may exist per student and academic year.
@@ -90,9 +97,13 @@ Create form fields:
 - `from_class_id`
 - `to_class_id`
 
-The current form accepts UUID values for the source and destination class IDs;
-the service remains responsible for validating their relationship to the
-student and academic year.
+The form is reachable from the Wali Kelas navigation, then from a scoped
+student row or detail page. The source class is populated from the student's
+current history. The destination is selected by class name from the selected
+academic year's classes; the service remains responsible for validating the
+request and its relationship to the student and year. Admin may inspect
+transfer history and review requests, but cannot reach an actionable request
+form or submit a request.
 
 Approval form field: `effective_date`, formatted as ISO `YYYY-MM-DD`.
 
@@ -132,6 +143,23 @@ remains the authorization authority; hiding a link is not authorization.
   defensive close guard, and transfer request, approval, and rejection flows.
 - `go vet ./...`, `go build ./...`, `git diff --check`, and
   `make test-integration` using its verified disposable database target.
+- Verify the Wali menu route, scoped student links, class-name target selector,
+  and that Wali requests remain limited to students in their scope.
+
+## 7. Post-lock authorization amendment — 2026-10-19
+
+The product owner clarified the responsibility boundary: Wali Kelas submits
+class-transfer requests and Admin reviews them. This amendment supersedes the
+older statement that Admin may submit requests. It applies at all layers:
+Admin receives no request link/form, the HTTP POST handler rejects Admin, and
+`ClassTransferService.Request` and `RequestOptions` reject Admin. Admin review
+routes and read access remain available under their existing rules.
+
+Verification after the amendment: `make test-integration`,
+`go test -race ./... -count=1`, `go vet ./...`, `go build ./...`, and
+`git diff --check` passed on 2026-10-19. HTTP/service tests cover Admin denial
+and the Wali request path. See `fase-18-implementation-lock.md` for the
+amendment checkpoint.
 
 Lifecycle enforcement, the HTTP slice, and verification are complete. This
 contract is locked with the FASE 18 implementation checkpoint.

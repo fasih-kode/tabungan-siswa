@@ -8,8 +8,8 @@
         <li>
             <a
                 href="/protected"
-                aria-current="page"
-                class="flex items-center gap-3 rounded-lg bg-gray-100 px-3 py-2.5 text-sm font-medium text-gray-900 transition-colors hover:bg-gray-100 dark:bg-gray-800 dark:text-white"
+                {{if eq .ActiveNav "dashboard"}}aria-current="page"{{end}}
+                class="flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors {{if eq .ActiveNav "dashboard"}}bg-brand-500 text-white{{else}}text-gray-600 hover:bg-gray-100 hover:text-gray-900 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-white{{end}}"
             >
                 <svg class="h-5 w-5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
                     <path stroke-linecap="round" stroke-linejoin="round" d="m3 10 9-7 9 7v10a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1V10Z"/>
@@ -21,7 +21,8 @@
         <li>
             <a
                 href="/academic-years"
-                class="flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-gray-600 transition-colors hover:bg-gray-100 hover:text-gray-900 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-white"
+                {{if eq .ActiveNav "academic-years"}}aria-current="page"{{end}}
+                class="flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors {{if eq .ActiveNav "academic-years"}}bg-brand-500 text-white{{else}}text-gray-600 hover:bg-gray-100 hover:text-gray-900 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-white{{end}}"
             >
                 <svg class="h-5 w-5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
                     <path stroke-linecap="round" stroke-linejoin="round" d="M7 3v3m10-3v3M4 9h16M5 5h14a1 1 0 0 1 1 1v13H4V6a1 1 0 0 1 1-1Z"/>
@@ -33,7 +34,8 @@
         <li>
             <a
                 href="/classes"
-                class="flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-gray-600 transition-colors hover:bg-gray-100 hover:text-gray-900 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-white"
+                {{if eq .ActiveNav "classes"}}aria-current="page"{{end}}
+                class="flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors {{if eq .ActiveNav "classes"}}bg-brand-500 text-white{{else}}text-gray-600 hover:bg-gray-100 hover:text-gray-900 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-white{{end}}"
             >
                 <svg class="h-5 w-5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
                     <rect x="3" y="4" width="18" height="16" rx="2"/><path stroke-linecap="round" stroke-linejoin="round" d="M3 9h18M9 4v5m6-5v5"/>
@@ -44,15 +46,39 @@
 
         {{if eq .Role "ADMIN"}}
         <li>
-            <a href="/teacher-assignments" class="flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-gray-600 transition-colors hover:bg-gray-100 hover:text-gray-900 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-white">
+            <a href="/student-promotions" {{if eq .ActiveNav "student-promotions"}}aria-current="page"{{end}} class="flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors {{if eq .ActiveNav "student-promotions"}}bg-brand-500 text-white{{else}}text-gray-600 hover:bg-gray-100 hover:text-gray-900 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-white{{end}}">
+                <svg class="h-5 w-5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M4 7h11m0 0-3-3m3 3-3 3M20 17H9m0 0 3 3m-3-3 3-3"/><path stroke-linecap="round" stroke-linejoin="round" d="M19 4v4M5 16v4"/></svg>
+                <span>Kenaikan & Kelulusan</span>
+            </a>
+        </li>
+        {{end}}
+
+        {{if eq .Role "ADMIN"}}
+        <li>
+            <a href="/teacher-assignments" {{if eq .ActiveNav "teacher-assignments"}}aria-current="page"{{end}} class="flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors {{if eq .ActiveNav "teacher-assignments"}}bg-brand-500 text-white{{else}}text-gray-600 hover:bg-gray-100 hover:text-gray-900 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-white{{end}}">
                 <svg class="h-5 w-5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><circle cx="9" cy="7" r="4"/><path stroke-linecap="round" stroke-linejoin="round" d="M2 21v-2a7 7 0 0 1 14 0v2M19 8v6m3-3h-6"/></svg>
                 <span>Penugasan Wali Kelas</span>
             </a>
         </li>
         <li>
-            <a href="/class-transfer-requests/pending" class="flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-gray-600 transition-colors hover:bg-gray-100 hover:text-gray-900 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-white">
+            <a href="/class-transfer-requests/pending" {{if eq .ActiveNav "class-transfers"}}aria-current="page"{{end}} class="flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors {{if eq .ActiveNav "class-transfers"}}bg-brand-500 text-white{{else}}text-gray-600 hover:bg-gray-100 hover:text-gray-900 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-white{{end}}">
                 <svg class="h-5 w-5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M4 7h13m0 0-3-3m3 3-3 3M20 17H7m0 0 3 3m-3-3 3-3"/></svg>
                 <span>Transfer Kelas</span>
+            </a>
+        </li>
+        <li>
+            <a href="/users" {{if eq .ActiveNav "users"}}aria-current="page"{{end}} class="flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors {{if eq .ActiveNav "users"}}bg-brand-500 text-white{{else}}text-gray-600 hover:bg-gray-100 hover:text-gray-900 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-white{{end}}">
+                <svg class="h-5 w-5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2m16-13a4 4 0 1 1-8 0 4 4 0 0 1 8 0Zm4 13v-2a4 4 0 0 0-3-3.87"/></svg>
+                <span>Pengguna</span>
+            </a>
+        </li>
+        {{end}}
+
+        {{if eq .Role "WALI_KELAS"}}
+        <li>
+            <a href="/students?transfer=1" {{if eq .ActiveNav "class-transfers"}}aria-current="page"{{end}} class="flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors {{if eq .ActiveNav "class-transfers"}}bg-brand-500 text-white{{else}}text-gray-600 hover:bg-gray-100 hover:text-gray-900 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-white{{end}}">
+                <svg class="h-5 w-5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M4 7h13m0 0-3-3m3 3-3 3M20 17H7m0 0 3 3m-3-3 3-3"/></svg>
+                <span>Ajukan Transfer Kelas</span>
             </a>
         </li>
         {{end}}
@@ -60,7 +86,8 @@
         <li>
             <a
                 href="/students"
-                class="flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-gray-600 transition-colors hover:bg-gray-100 hover:text-gray-900 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-white"
+                {{if eq .ActiveNav "students"}}aria-current="page"{{end}}
+                class="flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors {{if eq .ActiveNav "students"}}bg-brand-500 text-white{{else}}text-gray-600 hover:bg-gray-100 hover:text-gray-900 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-white{{end}}"
             >
                 <svg class="h-5 w-5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
                     <path stroke-linecap="round" stroke-linejoin="round" d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/>
@@ -68,6 +95,13 @@
                     <path stroke-linecap="round" stroke-linejoin="round" d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/>
                 </svg>
                 <span>Siswa</span>
+            </a>
+        </li>
+
+        <li>
+            <a href="/account/password" {{if eq .ActiveNav "change-password"}}aria-current="page"{{end}} class="flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors {{if eq .ActiveNav "change-password"}}bg-brand-500 text-white{{else}}text-gray-600 hover:bg-gray-100 hover:text-gray-900 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-white{{end}}">
+                <svg class="h-5 w-5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><rect x="4" y="10" width="16" height="11" rx="2"/><path stroke-linecap="round" stroke-linejoin="round" d="M8 10V7a4 4 0 1 1 8 0v3m-4 5v2"/></svg>
+                <span>Ganti Password</span>
             </a>
         </li>
 

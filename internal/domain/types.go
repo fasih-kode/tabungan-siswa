@@ -37,13 +37,14 @@ func (s AcademicYearStatus) IsValid() bool {
 type StudentStatus string
 
 const (
-	StudentActive StudentStatus = "ACTIVE"
-	StudentLeft   StudentStatus = "LEFT"
+	StudentActive    StudentStatus = "ACTIVE"
+	StudentLeft      StudentStatus = "LEFT"
+	StudentGraduated StudentStatus = "GRADUATED"
 )
 
 func (s StudentStatus) IsValid() bool {
 	switch s {
-	case StudentActive, StudentLeft:
+	case StudentActive, StudentLeft, StudentGraduated:
 		return true
 	default:
 		return false

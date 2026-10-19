@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/fasih/tabungan-siswa/internal/domain"
 	"github.com/fasih/tabungan-siswa/internal/http/httperror"
@@ -18,23 +19,26 @@ import (
 const maxClassFormBytes = 16 << 10
 
 type ClassRowViewModel struct {
-	ID    string
-	Name  string
-	Level int
+	ID            string
+	Name          string
+	Level         int
+	EffectiveDate string
 }
 
 type ClassAcademicYearOption struct {
-	ID   string
-	Name string
+	ID     string
+	Name   string
+	Status string
 }
 
 type ClassPageViewModel struct {
-	Title, Heading, Description, CSRFToken, Role, Username string
-	Rows                                                   []ClassRowViewModel
-	AcademicYears                                          []ClassAcademicYearOption
-	AcademicYearID, ClassID, Name, Error                   string
-	Level, Page, Limit, PreviousPage, NextPage             int
-	HasPrevious, HasNext, IsDetail                         bool
+	Pagination                                                        PaginationViewModel
+	Title, Heading, Description, CSRFToken, Role, Username, ActiveNav string
+	Rows                                                              []ClassRowViewModel
+	AcademicYears                                                     []ClassAcademicYearOption
+	AcademicYearID, ClassID, Name, Error, EffectiveDate               string
+	Level, Page, Limit, PreviousPage, NextPage                        int
+	HasPrevious, HasNext, IsDetail                                    bool
 }
 
 type ClassPageHandler struct {
@@ -73,12 +77,21 @@ func (h *ClassPageHandler) List(w http.ResponseWriter, r *http.Request) {
 	yearOptions := make([]ClassAcademicYearOption, 0, len(years.AcademicYears))
 	for _, year := range years.AcademicYears {
 		if year != nil {
-			yearOptions = append(yearOptions, ClassAcademicYearOption{ID: year.ID.String(), Name: year.Name})
+			yearOptions = append(yearOptions, ClassAcademicYearOption{ID: year.ID.String(), Name: year.Name, Status: string(year.Status)})
 		}
 	}
 	yearID := strings.TrimSpace(r.URL.Query().Get("academic_year_id"))
+	if yearID == "" {
+		for _, year := range yearOptions {
+			if year.Status == string(domain.AcademicYearOpen) {
+				yearID = year.ID
+				break
+			}
+		}
+	}
 	vm := h.viewModel(actor, "Daftar Kelas", "Kelola kelas berdasarkan tahun ajaran.", yearOptions)
 	vm.AcademicYearID, vm.Page, vm.Limit = yearID, page, limit
+	vm.Pagination = newPagination(r, page, 0, 0, false)
 	if token, ok := middleware.CSRFToken(r); ok {
 		vm.CSRFToken = token
 	} else {
@@ -91,14 +104,14 @@ func (h *ClassPageHandler) List(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
 			return
 		}
-		output, listErr := h.classes.List(r.Context(), service.ListClassesInput{Actor: actor, AcademicYearID: parsedID, Options: service.ListOptions{Limit: limit + 1, Offset: (page - 1) * limit}})
+		output, listErr := h.classes.List(r.Context(), service.ListClassesInput{Actor: actor, AcademicYearID: parsedID, Options: service.ListOptions{Limit: limit + 1, Offset: (page - 1) * limit, IncludeTotal: true}})
 		if listErr != nil {
 			httperror.Write(w, listErr)
 			return
 		}
 		for _, class := range output.Classes {
 			if class != nil {
-				vm.Rows = append(vm.Rows, ClassRowViewModel{ID: class.ID.String(), Name: class.Name, Level: class.Level})
+				vm.Rows = append(vm.Rows, ClassRowViewModel{ID: class.ID.String(), Name: class.Name, Level: class.Level, EffectiveDate: formatClassDate(class.EffectiveDate)})
 			}
 		}
 		vm.HasNext = len(vm.Rows) > limit
@@ -106,6 +119,10 @@ func (h *ClassPageHandler) List(w http.ResponseWriter, r *http.Request) {
 			vm.Rows = vm.Rows[:limit]
 		}
 		vm.HasPrevious, vm.PreviousPage, vm.NextPage = page > 1, page-1, page+1
+		vm.Pagination = newPagination(r, page, output.Total, len(vm.Rows), vm.HasNext)
+	}
+	if redirectMissingPage(w, r, vm.Pagination) {
+		return
 	}
 	if err := h.render(w, vm); err != nil {
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
@@ -132,7 +149,34 @@ func (h *ClassPageHandler) Create(w http.ResponseWriter, r *http.Request) {
 		h.formError(w, r, actor, http.StatusBadRequest, "Nama kelas wajib diisi dan tingkat harus berupa angka 1 sampai 12.", "", name, level)
 		return
 	}
-	output, err := h.classes.Create(r.Context(), service.CreateClassInput{Actor: actor, Name: name, Level: level})
+	yearID := strings.TrimSpace(r.PostForm.Get("academic_year_id"))
+	parsedYearID, err := uuid.Parse(yearID)
+	if err != nil || parsedYearID == uuid.Nil {
+		h.formError(w, r, actor, http.StatusBadRequest, "Pilih tahun ajaran.", "", name, level)
+		return
+	}
+	years, err := h.academicYears.List(r.Context(), service.ListAcademicYearsInput{Actor: actor, Options: service.ListOptions{Limit: maxAcademicYearPageSize}})
+	if err != nil {
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		return
+	}
+	validYear := false
+	for _, year := range years.AcademicYears {
+		if year != nil && year.ID == parsedYearID {
+			validYear = true
+			break
+		}
+	}
+	if !validYear {
+		h.formError(w, r, actor, http.StatusBadRequest, "Tahun ajaran yang dipilih tidak tersedia.", "", name, level)
+		return
+	}
+	date, dateErr := time.Parse("2006-01-02", r.PostForm.Get("effective_date"))
+	if dateErr != nil {
+		h.formError(w, r, actor, http.StatusBadRequest, "Isi tanggal efektif penempatan kelas.", "", name, level)
+		return
+	}
+	output, err := h.classes.Create(r.Context(), service.CreateClassInput{Actor: actor, Name: name, Level: level, AcademicYearID: parsedYearID, EffectiveDate: date})
 	if err != nil {
 		status := httperror.Status(err)
 		if status >= 500 {
@@ -143,7 +187,7 @@ func (h *ClassPageHandler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	_ = output
-	http.Redirect(w, r, "/classes", http.StatusSeeOther)
+	http.Redirect(w, r, "/classes?academic_year_id="+parsedYearID.String(), http.StatusSeeOther)
 }
 
 func (h *ClassPageHandler) Detail(w http.ResponseWriter, r *http.Request) {
@@ -168,6 +212,20 @@ func (h *ClassPageHandler) Detail(w http.ResponseWriter, r *http.Request) {
 	}
 	vm := h.viewModel(actor, "Detail Kelas", "Detail kelas.", nil)
 	vm.IsDetail, vm.ClassID, vm.Name, vm.Level = true, output.Class.ID.String(), output.Class.Name, output.Class.Level
+	vm.EffectiveDate = formatClassDate(output.Class.EffectiveDate)
+	if output.Class.AcademicYearID != uuid.Nil {
+		vm.AcademicYearID = output.Class.AcademicYearID.String()
+	}
+	years, err := h.academicYears.List(r.Context(), service.ListAcademicYearsInput{Actor: actor, Options: service.ListOptions{Limit: maxAcademicYearPageSize}})
+	if err != nil {
+		httperror.Write(w, err)
+		return
+	}
+	for _, year := range years.AcademicYears {
+		if year != nil {
+			vm.AcademicYears = append(vm.AcademicYears, ClassAcademicYearOption{ID: year.ID.String(), Name: year.Name})
+		}
+	}
 	if token, ok := middleware.CSRFToken(r); ok {
 		vm.CSRFToken = token
 	} else {
@@ -204,7 +262,13 @@ func (h *ClassPageHandler) Update(w http.ResponseWriter, r *http.Request) {
 		h.formError(w, r, actor, http.StatusBadRequest, "Nama kelas wajib diisi dan tingkat harus berupa angka 1 sampai 12.", id.String(), name, level)
 		return
 	}
-	_, err = h.classes.Update(r.Context(), service.UpdateClassInput{Actor: actor, ClassID: id, Name: name, Level: level})
+	yearID, yearErr := uuid.Parse(r.PostForm.Get("academic_year_id"))
+	date, dateErr := time.Parse("2006-01-02", r.PostForm.Get("effective_date"))
+	if yearErr != nil || yearID == uuid.Nil || dateErr != nil {
+		h.formError(w, r, actor, http.StatusBadRequest, "Pilih tahun ajaran dan isi tanggal efektif kelas.", id.String(), name, level)
+		return
+	}
+	_, err = h.classes.Update(r.Context(), service.UpdateClassInput{Actor: actor, ClassID: id, Name: name, Level: level, AcademicYearID: yearID, EffectiveDate: date})
 	if err != nil {
 		status := httperror.Status(err)
 		if status >= 500 {
@@ -218,7 +282,7 @@ func (h *ClassPageHandler) Update(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *ClassPageHandler) viewModel(actor service.Actor, heading, description string, years []ClassAcademicYearOption) ClassPageViewModel {
-	return ClassPageViewModel{Title: heading, Heading: heading, Description: description, Role: string(actor.Role), Username: actor.Username, AcademicYears: years, Page: 1, Limit: defaultAcademicYearPageSize}
+	return ClassPageViewModel{Title: heading, Heading: heading, Description: description, Role: string(actor.Role), Username: actor.Username, ActiveNav: "classes", AcademicYears: years, Page: 1, Limit: defaultAcademicYearPageSize}
 }
 
 func (h *ClassPageHandler) render(w http.ResponseWriter, vm ClassPageViewModel) error {
@@ -228,8 +292,18 @@ func (h *ClassPageHandler) render(w http.ResponseWriter, vm ClassPageViewModel) 
 
 func (h *ClassPageHandler) formError(w http.ResponseWriter, r *http.Request, actor service.Actor, status int, message, id, name string, level int) {
 	w.WriteHeader(status)
-	vm := h.viewModel(actor, "Kelola Kelas", "Periksa kembali data kelas.", nil)
+	var yearOptions []ClassAcademicYearOption
+	if years, err := h.academicYears.List(r.Context(), service.ListAcademicYearsInput{Actor: actor, Options: service.ListOptions{Limit: maxAcademicYearPageSize}}); err == nil {
+		for _, year := range years.AcademicYears {
+			if year != nil {
+				yearOptions = append(yearOptions, ClassAcademicYearOption{ID: year.ID.String(), Name: year.Name, Status: string(year.Status)})
+			}
+		}
+	}
+	vm := h.viewModel(actor, "Daftar Kelas", "Kelola kelas berdasarkan tahun ajaran.", yearOptions)
 	vm.Error, vm.ClassID, vm.Name, vm.Level, vm.IsDetail = message, id, name, level, id != ""
+	vm.AcademicYearID = r.PostForm.Get("academic_year_id")
+	vm.EffectiveDate = r.PostForm.Get("effective_date")
 	vm.CSRFToken = r.PostForm.Get("csrf_token")
 	if vm.CSRFToken == "" {
 		if token, ok := middleware.CSRFToken(r); ok {
@@ -266,6 +340,10 @@ func safeClassError(err error) string {
 		return "Nama kelas wajib diisi."
 	case errors.Is(err, domain.ErrInvalidClassLevel):
 		return "Tingkat kelas harus antara 1 sampai 12."
+	case errors.Is(err, domain.ErrInvalidDateRange):
+		return "Tanggal efektif harus berada di dalam periode tahun ajaran."
+	case errors.Is(err, domain.ErrInvalidTransition):
+		return "Tahun ajaran kelas yang sudah tersimpan tidak dapat diganti."
 	case errors.Is(err, repository.ErrConflict):
 		return "Nama kelas dengan tingkat tersebut sudah digunakan."
 	case errors.Is(err, service.ErrForbidden):
@@ -273,4 +351,11 @@ func safeClassError(err error) string {
 	default:
 		return "Permintaan tidak dapat diproses."
 	}
+}
+
+func formatClassDate(date time.Time) string {
+	if date.IsZero() {
+		return ""
+	}
+	return date.Format("2006-01-02")
 }

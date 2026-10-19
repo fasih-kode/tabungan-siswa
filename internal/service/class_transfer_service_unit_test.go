@@ -120,6 +120,13 @@ func (f *classTransferServiceFakeStudentRepository) GetByID(
 	return domain.Student{}, repository.ErrNotFound
 }
 
+func (f *classTransferServiceFakeStudentRepository) GetByIDForUpdate(
+	ctx context.Context,
+	id uuid.UUID,
+) (domain.Student, error) {
+	return f.GetByID(ctx, id)
+}
+
 func (f *classTransferServiceFakeStudentRepository) GetByUserID(
 	ctx context.Context,
 	userID uuid.UUID,
@@ -510,6 +517,9 @@ func TestClassTransferServiceRequestAdmin(t *testing.T) {
 	}
 
 	historyRepo := &classTransferServiceFakeStudentClassHistoryRepository{
+		listFn: func(context.Context, uuid.UUID, uuid.UUID, repository.ListOptions) ([]domain.StudentClassHistory, error) {
+			return []domain.StudentClassHistory{currentHistory}, nil
+		},
 		getCurrentFn: func(
 			_ context.Context,
 			studentIDArg uuid.UUID,
@@ -540,6 +550,9 @@ func TestClassTransferServiceRequestAdmin(t *testing.T) {
 		Classes:               classRepo,
 		StudentClassHistories: historyRepo,
 		ClassTransferRequests: repo,
+		TeacherClassAssignments: &classTransferServiceFakeTeacherAssignmentRepository{listByClassFn: func(context.Context, uuid.UUID, uuid.UUID, repository.ListOptions) ([]domain.TeacherClassAssignment, error) {
+			return []domain.TeacherClassAssignment{{UserID: actorID}}, nil
+		}},
 	}
 
 	uow := &classTransferServiceFakeUnitOfWork{
@@ -557,7 +570,7 @@ func TestClassTransferServiceRequestAdmin(t *testing.T) {
 		RequestTransferInput{
 			Actor: Actor{
 				UserID: actorID,
-				Role:   domain.RoleAdmin,
+				Role:   domain.RoleWaliKelas,
 			},
 			StudentID:      studentID,
 			AcademicYearID: academicYearID,
@@ -594,7 +607,7 @@ func TestClassTransferServiceRequestAdmin(t *testing.T) {
 	}
 }
 
-func TestClassTransferServiceRequestRejectsClosedAcademicYear(t *testing.T) {
+func TestClassTransferServiceRequestAdminForbiddenBeforeAcademicYearChecks(t *testing.T) {
 	studentID := uuid.New()
 	yearID := uuid.New()
 	student := domain.Student{ID: studentID, Name: "Active", Status: domain.StudentActive}
@@ -613,8 +626,8 @@ func TestClassTransferServiceRequestRejectsClosedAcademicYear(t *testing.T) {
 		Actor:     Actor{UserID: uuid.New(), Role: domain.RoleAdmin},
 		StudentID: studentID, AcademicYearID: yearID, FromClassID: uuid.New(), ToClassID: uuid.New(),
 	})
-	if !errors.Is(err, domain.ErrInvalidTransition) {
-		t.Fatalf("Request() error = %v, want %v", err, domain.ErrInvalidTransition)
+	if !errors.Is(err, ErrForbidden) {
+		t.Fatalf("Request() error = %v, want %v", err, ErrForbidden)
 	}
 	if manager.beginCount != 0 {
 		t.Fatalf("Begin() calls = %d, want 0", manager.beginCount)
@@ -706,6 +719,22 @@ func TestClassTransferServiceRequestSiswaForbidden(t *testing.T) {
 		t.Fatalf("Request() error = %v, want %v", err, ErrForbidden)
 	}
 
+	if manager.beginCount != 0 {
+		t.Fatalf("Begin() count = %d, want 0", manager.beginCount)
+	}
+}
+
+func TestClassTransferServiceRequestAdminForbidden(t *testing.T) {
+	manager := &classTransferServiceFakeUnitOfWorkManager{}
+	svc := newClassTransferServiceForTest(t, repository.RepositorySet{}, manager)
+
+	_, err := svc.Request(context.Background(), RequestTransferInput{
+		Actor:     Actor{UserID: uuid.New(), Role: domain.RoleAdmin},
+		StudentID: uuid.New(), AcademicYearID: uuid.New(), FromClassID: uuid.New(), ToClassID: uuid.New(),
+	})
+	if !errors.Is(err, ErrForbidden) {
+		t.Fatalf("Request() error = %v, want %v", err, ErrForbidden)
+	}
 	if manager.beginCount != 0 {
 		t.Fatalf("Begin() count = %d, want 0", manager.beginCount)
 	}

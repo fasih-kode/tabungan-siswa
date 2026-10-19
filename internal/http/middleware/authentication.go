@@ -74,12 +74,17 @@ func (m *AuthenticationMiddleware) RequireAuthentication(
 		}
 
 		actor := service.Actor{
-			UserID:   user.ID,
-			Username: user.Username,
-			Role:     user.Role,
+			UserID:                 user.ID,
+			Username:               user.Username,
+			Role:                   user.Role,
+			PasswordChangeRequired: user.PasswordChangeRequired,
 		}
 		if err := actor.Validate(); err != nil {
 			autherror.Write(w, err)
+			return
+		}
+		if user.PasswordChangeRequired && r.URL.Path != "/account/password" {
+			http.Redirect(w, r, "/account/password?required=1", http.StatusSeeOther)
 			return
 		}
 

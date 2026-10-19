@@ -24,15 +24,19 @@ type ClassTransferRow struct {
 }
 
 type ClassTransferPageViewModel struct {
-	Title, Heading, Description, CSRFToken, Role, Username string
-	StudentID, AcademicYearID, FromClassID, ToClassID      string
-	TransferRequestID, EffectiveDate, RejectionReason      string
-	ListURL                                                string
-	Error, StatusMessage                                   string
-	Rows                                                   []ClassTransferRow
-	Page, Limit, PreviousPage, NextPage                    int
-	HasPrevious, HasNext, IsDetail, IsStudentList          bool
+	Pagination                                                        PaginationViewModel
+	Title, Heading, Description, CSRFToken, Role, Username, ActiveNav string
+	StudentID, AcademicYearID, FromClassID, FromClassName, ToClassID  string
+	TransferRequestID, EffectiveDate, RejectionReason                 string
+	ListURL                                                           string
+	Error, StatusMessage, RequestUnavailableReason                    string
+	Rows                                                              []ClassTransferRow
+	TargetClasses                                                     []TransferClassOption
+	Page, Limit, PreviousPage, NextPage                               int
+	HasPrevious, HasNext, IsDetail, IsStudentList, CanRequest         bool
 }
+
+type TransferClassOption struct{ ID, Name string }
 
 type ClassTransferPageHandler struct {
 	transfers service.ClassTransferService
@@ -73,7 +77,7 @@ func (h *ClassTransferPageHandler) ListStudent(w http.ResponseWriter, r *http.Re
 	}
 	output, err := h.transfers.ListByStudent(r.Context(), service.ListStudentTransfersInput{
 		Actor: actor, StudentID: studentID, AcademicYearID: yearID,
-		Options: service.ListOptions{Limit: limit + 1, Offset: (page - 1) * limit},
+		Options: service.ListOptions{Limit: limit + 1, Offset: (page - 1) * limit, IncludeTotal: true},
 	})
 	if err != nil {
 		httpError(w, err)
@@ -86,10 +90,30 @@ func (h *ClassTransferPageHandler) ListStudent(w http.ResponseWriter, r *http.Re
 	}
 	vm.Heading, vm.Description, vm.IsStudentList = "Transfer Kelas Siswa", "Riwayat dan pengajuan perpindahan kelas.", true
 	vm.StudentID, vm.AcademicYearID = studentID.String(), yearID.String()
+	if actor.Role == domain.RoleWaliKelas {
+		options, optionsErr := h.transfers.RequestOptions(r.Context(), service.RequestTransferOptionsInput{Actor: actor, StudentID: studentID, AcademicYearID: yearID})
+		if optionsErr != nil {
+			httpError(w, optionsErr)
+			return
+		}
+		vm.CanRequest = options.CanRequest
+		vm.RequestUnavailableReason = options.UnavailableReason
+		vm.FromClassID = options.FromClassID.String()
+		vm.FromClassName = options.FromClassName
+		for _, class := range options.TargetClasses {
+			if class != nil {
+				vm.TargetClasses = append(vm.TargetClasses, TransferClassOption{ID: class.ID.String(), Name: class.Name})
+			}
+		}
+	}
 	vm.ListURL = "/students/" + studentID.String() + "/class-transfer-requests?academic_year_id=" + url.QueryEscape(yearID.String())
 	vm.Page, vm.Limit = page, limit
 	vm.Rows, vm.HasNext = transferRows(output.TransferRequests, limit)
 	vm.HasPrevious, vm.PreviousPage, vm.NextPage = page > 1, page-1, page+1
+	vm.Pagination = newPagination(r, page, output.Total, len(vm.Rows), vm.HasNext)
+	if redirectMissingPage(w, r, vm.Pagination) {
+		return
+	}
 	if err := h.templates.ExecuteTemplate(w, "class-transfers", vm); err != nil {
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 	}
@@ -118,6 +142,9 @@ func (h *ClassTransferPageHandler) ListPending(w http.ResponseWriter, r *http.Re
 		}
 		vm.Heading, vm.Description = "Permintaan Transfer Kelas", "Pilih tahun ajaran untuk menampilkan permintaan pending."
 		vm.Page, vm.Limit = 1, defaultAcademicYearPageSize
+		if redirectMissingPage(w, r, vm.Pagination) {
+			return
+		}
 		if err := h.templates.ExecuteTemplate(w, "class-transfers", vm); err != nil {
 			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 		}
@@ -135,7 +162,7 @@ func (h *ClassTransferPageHandler) ListPending(w http.ResponseWriter, r *http.Re
 	}
 	output, err := h.transfers.ListPending(r.Context(), service.ListPendingTransfersInput{
 		Actor: actor, AcademicYearID: yearID,
-		Options: service.ListOptions{Limit: limit + 1, Offset: (page - 1) * limit},
+		Options: service.ListOptions{Limit: limit + 1, Offset: (page - 1) * limit, IncludeTotal: true},
 	})
 	if err != nil {
 		httpError(w, err)
@@ -151,6 +178,10 @@ func (h *ClassTransferPageHandler) ListPending(w http.ResponseWriter, r *http.Re
 	vm.ListURL = "/class-transfer-requests/pending?academic_year_id=" + url.QueryEscape(yearID.String())
 	vm.Rows, vm.HasNext = transferRows(output.TransferRequests, limit)
 	vm.HasPrevious, vm.PreviousPage, vm.NextPage = page > 1, page-1, page+1
+	vm.Pagination = newPagination(r, page, output.Total, len(vm.Rows), vm.HasNext)
+	if redirectMissingPage(w, r, vm.Pagination) {
+		return
+	}
 	if err := h.templates.ExecuteTemplate(w, "class-transfers", vm); err != nil {
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 	}
@@ -207,6 +238,10 @@ func (h *ClassTransferPageHandler) Request(w http.ResponseWriter, r *http.Reques
 	actor, ok := service.ActorFromContext(r.Context())
 	if !ok {
 		http.Error(w, http.StatusText(http.StatusUnauthorized), http.StatusUnauthorized)
+		return
+	}
+	if actor.Role != domain.RoleWaliKelas {
+		httpError(w, service.ErrForbidden)
 		return
 	}
 	if err := parseClassTransferForm(w, r); err != nil {
@@ -300,7 +335,7 @@ func (h *ClassTransferPageHandler) baseViewModel(r *http.Request, actor service.
 	if !ok {
 		return ClassTransferPageViewModel{}, false
 	}
-	return ClassTransferPageViewModel{Title: "Transfer Kelas", Role: string(actor.Role), Username: actor.Username, CSRFToken: token}, true
+	return ClassTransferPageViewModel{Title: "Transfer Kelas", Role: string(actor.Role), Username: actor.Username, CSRFToken: token, ActiveNav: "class-transfers"}, true
 }
 
 func transferRows(requests []*domain.ClassTransferRequest, limit int) ([]ClassTransferRow, bool) {

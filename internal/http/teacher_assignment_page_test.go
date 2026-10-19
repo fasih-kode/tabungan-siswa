@@ -193,6 +193,9 @@ func (f *teacherAssignmentUserServiceFake) ListByRole(context.Context, service.L
 func (f *teacherAssignmentUserServiceFake) Create(context.Context, service.CreateUserInput) (service.CreateUserOutput, error) {
 	return service.CreateUserOutput{}, nil
 }
+func (f *teacherAssignmentUserServiceFake) CreateStudentAccount(context.Context, service.CreateStudentAccountInput) (service.CreateStudentAccountOutput, error) {
+	return service.CreateStudentAccountOutput{}, nil
+}
 func (f *teacherAssignmentUserServiceFake) Update(context.Context, service.UpdateUserInput) (service.UpdateUserOutput, error) {
 	return service.UpdateUserOutput{}, nil
 }

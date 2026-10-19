@@ -226,7 +226,7 @@ func TestClassRoutesDenyNonAdminWritesAndDetail(t *testing.T) {
 			fake := &routeAuthorizationClassService{class: &domain.Class{ID: classID, Name: "VII A", Level: 7}}
 			router, session, csrf := newClassRouterWithSession(t, role, "class-denied-"+string(role), fake)
 
-			createForm := url.Values{"name": {"VII B"}, "level": {"7"}}
+			createForm := url.Values{"academic_year_id": {"aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"}, "effective_date": {"2026-07-01"}, "name": {"VII B"}, "level": {"7"}}
 			createResponse := classRouteRequest(router, http.MethodPost, "/classes", session, csrf, createForm, true)
 			if createResponse.Code != http.StatusForbidden {
 				t.Fatalf("POST /classes status = %d, want 403; body=%s", createResponse.Code, createResponse.Body.String())
@@ -243,7 +243,7 @@ func TestClassRoutesDenyNonAdminWritesAndDetail(t *testing.T) {
 				t.Fatalf("Get calls/actor = %d/%+v, want service denial for %s", fake.getCalls, fake.lastGet.Actor, role)
 			}
 
-			updateForm := url.Values{"name": {"VII B"}, "level": {"7"}}
+			updateForm := url.Values{"academic_year_id": {"aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"}, "effective_date": {"2026-07-01"}, "name": {"VII B"}, "level": {"7"}}
 			updateResponse := classRouteRequest(router, http.MethodPost, "/classes/"+classID.String(), session, csrf, updateForm, true)
 			if updateResponse.Code != http.StatusForbidden {
 				t.Fatalf("POST /classes/{id} status = %d, want 403; body=%s", updateResponse.Code, updateResponse.Body.String())
@@ -258,12 +258,12 @@ func TestClassRoutesDenyNonAdminWritesAndDetail(t *testing.T) {
 func TestClassRoutesAllowAdminCreate(t *testing.T) {
 	fake := &routeAuthorizationClassService{}
 	router, session, csrf := newClassRouterWithSession(t, domain.RoleAdmin, "class-admin-create", fake)
-	form := url.Values{"name": {"VII A"}, "level": {"7"}}
+	form := url.Values{"academic_year_id": {"aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"}, "effective_date": {"2026-07-01"}, "name": {"VII A"}, "level": {"7"}}
 	recorder := classRouteRequest(router, http.MethodPost, "/classes", session, csrf, form, true)
 	if recorder.Code != http.StatusSeeOther {
 		t.Fatalf("POST /classes status = %d, want 303; body=%s", recorder.Code, recorder.Body.String())
 	}
-	if recorder.Header().Get("Location") != "/classes" {
+	if recorder.Header().Get("Location") != "/classes?academic_year_id=aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa" {
 		t.Fatalf("Location = %q, want /classes", recorder.Header().Get("Location"))
 	}
 	if fake.createCalls != 1 || fake.lastCreate.Actor.Role != domain.RoleAdmin {
@@ -274,7 +274,7 @@ func TestClassRoutesAllowAdminCreate(t *testing.T) {
 func TestClassRoutesRejectPostWithoutValidCSRFBeforeService(t *testing.T) {
 	fake := &routeAuthorizationClassService{}
 	router, session, _ := newClassRouterWithSession(t, domain.RoleAdmin, "class-csrf-test", fake)
-	form := url.Values{"name": {"VII A"}, "level": {"7"}}
+	form := url.Values{"academic_year_id": {"aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"}, "effective_date": {"2026-07-01"}, "name": {"VII A"}, "level": {"7"}}
 	recorder := classRouteRequest(router, http.MethodPost, "/classes", session, "", form, false)
 	if recorder.Code != http.StatusForbidden {
 		t.Fatalf("POST without CSRF cookie status = %d, want 403; body=%s", recorder.Code, recorder.Body.String())
@@ -308,9 +308,9 @@ func TestClassRoutesRejectAllUnauthenticatedRequestsBeforeService(t *testing.T) 
 		form   url.Values
 	}{
 		{name: "list", method: http.MethodGet, target: "/classes"},
-		{name: "create", method: http.MethodPost, target: "/classes", form: url.Values{"name": {"VII A"}, "level": {"7"}}},
+		{name: "create", method: http.MethodPost, target: "/classes", form: url.Values{"academic_year_id": {"aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"}, "effective_date": {"2026-07-01"}, "name": {"VII A"}, "level": {"7"}}},
 		{name: "detail", method: http.MethodGet, target: "/classes/" + classID.String()},
-		{name: "update", method: http.MethodPost, target: "/classes/" + classID.String(), form: url.Values{"name": {"VII B"}, "level": {"7"}}},
+		{name: "update", method: http.MethodPost, target: "/classes/" + classID.String(), form: url.Values{"academic_year_id": {"aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"}, "effective_date": {"2026-07-01"}, "name": {"VII B"}, "level": {"7"}}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			fake := &routeAuthorizationClassService{}

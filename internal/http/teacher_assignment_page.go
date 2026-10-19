@@ -5,6 +5,7 @@ import (
 	"html/template"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 
@@ -24,14 +25,16 @@ type TeacherAssignmentRow struct {
 	Assigned                                                     bool
 }
 
-type TeacherAssignmentOption struct{ ID, Name string }
+type TeacherAssignmentOption struct{ ID, Name, Status string }
 
 type TeacherAssignmentPageViewModel struct {
-	Title, Heading, Description, CSRFToken, Role, Username string
-	AcademicYearID, TeacherID, ClassID, Error              string
-	AcademicYears                                          []TeacherAssignmentOption
-	Teachers                                               []TeacherAssignmentOption
-	Rows                                                   []TeacherAssignmentRow
+	Pagination                                                        PaginationViewModel
+	Title, Heading, Description, CSRFToken, Role, Username, ActiveNav string
+	AcademicYearID, TeacherID, ClassID, Error                         string
+	AcademicYears                                                     []TeacherAssignmentOption
+	Teachers                                                          []TeacherAssignmentOption
+	Rows                                                              []TeacherAssignmentRow
+	ClassOptions                                                      []TeacherAssignmentOption
 }
 
 type TeacherAssignmentPageHandler struct {
@@ -63,7 +66,13 @@ func (h *TeacherAssignmentPageHandler) List(w http.ResponseWriter, r *http.Reque
 		http.Error(w, http.StatusText(http.StatusForbidden), http.StatusForbidden)
 		return
 	}
+	page, limit, err := parsePageOptions(r)
+	if err != nil {
+		http.Error(w, http.StatusText(400), 400)
+		return
+	}
 	vm := h.baseVM(actor)
+	vm.Pagination = newPagination(r, page, 0, 0, false)
 	if token, ok := middleware.CSRFToken(r); ok {
 		vm.CSRFToken = token
 	} else {
@@ -77,7 +86,7 @@ func (h *TeacherAssignmentPageHandler) List(w http.ResponseWriter, r *http.Reque
 	}
 	for _, year := range years.AcademicYears {
 		if year != nil {
-			vm.AcademicYears = append(vm.AcademicYears, TeacherAssignmentOption{ID: year.ID.String(), Name: year.Name})
+			vm.AcademicYears = append(vm.AcademicYears, TeacherAssignmentOption{ID: year.ID.String(), Name: year.Name, Status: string(year.Status)})
 		}
 	}
 	teachers, err := h.users.ListByRole(r.Context(), service.ListUsersByRoleInput{Actor: actor, Role: domain.RoleWaliKelas, Options: service.ListOptions{Limit: maxAcademicYearPageSize}})
@@ -91,13 +100,31 @@ func (h *TeacherAssignmentPageHandler) List(w http.ResponseWriter, r *http.Reque
 		}
 	}
 	vm.AcademicYearID = strings.TrimSpace(r.URL.Query().Get("academic_year_id"))
+	if vm.AcademicYearID == "" {
+		for _, year := range vm.AcademicYears {
+			if year.Status == string(domain.AcademicYearOpen) {
+				vm.AcademicYearID = year.ID
+				break
+			}
+		}
+	}
 	if vm.AcademicYearID != "" {
 		yearID, parseErr := uuid.Parse(vm.AcademicYearID)
 		if parseErr != nil || yearID == uuid.Nil {
 			http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
 			return
 		}
-		classes, listErr := h.classes.List(r.Context(), service.ListClassesInput{Actor: actor, AcademicYearID: yearID, Options: service.ListOptions{Limit: maxAcademicYearPageSize}})
+		classes, listErr := h.classes.List(r.Context(), service.ListClassesInput{Actor: actor, AcademicYearID: yearID, Options: service.ListOptions{Limit: limit + 1, Offset: (page - 1) * limit, IncludeTotal: true}})
+		if listErr != nil {
+			httperror.Write(w, listErr)
+			return
+		}
+		hasNext := len(classes.Classes) > limit
+		if hasNext {
+			classes.Classes = classes.Classes[:limit]
+		}
+		vm.Pagination = newPagination(r, page, classes.Total, len(classes.Classes), hasNext)
+		vm.ClassOptions, listErr = h.classOptions(r, actor, yearID)
 		if listErr != nil {
 			httperror.Write(w, listErr)
 			return
@@ -126,6 +153,9 @@ func (h *TeacherAssignmentPageHandler) List(w http.ResponseWriter, r *http.Reque
 			}
 			vm.Rows = append(vm.Rows, row)
 		}
+	}
+	if redirectMissingPage(w, r, vm.Pagination) {
+		return
 	}
 	if err := h.templates.ExecuteTemplate(w, "teacher-assignments", vm); err != nil {
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
@@ -176,7 +206,7 @@ func (h *TeacherAssignmentPageHandler) Create(w http.ResponseWriter, r *http.Req
 }
 
 func (h *TeacherAssignmentPageHandler) baseVM(actor service.Actor) TeacherAssignmentPageViewModel {
-	return TeacherAssignmentPageViewModel{Title: "Penugasan Wali Kelas", Heading: "Penugasan Wali Kelas", Description: "Kelola penugasan wali kelas berdasarkan tahun ajaran.", Role: string(actor.Role), Username: actor.Username}
+	return TeacherAssignmentPageViewModel{Title: "Penugasan Wali Kelas", Heading: "Penugasan Wali Kelas", Description: "Kelola penugasan wali kelas berdasarkan tahun ajaran.", Role: string(actor.Role), Username: actor.Username, ActiveNav: "teacher-assignments"}
 }
 
 func (h *TeacherAssignmentPageHandler) formError(w http.ResponseWriter, r *http.Request, actor service.Actor, status int, message string) {
@@ -196,7 +226,7 @@ func (h *TeacherAssignmentPageHandler) formError(w http.ResponseWriter, r *http.
 	}
 	for _, y := range years.AcademicYears {
 		if y != nil {
-			vm.AcademicYears = append(vm.AcademicYears, TeacherAssignmentOption{ID: y.ID.String(), Name: y.Name})
+			vm.AcademicYears = append(vm.AcademicYears, TeacherAssignmentOption{ID: y.ID.String(), Name: y.Name, Status: string(y.Status)})
 		}
 	}
 	users, err := h.users.ListByRole(r.Context(), service.ListUsersByRoleInput{Actor: actor, Role: domain.RoleWaliKelas, Options: service.ListOptions{Limit: maxAcademicYearPageSize}})
@@ -210,11 +240,21 @@ func (h *TeacherAssignmentPageHandler) formError(w http.ResponseWriter, r *http.
 		}
 	}
 	if yearID, parseErr := uuid.Parse(vm.AcademicYearID); parseErr == nil && yearID != uuid.Nil {
-		classes, classErr := h.classes.List(r.Context(), service.ListClassesInput{Actor: actor, AcademicYearID: yearID, Options: service.ListOptions{Limit: maxAcademicYearPageSize}})
+		classes, classErr := h.classes.List(r.Context(), service.ListClassesInput{Actor: actor, AcademicYearID: yearID, Options: service.ListOptions{Limit: tablePageSize + 1, IncludeTotal: true}})
 		if classErr != nil {
 			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 			return
 		}
+		vm.ClassOptions, classErr = h.classOptions(r, actor, yearID)
+		if classErr != nil {
+			httperror.Write(w, classErr)
+			return
+		}
+		hasNext := len(classes.Classes) > tablePageSize
+		if hasNext {
+			classes.Classes = classes.Classes[:tablePageSize]
+		}
+		vm.Pagination = newPagination(r, 1, classes.Total, len(classes.Classes), hasNext)
 		for _, c := range classes.Classes {
 			if c != nil {
 				vm.Rows = append(vm.Rows, TeacherAssignmentRow{ClassID: c.ID.String(), ClassName: c.Name, Level: c.Level})
@@ -244,4 +284,23 @@ func classAssignmentDateForYear(years []*domain.AcademicYear, id uuid.UUID) time
 		}
 	}
 	return time.Time{}
+}
+
+func (h *TeacherAssignmentPageHandler) classOptions(r *http.Request, actor service.Actor, yearID uuid.UUID) ([]TeacherAssignmentOption, error) {
+	result := make([]TeacherAssignmentOption, 0)
+	for offset := 0; ; offset += 100 {
+		out, err := h.classes.List(r.Context(), service.ListClassesInput{Actor: actor, AcademicYearID: yearID, Options: service.ListOptions{Limit: 100, Offset: offset}})
+		if err != nil {
+			return nil, err
+		}
+		for _, class := range out.Classes {
+			if class != nil {
+				result = append(result, TeacherAssignmentOption{ID: class.ID.String(), Name: class.Name + " (" + strconv.Itoa(class.Level) + ")"})
+			}
+		}
+		if len(out.Classes) < 100 {
+			break
+		}
+	}
+	return result, nil
 }

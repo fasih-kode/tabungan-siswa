@@ -1,7 +1,8 @@
 # FASE 18: Academic Management Implementation Lock
 
-Status: LOCKED
-Date: 2026-10-14
+Status: LOCKED — AMENDED
+Original lock date: 2026-10-14
+Authorization amendment: 2026-10-19
 
 FASE 18 is complete as a BE + FE vertical slice for academic year lifecycle,
 class management, teacher-class assignment, and class-transfer requests.
@@ -42,6 +43,18 @@ serializing against transfer writes that take a share lock on that row. The
   is not replaced by the dashboard content.
 
 No migration or recovery script was run or changed for this phase.
+
+## Post-lock amendment — class-transfer requester role
+
+The product owner clarified on 2026-10-19 that Wali Kelas submits class
+transfer requests and Admin reviews them. The class-transfer HTTP contract and
+implementation were amended accordingly: request controls are Wali-only, the
+request handler denies Admin, and the service rejects Admin for both
+`Request` and `RequestOptions`. Admin review and read permissions are
+unchanged. `make test-integration`, `go test -race ./... -count=1`,
+`go vet ./...`, `go build ./...`, and `git diff --check` passed after this
+amendment. See the class-transfer contract for the detailed decision and
+verification record.
 
 ## Review result
 

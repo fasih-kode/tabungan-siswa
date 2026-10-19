@@ -136,6 +136,23 @@ func TestStudentLeave(t *testing.T) {
 	}
 }
 
+func TestStudentGraduateAndRejectReactivation(t *testing.T) {
+	nis, nisn := "001", "0001"
+	student, err := NewStudent("Lulusan", nil, &nis, &nisn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := student.Graduate(); err != nil {
+		t.Fatalf("Graduate() error = %v", err)
+	}
+	if student.Status != StudentGraduated || !student.IsGraduated() || !student.Status.IsValid() {
+		t.Fatalf("graduated student = %+v", student)
+	}
+	if err := student.Reactivate(); err != ErrInvalidTransition {
+		t.Fatalf("Reactivate() error = %v, want %v", err, ErrInvalidTransition)
+	}
+}
+
 func TestStudentCannotLeaveTwice(t *testing.T) {
 	nis := "12345"
 	nisn := "0012345678"

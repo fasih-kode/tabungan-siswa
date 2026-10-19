@@ -8,15 +8,18 @@ import (
 )
 
 type Class struct {
-	ID        uuid.UUID
-	Name      string
-	Level     int
-	CreatedAt time.Time
-	UpdatedAt time.Time
+	ID             uuid.UUID
+	Name           string
+	Level          int
+	AcademicYearID uuid.UUID
+	EffectiveDate  time.Time
+	CreatedAt      time.Time
+	UpdatedAt      time.Time
 }
 
 func NewClass(name string, level int) (Class, error) {
-	if strings.TrimSpace(name) == "" {
+	name = strings.TrimSpace(name)
+	if name == "" {
 		return Class{}, ErrEmptyName
 	}
 

@@ -451,8 +451,12 @@ func TestAcademicYearServiceIntegration_PendingTransferBlocksClosing(t *testing.
 	uow := postgres.NewUnitOfWorkManager(db)
 	yearRepo := postgres.NewAcademicYearRepository(db)
 	admin := newServiceScopeUser(t, domain.RoleAdmin)
+	wali := newServiceScopeUser(t, domain.RoleWaliKelas)
 	if err := repos.Users.Create(ctx, admin); err != nil {
 		t.Fatalf("create admin: %v", err)
+	}
+	if err := repos.Users.Create(ctx, wali); err != nil {
+		t.Fatalf("create wali: %v", err)
 	}
 	year := newServiceScopeAcademicYear(t, "Pending transfer close guard "+uuid.NewString())
 	if err := yearRepo.Create(ctx, year); err != nil {
@@ -465,6 +469,10 @@ func TestAcademicYearServiceIntegration_PendingTransferBlocksClosing(t *testing.
 	}
 	if err := repos.Classes.Create(ctx, toClass); err != nil {
 		t.Fatalf("create destination class: %v", err)
+	}
+	assignment := newServiceScopeAssignment(t, wali.ID, year.ID, fromClass.ID)
+	if err := repos.TeacherClassAssignments.Create(ctx, assignment); err != nil {
+		t.Fatalf("create wali assignment: %v", err)
 	}
 	student := newServiceScopeStudent(t, "Transfer Student")
 	if err := repos.Students.Create(ctx, student); err != nil {
@@ -480,7 +488,7 @@ func TestAcademicYearServiceIntegration_PendingTransferBlocksClosing(t *testing.
 		t.Fatalf("NewClassTransferService() error = %v", err)
 	}
 	request, err := transferSvc.Request(ctx, service.RequestTransferInput{
-		Actor: adminActor, StudentID: student.ID, AcademicYearID: year.ID,
+		Actor: service.Actor{UserID: wali.ID, Role: domain.RoleWaliKelas}, StudentID: student.ID, AcademicYearID: year.ID,
 		FromClassID: fromClass.ID, ToClassID: toClass.ID,
 	})
 	if err != nil {

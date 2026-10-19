@@ -22,6 +22,10 @@ func TestClassServiceIntegration_CrossServiceCommit(t *testing.T) {
 	classRepo := postgres.NewClassRepository(db)
 	auditRepo := postgres.NewAuditRepository(db)
 	manager := postgres.NewUnitOfWorkManager(db)
+	year := newServiceScopeAcademicYear(t, "2026/2027")
+	if err := postgres.NewAcademicYearRepository(db).Create(ctx, year); err != nil {
+		t.Fatal(err)
+	}
 
 	actorUser := newServiceScopeUser(t, domain.RoleAdmin)
 	if err := userRepo.Create(ctx, actorUser); err != nil {
@@ -45,7 +49,7 @@ func TestClassServiceIntegration_CrossServiceCommit(t *testing.T) {
 		ctx,
 		manager,
 		func(txCtx context.Context, _ repository.RepositorySet) error {
-			output, err := svc.Create(txCtx, service.CreateClassInput{
+			output, err := svc.Create(txCtx, service.CreateClassInput{AcademicYearID: year.ID, EffectiveDate: year.StartDate,
 				Actor: service.Actor{
 					UserID: actorUser.ID,
 					Role:   domain.RoleAdmin,
@@ -99,6 +103,10 @@ func TestClassServiceIntegration_CrossServiceRollbackIsAtomic(t *testing.T) {
 	classRepo := postgres.NewClassRepository(db)
 	auditRepo := postgres.NewAuditRepository(db)
 	manager := postgres.NewUnitOfWorkManager(db)
+	year := newServiceScopeAcademicYear(t, "2026/2027")
+	if err := postgres.NewAcademicYearRepository(db).Create(ctx, year); err != nil {
+		t.Fatal(err)
+	}
 
 	actorUser := newServiceScopeUser(t, domain.RoleAdmin)
 	if err := userRepo.Create(ctx, actorUser); err != nil {
@@ -123,7 +131,7 @@ func TestClassServiceIntegration_CrossServiceRollbackIsAtomic(t *testing.T) {
 		ctx,
 		manager,
 		func(txCtx context.Context, _ repository.RepositorySet) error {
-			output, err := svc.Create(txCtx, service.CreateClassInput{
+			output, err := svc.Create(txCtx, service.CreateClassInput{AcademicYearID: year.ID, EffectiveDate: year.StartDate,
 				Actor: service.Actor{
 					UserID: actorUser.ID,
 					Role:   domain.RoleAdmin,

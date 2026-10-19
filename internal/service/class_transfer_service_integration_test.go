@@ -20,8 +20,12 @@ func TestClassTransferServiceIntegration_RequestApproveAndReject(t *testing.T) {
 	repos := postgres.NewRepositorySet(db)
 	uow := postgres.NewUnitOfWorkManager(db)
 	admin := newServiceScopeUser(t, domain.RoleAdmin)
+	wali := newServiceScopeUser(t, domain.RoleWaliKelas)
 	if err := repos.Users.Create(ctx, admin); err != nil {
 		t.Fatalf("create admin: %v", err)
+	}
+	if err := repos.Users.Create(ctx, wali); err != nil {
+		t.Fatalf("create wali: %v", err)
 	}
 	year := newServiceScopeAcademicYear(t, "Class transfer lifecycle "+uuid.NewString())
 	if err := repos.AcademicYears.Create(ctx, year); err != nil {
@@ -34,6 +38,10 @@ func TestClassTransferServiceIntegration_RequestApproveAndReject(t *testing.T) {
 	}
 	if err := repos.Classes.Create(ctx, toClass); err != nil {
 		t.Fatalf("create destination class: %v", err)
+	}
+	assignment := newServiceScopeAssignment(t, wali.ID, year.ID, fromClass.ID)
+	if err := repos.TeacherClassAssignments.Create(ctx, assignment); err != nil {
+		t.Fatalf("create wali assignment: %v", err)
 	}
 	students := []domain.Student{
 		newServiceScopeStudent(t, "Transfer Approve Student"),
@@ -52,7 +60,8 @@ func TestClassTransferServiceIntegration_RequestApproveAndReject(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewClassTransferService() error = %v", err)
 	}
-	actor := service.Actor{UserID: admin.ID, Role: domain.RoleAdmin}
+	actor := service.Actor{UserID: wali.ID, Role: domain.RoleWaliKelas}
+	adminActor := service.Actor{UserID: admin.ID, Role: domain.RoleAdmin}
 
 	approvedRequest, err := svc.Request(ctx, service.RequestTransferInput{
 		Actor: actor, StudentID: students[0].ID, AcademicYearID: year.ID,
@@ -63,7 +72,7 @@ func TestClassTransferServiceIntegration_RequestApproveAndReject(t *testing.T) {
 	}
 	effectiveDate := time.Date(2027, 1, 15, 0, 0, 0, 0, time.UTC)
 	approved, err := svc.Approve(ctx, service.ApproveTransferInput{
-		Actor: actor, TransferRequestID: approvedRequest.TransferRequest.ID, EffectiveDate: effectiveDate,
+		Actor: adminActor, TransferRequestID: approvedRequest.TransferRequest.ID, EffectiveDate: effectiveDate,
 	})
 	if err != nil {
 		t.Fatalf("Approve() error = %v", err)
@@ -91,7 +100,7 @@ func TestClassTransferServiceIntegration_RequestApproveAndReject(t *testing.T) {
 	}
 	reason := "Permintaan tidak sesuai jadwal kelas"
 	rejected, err := svc.Reject(ctx, service.RejectTransferInput{
-		Actor: actor, TransferRequestID: rejectedRequest.TransferRequest.ID, RejectionReason: reason,
+		Actor: adminActor, TransferRequestID: rejectedRequest.TransferRequest.ID, RejectionReason: reason,
 	})
 	if err != nil {
 		t.Fatalf("Reject() error = %v", err)

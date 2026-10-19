@@ -204,6 +204,23 @@ func (r *ClassTransferRequestRepository) ListByStudentAndAcademicYear(
 	return requests, nil
 }
 
+func (r *ClassTransferRequestRepository) HasPendingByStudent(ctx context.Context, studentID uuid.UUID) (bool, error) {
+	const query = `
+		SELECT EXISTS (
+			SELECT 1
+			FROM class_transfer_requests
+			WHERE student_id = $1
+				AND status = 'PENDING'
+		)
+	`
+
+	var exists bool
+	if err := r.db.QueryRowContext(ctx, query, studentID).Scan(&exists); err != nil {
+		return false, fmt.Errorf("check pending class transfer request: %w", err)
+	}
+	return exists, nil
+}
+
 func (r *ClassTransferRequestRepository) ListPending(
 	ctx context.Context,
 	academicYearID uuid.UUID,

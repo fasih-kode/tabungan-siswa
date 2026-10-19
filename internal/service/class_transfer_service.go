@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"time"
 
@@ -11,6 +12,70 @@ import (
 )
 
 var _ ClassTransferService = (*classTransferService)(nil)
+
+func (s *classTransferService) RequestOptions(
+	ctx context.Context,
+	input RequestTransferOptionsInput,
+) (RequestTransferOptionsOutput, error) {
+	if err := input.Actor.Validate(); err != nil {
+		return RequestTransferOptionsOutput{}, err
+	}
+	if input.StudentID == uuid.Nil || input.AcademicYearID == uuid.Nil {
+		return RequestTransferOptionsOutput{}, domain.ErrInvalidID
+	}
+	if input.Actor.Role != domain.RoleWaliKelas {
+		return RequestTransferOptionsOutput{}, ErrForbidden
+	}
+	if err := RequireStudentScope(ctx, s.deps.Repositories, input.Actor, input.StudentID, input.AcademicYearID); err != nil {
+		return RequestTransferOptionsOutput{}, err
+	}
+	year, err := s.deps.Repositories.AcademicYears.GetByID(ctx, input.AcademicYearID)
+	if err != nil {
+		return RequestTransferOptionsOutput{}, err
+	}
+	if !year.IsOpen() {
+		return RequestTransferOptionsOutput{UnavailableReason: "Tahun ajaran ini belum dibuka atau sudah ditutup."}, nil
+	}
+	student, err := s.deps.Repositories.Students.GetByID(ctx, input.StudentID)
+	if err != nil {
+		return RequestTransferOptionsOutput{}, err
+	}
+	if !student.IsActive() {
+		return RequestTransferOptionsOutput{UnavailableReason: "Siswa tidak berstatus aktif."}, nil
+	}
+	history, err := s.deps.Repositories.StudentClassHistories.GetCurrentByStudentAndAcademicYear(ctx, input.StudentID, input.AcademicYearID, time.Now())
+	if err != nil {
+		if errors.Is(err, repository.ErrNotFound) {
+			return RequestTransferOptionsOutput{UnavailableReason: "Siswa belum memiliki riwayat kelas aktif untuk tahun ajaran ini."}, nil
+		}
+		return RequestTransferOptionsOutput{}, err
+	}
+	fromClass, err := s.deps.Repositories.Classes.GetByID(ctx, history.ClassID)
+	if err != nil {
+		return RequestTransferOptionsOutput{}, err
+	}
+	classes := make([]*domain.Class, 0)
+	for offset := 0; ; offset += 250 {
+		page, err := s.deps.Repositories.Classes.List(ctx, repository.ListOptions{AcademicYearID: input.AcademicYearID, Limit: 250, Offset: offset})
+		if err != nil {
+			return RequestTransferOptionsOutput{}, err
+		}
+		for i := range page {
+			class := page[i]
+			if class.AcademicYearID == input.AcademicYearID && class.ID != history.ClassID {
+				classCopy := class
+				classes = append(classes, &classCopy)
+			}
+		}
+		if len(page) < 250 {
+			break
+		}
+	}
+	if len(classes) == 0 {
+		return RequestTransferOptionsOutput{FromClassID: history.ClassID, FromClassName: fromClass.Name, UnavailableReason: "Belum ada kelas tujuan lain pada tahun ajaran ini."}, nil
+	}
+	return RequestTransferOptionsOutput{CanRequest: true, FromClassID: history.ClassID, FromClassName: fromClass.Name, TargetClasses: classes}, nil
+}
 
 func (s *classTransferService) Request(
 	ctx context.Context,
@@ -31,22 +96,11 @@ func (s *classTransferService) Request(
 		return RequestTransferOutput{}, domain.ErrInvalidValue
 	}
 
-	if input.Actor.Role == domain.RoleSiswa {
+	if input.Actor.Role != domain.RoleWaliKelas {
 		return RequestTransferOutput{}, ErrForbidden
 	}
-
-	if input.Actor.Role == domain.RoleWaliKelas {
-		if err := RequireStudentScope(
-			ctx,
-			s.deps.Repositories,
-			input.Actor,
-			input.StudentID,
-			input.AcademicYearID,
-		); err != nil {
-			return RequestTransferOutput{}, err
-		}
-	} else if input.Actor.Role != domain.RoleAdmin {
-		return RequestTransferOutput{}, ErrForbidden
+	if err := RequireStudentScope(ctx, s.deps.Repositories, input.Actor, input.StudentID, input.AcademicYearID); err != nil {
+		return RequestTransferOutput{}, err
 	}
 
 	student, err := s.deps.Repositories.Students.GetByID(
@@ -55,6 +109,9 @@ func (s *classTransferService) Request(
 	)
 	if err != nil {
 		return RequestTransferOutput{}, err
+	}
+	if !student.IsActive() {
+		return RequestTransferOutput{}, domain.ErrInvalidTransition
 	}
 
 	if student.ID == uuid.Nil {
@@ -88,6 +145,9 @@ func (s *classTransferService) Request(
 		return RequestTransferOutput{}, err
 	}
 
+	if (fromClass.AcademicYearID != uuid.Nil && fromClass.AcademicYearID != input.AcademicYearID) || (toClass.AcademicYearID != uuid.Nil && toClass.AcademicYearID != input.AcademicYearID) {
+		return RequestTransferOutput{}, domain.ErrInvalidValue
+	}
 	if fromClass.ID == uuid.Nil || toClass.ID == uuid.Nil {
 		return RequestTransferOutput{}, ErrInvalidDependency
 	}
@@ -138,6 +198,16 @@ func (s *classTransferService) Request(
 			_ = uow.Rollback()
 		}
 	}()
+	lockedStudent, err := uow.Repositories().Students.GetByIDForUpdate(
+		ctx,
+		input.StudentID,
+	)
+	if err != nil {
+		return RequestTransferOutput{}, err
+	}
+	if !lockedStudent.IsActive() {
+		return RequestTransferOutput{}, domain.ErrInvalidTransition
+	}
 
 	if err := uow.Repositories().ClassTransferRequests.Create(
 		ctx,
@@ -243,7 +313,17 @@ func (s *classTransferService) ListByStudent(
 		return ListStudentTransfersOutput{}, err
 	}
 
-	return ListStudentTransfersOutput{
+	total := 0
+	if input.Options.IncludeTotal {
+		if s.deps.Repositories.ListTotals == nil {
+			return ListStudentTransfersOutput{}, ErrInvalidDependency
+		}
+		total, err = s.deps.Repositories.ListTotals.Transfers(ctx, input.StudentID, input.AcademicYearID, false)
+		if err != nil {
+			return ListStudentTransfersOutput{}, err
+		}
+	}
+	return ListStudentTransfersOutput{Total: total,
 		TransferRequests: classTransferRequestPointers(requests),
 	}, nil
 }
@@ -278,7 +358,17 @@ func (s *classTransferService) ListPending(
 		return ListPendingTransfersOutput{}, err
 	}
 
-	return ListPendingTransfersOutput{
+	total := 0
+	if input.Options.IncludeTotal {
+		if s.deps.Repositories.ListTotals == nil {
+			return ListPendingTransfersOutput{}, ErrInvalidDependency
+		}
+		total, err = s.deps.Repositories.ListTotals.Transfers(ctx, uuid.Nil, input.AcademicYearID, true)
+		if err != nil {
+			return ListPendingTransfersOutput{}, err
+		}
+	}
+	return ListPendingTransfersOutput{Total: total,
 		TransferRequests: classTransferRequestPointers(requests),
 	}, nil
 }

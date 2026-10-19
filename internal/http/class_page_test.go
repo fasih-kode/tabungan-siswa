@@ -102,11 +102,11 @@ func TestClassPageListRendersScopedClassesAndPagination(t *testing.T) {
 
 func TestClassPageCreateRedirectsAfterServiceSuccess(t *testing.T) {
 	classes := &classServiceFake{}
-	h, err := NewClassPageHandler(classes, &academicYearServiceFake{}, newClassTestTemplate(t))
+	h, err := NewClassPageHandler(classes, &academicYearServiceFake{years: []*domain.AcademicYear{{ID: uuid.MustParse("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"), Name: "2026/2027"}}}, newClassTestTemplate(t))
 	if err != nil {
 		t.Fatal(err)
 	}
-	form := url.Values{"name": {"VII A"}, "level": {"7"}, "csrf_token": {"test-token"}}
+	form := url.Values{"academic_year_id": {"aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"}, "effective_date": {"2026-07-01"}, "name": {"VII A"}, "level": {"7"}, "csrf_token": {"test-token"}}
 	req := httptest.NewRequest(http.MethodPost, "/classes", strings.NewReader(form.Encode()))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	req = req.WithContext(service.WithActor(req.Context(), service.Actor{UserID: uuid.New(), Username: "admin", Role: domain.RoleAdmin}))
@@ -115,7 +115,7 @@ func TestClassPageCreateRedirectsAfterServiceSuccess(t *testing.T) {
 	if w.Code != http.StatusSeeOther {
 		t.Fatalf("status = %d body=%s", w.Code, w.Body.String())
 	}
-	if w.Header().Get("Location") != "/classes" {
+	if w.Header().Get("Location") != "/classes?academic_year_id=aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa" {
 		t.Fatalf("Location = %q", w.Header().Get("Location"))
 	}
 	if classes.created.Name != "VII A" || classes.created.Level != 7 {
@@ -124,11 +124,11 @@ func TestClassPageCreateRedirectsAfterServiceSuccess(t *testing.T) {
 }
 
 func TestClassPageCreateRejectsInvalidLevel(t *testing.T) {
-	h, err := NewClassPageHandler(&classServiceFake{}, &academicYearServiceFake{}, newClassTestTemplate(t))
+	h, err := NewClassPageHandler(&classServiceFake{}, &academicYearServiceFake{years: []*domain.AcademicYear{{ID: uuid.MustParse("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"), Name: "2026/2027"}}}, newClassTestTemplate(t))
 	if err != nil {
 		t.Fatal(err)
 	}
-	form := url.Values{"name": {"VII A"}, "level": {"99"}, "csrf_token": {"test-token"}}
+	form := url.Values{"academic_year_id": {"aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"}, "effective_date": {"2026-07-01"}, "name": {"VII A"}, "level": {"99"}, "csrf_token": {"test-token"}}
 	req := httptest.NewRequest(http.MethodPost, "/classes", strings.NewReader(form.Encode()))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	req = req.WithContext(service.WithActor(req.Context(), service.Actor{UserID: uuid.New(), Role: domain.RoleAdmin}))
@@ -142,11 +142,11 @@ func TestClassPageCreateRejectsInvalidLevel(t *testing.T) {
 func TestClassPageUpdateRedirectsToDetail(t *testing.T) {
 	id := uuid.New()
 	classes := &classServiceFake{}
-	h, err := NewClassPageHandler(classes, &academicYearServiceFake{}, newClassTestTemplate(t))
+	h, err := NewClassPageHandler(classes, &academicYearServiceFake{years: []*domain.AcademicYear{{ID: uuid.MustParse("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"), Name: "2026/2027"}}}, newClassTestTemplate(t))
 	if err != nil {
 		t.Fatal(err)
 	}
-	form := url.Values{"name": {"VII B"}, "level": {"7"}, "csrf_token": {"test-token"}}
+	form := url.Values{"academic_year_id": {"aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"}, "effective_date": {"2026-07-01"}, "name": {"VII B"}, "level": {"7"}, "csrf_token": {"test-token"}}
 	req := httptest.NewRequest(http.MethodPost, "/classes/"+id.String(), strings.NewReader(form.Encode()))
 	req.SetPathValue("id", id.String())
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
@@ -180,7 +180,7 @@ func TestClassPageListRejectsInvalidPagination(t *testing.T) {
 	} {
 		t.Run(target, func(t *testing.T) {
 			classes := &classServiceFake{}
-			h, err := NewClassPageHandler(classes, &academicYearServiceFake{}, newClassTestTemplate(t))
+			h, err := NewClassPageHandler(classes, &academicYearServiceFake{years: []*domain.AcademicYear{{ID: uuid.MustParse("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"), Name: "2026/2027"}}}, newClassTestTemplate(t))
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -204,11 +204,14 @@ func TestClassPageListUsesLookaheadAtPaginationBoundary(t *testing.T) {
 		{ID: uuid.New(), Name: "VII B", Level: 7},
 		{ID: uuid.New(), Name: "VII C", Level: 7},
 	}}
+	for len(classes.classes) < 11 {
+		classes.classes = append(classes.classes, &domain.Class{ID: uuid.New(), Name: "VII", Level: 7})
+	}
 	tmpl, err := template.New("classes").Parse(`{{define "classes"}}{{.HasPrevious}}|{{.HasNext}}|{{.Page}}|{{.Limit}}|{{len .Rows}}{{end}}`)
 	if err != nil {
 		t.Fatal(err)
 	}
-	h, err := NewClassPageHandler(classes, &academicYearServiceFake{}, tmpl)
+	h, err := NewClassPageHandler(classes, &academicYearServiceFake{years: []*domain.AcademicYear{{ID: uuid.MustParse("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"), Name: "2026/2027"}}}, tmpl)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -218,18 +221,18 @@ func TestClassPageListUsesLookaheadAtPaginationBoundary(t *testing.T) {
 	if recorder.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200; body=%s", recorder.Code, recorder.Body.String())
 	}
-	if got, want := recorder.Body.String(), "false|true|1|2|2"; got != want {
+	if got, want := recorder.Body.String(), "false|true|1|10|10"; got != want {
 		t.Fatalf("view model = %q, want %q", got, want)
 	}
-	if classes.listInput.Options.Limit != 3 || classes.listInput.Options.Offset != 0 {
-		t.Fatalf("service pagination = %+v, want limit 3 offset 0", classes.listInput.Options)
+	if classes.listInput.Options.Limit != 11 || classes.listInput.Options.Offset != 0 {
+		t.Fatalf("service pagination = %+v, want limit 11 offset 0", classes.listInput.Options)
 	}
 }
 
 func TestClassPageListMapsServiceFailure(t *testing.T) {
 	yearID := uuid.New()
 	classes := &classServiceFake{listErr: errors.New("internal repository detail")}
-	h, err := NewClassPageHandler(classes, &academicYearServiceFake{}, newClassTestTemplate(t))
+	h, err := NewClassPageHandler(classes, &academicYearServiceFake{years: []*domain.AcademicYear{{ID: uuid.MustParse("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"), Name: "2026/2027"}}}, newClassTestTemplate(t))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -250,11 +253,11 @@ func TestClassPageCreateRetainsSubmittedValuesOnServiceValidationError(t *testin
 	if err != nil {
 		t.Fatal(err)
 	}
-	h, err := NewClassPageHandler(classes, &academicYearServiceFake{}, tmpl)
+	h, err := NewClassPageHandler(classes, &academicYearServiceFake{years: []*domain.AcademicYear{{ID: uuid.MustParse("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"), Name: "2026/2027"}}}, tmpl)
 	if err != nil {
 		t.Fatal(err)
 	}
-	form := url.Values{"name": {"VII B"}, "level": {"8"}, "csrf_token": {"valid-token"}}
+	form := url.Values{"academic_year_id": {"aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"}, "effective_date": {"2026-07-01"}, "name": {"VII B"}, "level": {"8"}, "csrf_token": {"valid-token"}}
 	req := httptest.NewRequest(http.MethodPost, "/classes", strings.NewReader(form.Encode()))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	req = req.WithContext(service.WithActor(req.Context(), service.Actor{UserID: uuid.New(), Role: domain.RoleAdmin}))
@@ -277,11 +280,11 @@ func TestClassPageUpdateRetainsSubmittedValuesOnServiceValidationError(t *testin
 	if err != nil {
 		t.Fatal(err)
 	}
-	h, err := NewClassPageHandler(classes, &academicYearServiceFake{}, tmpl)
+	h, err := NewClassPageHandler(classes, &academicYearServiceFake{years: []*domain.AcademicYear{{ID: uuid.MustParse("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"), Name: "2026/2027"}}}, tmpl)
 	if err != nil {
 		t.Fatal(err)
 	}
-	form := url.Values{"name": {"VII C"}, "level": {"9"}, "csrf_token": {"valid-token"}}
+	form := url.Values{"academic_year_id": {"aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"}, "effective_date": {"2026-07-01"}, "name": {"VII C"}, "level": {"9"}, "csrf_token": {"valid-token"}}
 	req := httptest.NewRequest(http.MethodPost, "/classes/"+id.String(), strings.NewReader(form.Encode()))
 	req.SetPathValue("id", id.String())
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")

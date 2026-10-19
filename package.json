@@ -3,7 +3,8 @@
   "private": true,
   "scripts": {
     "css:build": "postcss assets/css/app.css -o static/css/app.css",
-    "css:watch": "postcss assets/css/app.css -o static/css/app.css --watch"
+    "css:watch": "postcss assets/css/app.css -o static/css/app.css --watch",
+    "test:instant-search": "node --test scripts/instant-search.test.cjs"
   },
   "devDependencies": {
     "@tailwindcss/forms": "^0.5.9",

@@ -14,279 +14,117 @@ import (
 
 var _ repository.ClassRepository = (*ClassRepository)(nil)
 
-type ClassRepository struct {
-	db database.DBTX
-}
+type ClassRepository struct{ db database.DBTX }
 
-func NewClassRepository(db database.DBTX) *ClassRepository {
-	return &ClassRepository{
-		db: db,
+func NewClassRepository(db database.DBTX) *ClassRepository { return &ClassRepository{db: db} }
+
+func classConfigurationValues(c domain.Class) (any, any) {
+	if c.AcademicYearID == uuid.Nil {
+		return nil, nil
 	}
+	return c.AcademicYearID, c.EffectiveDate
 }
 
-func (r *ClassRepository) Create(
-	ctx context.Context,
-	class domain.Class,
-) error {
-	const query = `
-		INSERT INTO classes (
-			id,
-			name,
-			level,
-			created_at,
-			updated_at
-		)
-		VALUES (
-			$1,
-			$2,
-			$3,
-			$4,
-			$5
-		)
-	`
-
-	_, err := r.db.ExecContext(
-		ctx,
-		query,
-		class.ID,
-		class.Name,
-		class.Level,
-		class.CreatedAt,
-		class.UpdatedAt,
-	)
+func (r *ClassRepository) Create(ctx context.Context, c domain.Class) error {
+	year, date := classConfigurationValues(c)
+	_, err := r.db.ExecContext(ctx, `INSERT INTO classes
+ (id, name, level, created_at, updated_at, academic_year_id, effective_date)
+ VALUES ($1,$2,$3,$4,$5,$6,$7)`, c.ID, c.Name, c.Level, c.CreatedAt, c.UpdatedAt, year, date)
 	if err != nil {
 		return translateError("create class", err)
 	}
-
 	return nil
 }
 
-func (r *ClassRepository) GetByID(
-	ctx context.Context,
-	id uuid.UUID,
-) (domain.Class, error) {
-	const query = `
-		SELECT
-			id,
-			name,
-			level,
-			created_at,
-			updated_at
-		FROM classes
-		WHERE id = $1
-	`
-
-	var class domain.Class
-
-	err := r.db.QueryRowContext(
-		ctx,
-		query,
-		id,
-	).Scan(
-		&class.ID,
-		&class.Name,
-		&class.Level,
-		&class.CreatedAt,
-		&class.UpdatedAt,
-	)
-	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return domain.Class{}, repository.ErrNotFound
-		}
-
-		return domain.Class{}, fmt.Errorf(
-			"get class by id: %w",
-			err,
-		)
+func scanClass(row interface{ Scan(...any) error }) (domain.Class, error) {
+	var c domain.Class
+	var year uuid.NullUUID
+	var date sql.NullTime
+	err := row.Scan(&c.ID, &c.Name, &c.Level, &c.CreatedAt, &c.UpdatedAt, &year, &date)
+	if year.Valid {
+		c.AcademicYearID = year.UUID
 	}
-
-	return class, nil
+	if date.Valid {
+		c.EffectiveDate = date.Time
+	}
+	return c, err
 }
 
-func (r *ClassRepository) List(
-	ctx context.Context,
-	options repository.ListOptions,
-) ([]domain.Class, error) {
-	const query = `
-		SELECT
-			id,
-			name,
-			level,
-			created_at,
-			updated_at
-		FROM classes
-		ORDER BY level ASC, name ASC, id ASC
-		LIMIT $1
-		OFFSET $2
-	`
+const classColumns = `id, name, level, created_at, updated_at, academic_year_id, effective_date`
 
-	rows, err := r.db.QueryContext(
-		ctx,
-		query,
-		options.Limit,
-		options.Offset,
-	)
-	if err != nil {
-		return nil, fmt.Errorf("list classes: %w", err)
+func (r *ClassRepository) GetByID(ctx context.Context, id uuid.UUID) (domain.Class, error) {
+	c, err := scanClass(r.db.QueryRowContext(ctx, `SELECT `+classColumns+` FROM classes WHERE id=$1`, id))
+	if errors.Is(err, sql.ErrNoRows) {
+		return domain.Class{}, repository.ErrNotFound
 	}
+	if err != nil {
+		return domain.Class{}, fmt.Errorf("get class by id: %w", err)
+	}
+	return c, nil
+}
+
+func readClasses(rows *sql.Rows) ([]domain.Class, error) {
 	defer rows.Close()
-
 	classes := make([]domain.Class, 0)
-
 	for rows.Next() {
-		var class domain.Class
-
-		if err := rows.Scan(
-			&class.ID,
-			&class.Name,
-			&class.Level,
-			&class.CreatedAt,
-			&class.UpdatedAt,
-		); err != nil {
+		c, err := scanClass(rows)
+		if err != nil {
 			return nil, fmt.Errorf("scan class: %w", err)
 		}
-
-		classes = append(classes, class)
+		classes = append(classes, c)
 	}
-
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("iterate classes: %w", err)
 	}
-
 	return classes, nil
 }
 
-func (r *ClassRepository) ListByTeacherAndAcademicYear(
-	ctx context.Context,
-	userID uuid.UUID,
-	academicYearID uuid.UUID,
-	options repository.ListOptions,
-) ([]domain.Class, error) {
-	const query = `
-		SELECT
-			c.id,
-			c.name,
-			c.level,
-			c.created_at,
-			c.updated_at
-		FROM classes c
-		INNER JOIN teacher_class_assignments tca
-			ON tca.class_id = c.id
-			AND tca.academic_year_id = $2
-		WHERE tca.user_id = $1
-		ORDER BY c.level ASC, c.name ASC, c.id ASC
-		LIMIT $3
-		OFFSET $4
-	`
+func (r *ClassRepository) List(ctx context.Context, opts repository.ListOptions) ([]domain.Class, error) {
+	rows, err := r.db.QueryContext(ctx, `SELECT `+classColumns+` FROM classes
+ WHERE ($3::uuid = '00000000-0000-0000-0000-000000000000' OR academic_year_id=$3 OR academic_year_id IS NULL)
+ ORDER BY level, name, id LIMIT $1 OFFSET $2`, opts.Limit, opts.Offset, opts.AcademicYearID)
+	if err != nil {
+		return nil, fmt.Errorf("list classes: %w", err)
+	}
+	return readClasses(rows)
+}
 
-	rows, err := r.db.QueryContext(
-		ctx,
-		query,
-		userID,
-		academicYearID,
-		options.Limit,
-		options.Offset,
-	)
+func (r *ClassRepository) ListByTeacherAndAcademicYear(ctx context.Context, userID, yearID uuid.UUID, opts repository.ListOptions) ([]domain.Class, error) {
+	rows, err := r.db.QueryContext(ctx, `SELECT `+classColumns+` FROM classes c
+ WHERE EXISTS (SELECT 1 FROM teacher_class_assignments a WHERE a.class_id=c.id AND a.user_id=$1 AND a.academic_year_id=$2)
+ ORDER BY level, name, id LIMIT $3 OFFSET $4`, userID, yearID, opts.Limit, opts.Offset)
 	if err != nil {
 		return nil, fmt.Errorf("list classes by teacher and academic year: %w", err)
 	}
-	defer rows.Close()
-
-	classes := make([]domain.Class, 0)
-
-	for rows.Next() {
-		var class domain.Class
-
-		if err := rows.Scan(
-			&class.ID,
-			&class.Name,
-			&class.Level,
-			&class.CreatedAt,
-			&class.UpdatedAt,
-		); err != nil {
-			return nil, fmt.Errorf("scan class by teacher and academic year: %w", err)
-		}
-
-		classes = append(classes, class)
-	}
-
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf(
-			"iterate classes by teacher and academic year: %w",
-			err,
-		)
-	}
-
-	return classes, nil
+	return readClasses(rows)
 }
 
-func (r *ClassRepository) Update(
-	ctx context.Context,
-	class domain.Class,
-) error {
-	const query = `
-		UPDATE classes
-		SET
-			name = $1,
-			level = $2,
-			updated_at = $3
-		WHERE id = $4
-	`
-
-	result, err := r.db.ExecContext(
-		ctx,
-		query,
-		class.Name,
-		class.Level,
-		class.UpdatedAt,
-		class.ID,
-	)
+func (r *ClassRepository) Update(ctx context.Context, c domain.Class) error {
+	year, date := classConfigurationValues(c)
+	result, err := r.db.ExecContext(ctx, `UPDATE classes SET name=$1, level=$2,
+ updated_at=$3, academic_year_id=$5, effective_date=$6 WHERE id=$4`, c.Name, c.Level, c.UpdatedAt, c.ID, year, date)
 	if err != nil {
 		return translateError("update class", err)
 	}
-
-	rowsAffected, err := result.RowsAffected()
+	n, err := result.RowsAffected()
 	if err != nil {
-		return fmt.Errorf(
-			"get updated class rows affected: %w",
-			err,
-		)
+		return fmt.Errorf("get updated class rows affected: %w", err)
 	}
-
-	if rowsAffected == 0 {
+	if n == 0 {
 		return repository.ErrNotFound
 	}
-
 	return nil
 }
 
-func (r *ClassRepository) ExistsByNameAndLevel(
-	ctx context.Context,
-	name string,
-	level int,
-) (bool, error) {
-	const query = `
-		SELECT EXISTS (
-			SELECT 1
-			FROM classes
-			WHERE name = $1
-			  AND level = $2
-		)
-	`
-
-	var exists bool
-
-	if err := r.db.QueryRowContext(
-		ctx,
-		query,
-		name,
-		level,
-	).Scan(&exists); err != nil {
-		return false, fmt.Errorf(
-			"check class existence: %w",
-			err,
-		)
+func (r *ClassRepository) ExistsByNameAndLevel(ctx context.Context, name string, level int, yearIDs ...uuid.UUID) (bool, error) {
+	var year any
+	if len(yearIDs) > 0 {
+		year = yearIDs[0]
 	}
-
+	var exists bool
+	err := r.db.QueryRowContext(ctx, `SELECT EXISTS (SELECT 1 FROM classes WHERE name=$1 AND level=$2 AND ($3::uuid IS NULL OR academic_year_id=$3))`, name, level, year).Scan(&exists)
+	if err != nil {
+		return false, fmt.Errorf("check class existence: %w", err)
+	}
 	return exists, nil
 }

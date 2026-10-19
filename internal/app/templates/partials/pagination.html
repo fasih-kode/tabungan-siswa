@@ -1,0 +1,11 @@
+{{define "pagination"}}
+<nav class="table-pagination" aria-label="Navigasi halaman tabel">
+ {{if .PreviousURL}}<a class="pagination-button pagination-previous" href="{{.PreviousURL}}">{{template "pagination-left-icon"}}Previous</a>{{else}}<button class="pagination-button pagination-previous" type="button" disabled>{{template "pagination-left-icon"}}Previous</button>{{end}}
+ <div class="pagination-numbers">
+  {{range .Items}}{{if .Ellipsis}}<span class="pagination-ellipsis" aria-label="Halaman lainnya">…</span>{{else if .Current}}<span class="pagination-number pagination-current" aria-current="page" aria-label="Halaman {{.Number}}">{{.Number}}</span>{{else}}<a class="pagination-number" href="{{.URL}}" aria-label="Halaman {{.Number}}">{{.Number}}</a>{{end}}{{else}}<span class="pagination-number pagination-current" aria-current="page" aria-label="Halaman 1">1</span>{{end}}
+ </div>
+ {{if .NextURL}}<a class="pagination-button pagination-next" href="{{.NextURL}}">Next{{template "pagination-right-icon"}}</a>{{else}}<button class="pagination-button pagination-next" type="button" disabled>Next{{template "pagination-right-icon"}}</button>{{end}}
+</nav>
+{{end}}
+{{define "pagination-left-icon"}}<svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M19 12H5m6-7-7 7 7 7"/></svg>{{end}}
+{{define "pagination-right-icon"}}<svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M5 12h14m-6-7 7 7-7 7"/></svg>{{end}}

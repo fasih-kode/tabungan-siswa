@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/fasih/tabungan-siswa/internal/domain"
 	"github.com/fasih/tabungan-siswa/internal/repository"
@@ -30,6 +31,13 @@ func (f *studentServiceFakeStudentRepository) GetByID(
 		return f.getByIDFn(ctx, id)
 	}
 	return domain.Student{}, repository.ErrNotFound
+}
+
+func (f *studentServiceFakeStudentRepository) GetByIDForUpdate(
+	ctx context.Context,
+	id uuid.UUID,
+) (domain.Student, error) {
+	return f.GetByID(ctx, id)
 }
 
 func (f *studentServiceFakeStudentRepository) GetByNIS(
@@ -108,6 +116,38 @@ type studentServiceFakeStudentClassHistoryRepository struct {
 		uuid.UUID,
 		repository.ListOptions,
 	) ([]domain.StudentClassHistory, error)
+	closeFn func(context.Context, uuid.UUID, uuid.UUID, time.Time) (domain.StudentClassHistory, error)
+}
+
+func (f *studentServiceFakeStudentClassHistoryRepository) CloseCurrentByStudentAndAcademicYear(ctx context.Context, studentID, academicYearID uuid.UUID, endDate time.Time) (domain.StudentClassHistory, error) {
+	if f.closeFn != nil {
+		return f.closeFn(ctx, studentID, academicYearID, endDate)
+	}
+	return domain.StudentClassHistory{}, repository.ErrNotFound
+}
+
+type studentServiceFakeTransferRepository struct {
+	repository.ClassTransferRequestRepository
+	hasPendingFn func(context.Context, uuid.UUID) (bool, error)
+}
+
+func (f *studentServiceFakeTransferRepository) HasPendingByStudent(ctx context.Context, studentID uuid.UUID) (bool, error) {
+	if f.hasPendingFn != nil {
+		return f.hasPendingFn(ctx, studentID)
+	}
+	return false, nil
+}
+
+type studentServiceFakeUserRepository struct {
+	repository.UserRepository
+	getByIDFn func(context.Context, uuid.UUID) (domain.User, error)
+}
+
+func (f *studentServiceFakeUserRepository) GetByID(ctx context.Context, id uuid.UUID) (domain.User, error) {
+	if f.getByIDFn != nil {
+		return f.getByIDFn(ctx, id)
+	}
+	return domain.User{}, repository.ErrNotFound
 }
 
 func (f *studentServiceFakeStudentClassHistoryRepository) ListByStudentAndAcademicYear(
@@ -531,6 +571,13 @@ func TestStudentServiceCreateAdmin(t *testing.T) {
 		},
 	}
 
+	repos.AcademicYears = &academicYearServiceFakeAcademicYearRepository{getByIDFn: func(context.Context, uuid.UUID) (domain.AcademicYear, error) {
+		return newTestAcademicYear(testClassYearID, domain.AcademicYearOpen), nil
+	}}
+	repos.Classes = &classServiceFakeClassRepository{getByIDFn: func(_ context.Context, id uuid.UUID) (domain.Class, error) {
+		return domain.Class{ID: id, AcademicYearID: testClassYearID, EffectiveDate: newTestAcademicYear(testClassYearID, domain.AcademicYearOpen).StartDate}, nil
+	}}
+	repos.StudentClassHistories = &placementHistoryStub{}
 	uow := &studentServiceFakeUnitOfWork{
 		repos: repos,
 	}
@@ -545,7 +592,7 @@ func TestStudentServiceCreateAdmin(t *testing.T) {
 
 	got, err := svc.Create(
 		context.Background(),
-		CreateStudentInput{
+		CreateStudentInput{AcademicYearID: testClassYearID, ClassID: uuid.New(),
 			Actor: Actor{
 				UserID: actorID,
 				Role:   domain.RoleAdmin,
@@ -605,6 +652,12 @@ func TestStudentServiceLeave(t *testing.T) {
 				return nil
 			},
 		},
+		StudentClassHistories: &studentServiceFakeStudentClassHistoryRepository{
+			closeFn: func(context.Context, uuid.UUID, uuid.UUID, time.Time) (domain.StudentClassHistory, error) {
+				return domain.StudentClassHistory{StudentID: studentID}, nil
+			},
+		},
+		ClassTransferRequests: &studentServiceFakeTransferRepository{},
 	}
 
 	uow := &studentServiceFakeUnitOfWork{
@@ -626,7 +679,9 @@ func TestStudentServiceLeave(t *testing.T) {
 				UserID: uuid.New(),
 				Role:   domain.RoleAdmin,
 			},
-			StudentID: studentID,
+			StudentID:      studentID,
+			AcademicYearID: uuid.New(),
+			LeavingDate:    time.Date(2026, 10, 14, 0, 0, 0, 0, time.UTC),
 		},
 	)
 	if err != nil {
@@ -1200,6 +1255,9 @@ func TestStudentServiceUpdateAdmin(t *testing.T) {
 				return nil
 			},
 		},
+		Users: &studentServiceFakeUserRepository{getByIDFn: func(_ context.Context, id uuid.UUID) (domain.User, error) {
+			return domain.User{ID: id, Role: domain.RoleSiswa}, nil
+		}},
 	}
 
 	uow := &studentServiceFakeUnitOfWork{
@@ -1318,6 +1376,13 @@ func TestStudentServiceCreateRepositoryErrorRollsBack(t *testing.T) {
 		},
 	}
 
+	repos.AcademicYears = &academicYearServiceFakeAcademicYearRepository{getByIDFn: func(context.Context, uuid.UUID) (domain.AcademicYear, error) {
+		return newTestAcademicYear(testClassYearID, domain.AcademicYearOpen), nil
+	}}
+	repos.Classes = &classServiceFakeClassRepository{getByIDFn: func(_ context.Context, id uuid.UUID) (domain.Class, error) {
+		return domain.Class{ID: id, AcademicYearID: testClassYearID, EffectiveDate: newTestAcademicYear(testClassYearID, domain.AcademicYearOpen).StartDate}, nil
+	}}
+	repos.StudentClassHistories = &placementHistoryStub{}
 	uow := &studentServiceFakeUnitOfWork{
 		repos: repos,
 	}
@@ -1330,7 +1395,7 @@ func TestStudentServiceCreateRepositoryErrorRollsBack(t *testing.T) {
 
 	_, err := svc.Create(
 		context.Background(),
-		CreateStudentInput{
+		CreateStudentInput{AcademicYearID: testClassYearID, ClassID: uuid.New(),
 			Actor: Actor{
 				UserID: uuid.New(),
 				Role:   domain.RoleAdmin,
@@ -1379,6 +1444,9 @@ func TestStudentServiceUpdateRepositoryErrorRollsBack(t *testing.T) {
 				return repositoryErr
 			},
 		},
+		Users: &studentServiceFakeUserRepository{getByIDFn: func(_ context.Context, id uuid.UUID) (domain.User, error) {
+			return domain.User{ID: id, Role: domain.RoleSiswa}, nil
+		}},
 	}
 
 	uow := &studentServiceFakeUnitOfWork{
@@ -1441,6 +1509,12 @@ func TestStudentServiceLeaveRepositoryErrorRollsBack(t *testing.T) {
 				return repositoryErr
 			},
 		},
+		StudentClassHistories: &studentServiceFakeStudentClassHistoryRepository{
+			closeFn: func(context.Context, uuid.UUID, uuid.UUID, time.Time) (domain.StudentClassHistory, error) {
+				return domain.StudentClassHistory{StudentID: studentID}, nil
+			},
+		},
+		ClassTransferRequests: &studentServiceFakeTransferRepository{},
 	}
 
 	uow := &studentServiceFakeUnitOfWork{
@@ -1460,7 +1534,9 @@ func TestStudentServiceLeaveRepositoryErrorRollsBack(t *testing.T) {
 				UserID: uuid.New(),
 				Role:   domain.RoleAdmin,
 			},
-			StudentID: studentID,
+			StudentID:      studentID,
+			AcademicYearID: uuid.New(),
+			LeavingDate:    time.Date(2026, 10, 14, 0, 0, 0, 0, time.UTC),
 		},
 	)
 	if !errors.Is(err, repositoryErr) {
@@ -1475,3 +1551,9 @@ func TestStudentServiceLeaveRepositoryErrorRollsBack(t *testing.T) {
 		t.Fatalf("Rollback() count = %d, want 1", uow.rollbackCount)
 	}
 }
+
+type placementHistoryStub struct {
+	repository.StudentClassHistoryRepository
+}
+
+func (*placementHistoryStub) Create(context.Context, domain.StudentClassHistory) error { return nil }

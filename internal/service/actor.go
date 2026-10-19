@@ -6,9 +6,10 @@ import (
 )
 
 type Actor struct {
-	UserID   uuid.UUID
-	Username string
-	Role     domain.UserRole
+	UserID                 uuid.UUID
+	Username               string
+	Role                   domain.UserRole
+	PasswordChangeRequired bool
 }
 
 func (a Actor) Validate() error {

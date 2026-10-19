@@ -56,6 +56,10 @@ func (s Student) IsLeft() bool {
 	return s.Status == StudentLeft
 }
 
+func (s Student) IsGraduated() bool {
+	return s.Status == StudentGraduated
+}
+
 func (s *Student) Leave() error {
 	if s.Status != StudentActive {
 		return ErrInvalidTransition
@@ -64,5 +68,24 @@ func (s *Student) Leave() error {
 	s.Status = StudentLeft
 	s.UpdatedAt = time.Now()
 
+	return nil
+}
+
+func (s *Student) Reactivate() error {
+	if s.Status != StudentLeft {
+		return ErrInvalidTransition
+	}
+
+	s.Status = StudentActive
+	s.UpdatedAt = time.Now()
+	return nil
+}
+
+func (s *Student) Graduate() error {
+	if s.Status != StudentActive {
+		return ErrInvalidTransition
+	}
+	s.Status = StudentGraduated
+	s.UpdatedAt = time.Now()
 	return nil
 }

@@ -137,6 +137,47 @@ func TestAuthenticationMiddlewareInjectsActor(t *testing.T) {
 	}
 }
 
+func TestAuthenticationMiddlewareForcesPasswordChange(t *testing.T) {
+	userID := uuid.New()
+	session := domain.Session{
+		ID: uuid.New(), UserID: userID, TokenHash: security.HashSessionToken("temporary-session"),
+		ExpiresAt: time.Now().Add(time.Hour), CreatedAt: time.Now(),
+	}
+	user := domain.User{ID: userID, Username: "wali-test", Role: domain.RoleWaliKelas, PasswordChangeRequired: true}
+	middleware := newAuthenticationMiddlewareForTest(t,
+		&authenticationSessionRepositoryFake{session: session},
+		&authenticationUserRepositoryFake{user: user},
+	)
+
+	t.Run("redirects protected pages to password form", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/protected", nil)
+		req.AddCookie(&http.Cookie{Name: security.DefaultSessionCookieName, Value: "temporary-session"})
+		recorder := httptest.NewRecorder()
+		middleware.RequireAuthentication(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+			t.Fatal("protected handler ran before password change")
+		})).ServeHTTP(recorder, req)
+		if recorder.Code != http.StatusSeeOther || recorder.Header().Get("Location") != "/account/password?required=1" {
+			t.Fatalf("redirect = %d %q", recorder.Code, recorder.Header().Get("Location"))
+		}
+	})
+
+	t.Run("allows password form and exposes required state", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/account/password", nil)
+		req.AddCookie(&http.Cookie{Name: security.DefaultSessionCookieName, Value: "temporary-session"})
+		recorder := httptest.NewRecorder()
+		middleware.RequireAuthentication(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			actor, ok := service.ActorFromContext(r.Context())
+			if !ok || !actor.PasswordChangeRequired {
+				t.Fatal("actor does not carry the required password-change state")
+			}
+			w.WriteHeader(http.StatusNoContent)
+		})).ServeHTTP(recorder, req)
+		if recorder.Code != http.StatusNoContent {
+			t.Fatalf("status = %d, want 204", recorder.Code)
+		}
+	})
+}
+
 func TestAuthenticationMiddlewareRejectsMissingCookie(t *testing.T) {
 	middleware := newAuthenticationMiddlewareForTest(
 		t,

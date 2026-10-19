@@ -44,7 +44,7 @@ func (s *savingsAccountService) Create(
 		if err != nil {
 			return CreateSavingsAccountOutput{}, err
 		}
-		if student.IsLeft() {
+		if !student.IsActive() {
 			return CreateSavingsAccountOutput{}, domain.ErrInvalidTransition
 		}
 	}

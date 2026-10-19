@@ -11,6 +11,7 @@ import (
 
 type academicYearServiceFake struct {
 	years          []*domain.AcademicYear
+	total          int
 	createErr      error
 	getErr         error
 	listErr        error
@@ -45,7 +46,7 @@ func (f *academicYearServiceFake) List(_ context.Context, input service.ListAcad
 	if f.listErr != nil {
 		return service.ListAcademicYearsOutput{}, f.listErr
 	}
-	return service.ListAcademicYearsOutput{AcademicYears: f.years}, nil
+	return service.ListAcademicYearsOutput{AcademicYears: f.years, Total: f.total}, nil
 }
 func (f *academicYearServiceFake) StartClosing(context.Context, service.StartClosingAcademicYearInput) (service.StartClosingAcademicYearOutput, error) {
 	f.lastTransition = "start-closing"
