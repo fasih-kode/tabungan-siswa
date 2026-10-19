@@ -55,6 +55,11 @@ func registerRoutes(
 	if handlers.ClassTransfer != nil {
 		registerClassTransferRoutes(mux, handlers.ClassTransfer, middlewares.Authentication, middlewares.CSRF)
 	}
+	if handlers.Savings != nil {
+		mux.Handle("GET /savings", middlewares.Authentication.RequireAuthentication(middlewares.CSRF.Protect(http.HandlerFunc(handlers.Savings.List))))
+		mux.Handle("POST /savings", middlewares.Authentication.RequireAuthentication(limitAcademicYearRequestBody(middlewares.CSRF.Protect(http.HandlerFunc(handlers.Savings.Create)))))
+		mux.Handle("GET /savings/{id}", middlewares.Authentication.RequireAuthentication(middlewares.CSRF.Protect(http.HandlerFunc(handlers.Savings.Detail))))
+	}
 	if handlers.TeacherAssignment != nil {
 		registerTeacherAssignmentRoutes(mux, handlers.TeacherAssignment, middlewares.Authentication, middlewares.CSRF)
 	}

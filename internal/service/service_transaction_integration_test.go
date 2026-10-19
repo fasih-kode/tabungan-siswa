@@ -48,7 +48,8 @@ func TestSavingsAndTransactionServicesIntegration_CrossServiceCommit(t *testing.
 
 	savingsService, err := service.NewSavingsAccountService(service.Dependencies{
 		Repositories: repository.RepositorySet{
-			Students: studentRepo,
+			Students: studentRepo, AcademicYears: academicYearRepo,
+			SavingsAccounts: savingsAccountRepo, Transactions: transactionRepo, AuditLogs: auditRepo,
 		},
 		UOW: manager,
 	})
@@ -137,6 +138,36 @@ func TestSavingsAndTransactionServicesIntegration_CrossServiceCommit(t *testing.
 			transaction.SavingsAccountID,
 			accountID,
 		)
+	}
+	passbook, err := savingsService.GetPassbook(ctx, service.GetSavingsAccountPassbookInput{Actor: actor, SavingsAccountID: accountID})
+	if err != nil {
+		t.Fatalf("GetPassbook() error = %v", err)
+	}
+	if passbook.Balance != domain.Money(100_000) || len(passbook.Entries) != 1 || passbook.Entries[0].RunningBalance != domain.Money(100_000) {
+		t.Fatalf("passbook balance/entries = %d/%+v, want 100000/one entry", passbook.Balance, passbook.Entries)
+	}
+
+	secondStudent := newServiceScopeStudent(t, "Cross-Service Separate Student "+uuid.NewString())
+	if err := studentRepo.Create(ctx, secondStudent); err != nil {
+		t.Fatalf("create second student: %v", err)
+	}
+	secondAccount, err := savingsService.Create(ctx, service.CreateSavingsAccountInput{Actor: actor, StudentID: secondStudent.ID, AcademicYearID: academicYear.ID})
+	if err != nil {
+		t.Fatalf("create second student's savings account: %v", err)
+	}
+	if _, err := transactionService.Deposit(ctx, service.DepositInput{Actor: actor, SavingsAccountID: secondAccount.Account.ID, Amount: domain.Money(25_000), TransactionDate: time.Date(2026, 10, 2, 0, 0, 0, 0, time.UTC)}); err != nil {
+		t.Fatalf("deposit to second student's account: %v", err)
+	}
+	firstBalance, err := savingsService.GetBalance(ctx, service.GetSavingsAccountBalanceInput{Actor: actor, SavingsAccountID: accountID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	secondBalance, err := savingsService.GetBalance(ctx, service.GetSavingsAccountBalanceInput{Actor: actor, SavingsAccountID: secondAccount.Account.ID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if firstBalance.Balance != domain.Money(100_000) || secondBalance.Balance != domain.Money(25_000) {
+		t.Fatalf("balances crossed savings accounts: first=%d second=%d", firstBalance.Balance, secondBalance.Balance)
 	}
 
 	accountAudits, err := auditRepo.ListByEntity(

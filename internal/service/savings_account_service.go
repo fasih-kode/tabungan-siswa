@@ -187,6 +187,74 @@ func (s *savingsAccountService) Get(
 	}
 }
 
+func (s *savingsAccountService) GetPassbook(
+	ctx context.Context,
+	input GetSavingsAccountPassbookInput,
+) (GetSavingsAccountPassbookOutput, error) {
+	if err := input.Actor.Validate(); err != nil {
+		return GetSavingsAccountPassbookOutput{}, err
+	}
+	if input.SavingsAccountID == uuid.Nil {
+		return GetSavingsAccountPassbookOutput{}, ErrScopeViolation
+	}
+
+	account, err := s.deps.Repositories.SavingsAccounts.GetByID(ctx, input.SavingsAccountID)
+	if err != nil {
+		return GetSavingsAccountPassbookOutput{}, err
+	}
+	switch input.Actor.Role {
+	case domain.RoleAdmin:
+	case domain.RoleWaliKelas:
+		if err := RequireStudentScope(ctx, s.deps.Repositories, input.Actor, account.StudentID, account.AcademicYearID); err != nil {
+			return GetSavingsAccountPassbookOutput{}, err
+		}
+	case domain.RoleSiswa:
+		student, err := s.deps.Repositories.Students.GetByID(ctx, account.StudentID)
+		if err != nil {
+			return GetSavingsAccountPassbookOutput{}, err
+		}
+		if student.UserID == nil {
+			return GetSavingsAccountPassbookOutput{}, ErrScopeViolation
+		}
+		if err := RequireSelf(input.Actor, *student.UserID); err != nil {
+			return GetSavingsAccountPassbookOutput{}, err
+		}
+	default:
+		return GetSavingsAccountPassbookOutput{}, ErrForbidden
+	}
+
+	transactions, err := s.deps.Repositories.Transactions.ListActiveBySavingsAccount(ctx, account.ID)
+	if err != nil {
+		return GetSavingsAccountPassbookOutput{}, err
+	}
+	sortTransactionsChronologically(transactions)
+	entries := make([]*SavingsPassbookEntry, 0, len(transactions))
+	var balance domain.Money
+	for i := range transactions {
+		tx := transactions[i]
+		if !tx.Amount.IsPositive() || tx.Amount > domain.MaxMoney {
+			return GetSavingsAccountPassbookOutput{}, domain.ErrInvalidAmount
+		}
+		switch tx.Type {
+		case domain.TransactionDeposit:
+			balance, err = balance.Add(tx.Amount)
+		case domain.TransactionWithdrawal:
+			balance, err = balance.Subtract(tx.Amount)
+		default:
+			return GetSavingsAccountPassbookOutput{}, domain.ErrInvalidValue
+		}
+		if err != nil {
+			return GetSavingsAccountPassbookOutput{}, err
+		}
+		if balance < 0 {
+			return GetSavingsAccountPassbookOutput{}, domain.ErrNegativeBalance
+		}
+		txCopy := tx
+		entries = append(entries, &SavingsPassbookEntry{Transaction: &txCopy, RunningBalance: balance})
+	}
+	return GetSavingsAccountPassbookOutput{Entries: entries, Balance: balance}, nil
+}
+
 func (s *savingsAccountService) GetByStudentAndAcademicYear(
 	ctx context.Context,
 	input GetSavingsAccountByStudentAndAcademicYearInput,
@@ -308,6 +376,7 @@ func (s *savingsAccountService) GetBalance(
 	if err != nil {
 		return GetSavingsAccountBalanceOutput{}, err
 	}
+	sortTransactionsChronologically(transactions)
 
 	balance, err := domain.CalculateBalance(transactions)
 	if err != nil {

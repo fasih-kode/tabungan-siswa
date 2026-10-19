@@ -653,6 +653,7 @@ type RejectTransferOutput struct {
 type SavingsAccountService interface {
 	Create(ctx context.Context, input CreateSavingsAccountInput) (CreateSavingsAccountOutput, error)
 	Get(ctx context.Context, input GetSavingsAccountInput) (GetSavingsAccountOutput, error)
+	GetPassbook(ctx context.Context, input GetSavingsAccountPassbookInput) (GetSavingsAccountPassbookOutput, error)
 	GetByStudentAndAcademicYear(
 		ctx context.Context,
 		input GetSavingsAccountByStudentAndAcademicYearInput,
@@ -661,6 +662,21 @@ type SavingsAccountService interface {
 		ctx context.Context,
 		input GetSavingsAccountBalanceInput,
 	) (GetSavingsAccountBalanceOutput, error)
+}
+
+type GetSavingsAccountPassbookInput struct {
+	Actor            Actor
+	SavingsAccountID uuid.UUID
+}
+
+type SavingsPassbookEntry struct {
+	Transaction    *domain.Transaction
+	RunningBalance domain.Money
+}
+
+type GetSavingsAccountPassbookOutput struct {
+	Entries []*SavingsPassbookEntry
+	Balance domain.Money
 }
 
 type CreateSavingsAccountInput struct {

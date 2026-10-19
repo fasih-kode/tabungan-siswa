@@ -264,7 +264,7 @@ func TestClassTransferPageRejectsInvalidInputWithoutCallingService(t *testing.T)
 	}
 }
 
-func newClassTransferRouterWithSession(t *testing.T, role domain.UserRole, fake *classTransferPageServiceFake) (http.Handler, string) {
+func newClassTransferRouterWithSession(t *testing.T, role domain.UserRole, fake *classTransferPageServiceFake, savings ...*SavingsPageHandler) (http.Handler, string) {
 	t.Helper()
 	userID := uuid.New()
 	sessionToken := "class-transfer-session-" + uuid.NewString()
@@ -275,7 +275,7 @@ func newClassTransferRouterWithSession(t *testing.T, role domain.UserRole, fake 
 		t.Fatal(err)
 	}
 	templates, err := template.New("pages").Parse(
-		`{{define "auth"}}auth{{end}}{{define "base"}}base{{end}}{{define "academic-years"}}academic years{{end}}{{define "class-transfers"}}{{.Heading}}|{{.Role}}{{end}}`,
+		`{{define "auth"}}auth{{end}}{{define "base"}}base{{end}}{{define "academic-years"}}academic years{{end}}{{define "class-transfers"}}{{.Heading}}|{{.Role}}{{end}}{{define "savings"}}{{.Heading}}{{end}}`,
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -292,14 +292,61 @@ func newClassTransferRouterWithSession(t *testing.T, role domain.UserRole, fake 
 	if err != nil {
 		t.Fatal(err)
 	}
-	router, err := NewRouter(HandlerSet{
+	handlers := HandlerSet{
 		Authentication: &AuthenticationHandler{}, LoginPage: newTestLoginPageHandler(t), Dashboard: dashboard,
 		AcademicYear: academicYears, Class: newTestClassPageHandler(t), ClassTransfer: classTransfers,
-	}, MiddlewareSet{Authentication: auth, CSRF: middleware.NewCSRFMiddleware(security.NewDefaultCSRFCookie())}, newTestStaticAssetHandler())
+	}
+	if len(savings) > 0 {
+		handlers.Savings = savings[0]
+	}
+	router, err := NewRouter(handlers, MiddlewareSet{Authentication: auth, CSRF: middleware.NewCSRFMiddleware(security.NewDefaultCSRFCookie())}, newTestStaticAssetHandler())
 	if err != nil {
 		t.Fatal(err)
 	}
 	return router, sessionToken
+}
+
+func TestSavingsRoutesRequireAuthenticationAndCSRF(t *testing.T) {
+	yearID, studentID := uuid.New(), uuid.New()
+	accountFake := &savingsPageAccountsFake{account: domain.SavingsAccount{ID: uuid.New(), StudentID: studentID, AcademicYearID: yearID}}
+	year := &domain.AcademicYear{ID: yearID, Name: "2026/2027", Status: domain.AcademicYearOpen}
+	savings := newSavingsPageHandlerForTest(t, accountFake, &savingsPageStudentsFake{}, &savingsPageYearsFake{years: []*domain.AcademicYear{year}, get: year})
+	router, session := newClassTransferRouterWithSession(t, domain.RoleAdmin, &classTransferPageServiceFake{}, savings)
+	unauthenticated := httptest.NewRecorder()
+	router.ServeHTTP(unauthenticated, httptest.NewRequest(http.MethodGet, "/savings", nil))
+	if unauthenticated.Code != http.StatusUnauthorized {
+		t.Fatalf("unauthenticated GET status=%d", unauthenticated.Code)
+	}
+	get := httptest.NewRequest(http.MethodGet, "/savings", nil)
+	get.AddCookie(&http.Cookie{Name: security.DefaultSessionCookieName, Value: session})
+	getRecorder := httptest.NewRecorder()
+	router.ServeHTTP(getRecorder, get)
+	if getRecorder.Code != http.StatusOK {
+		t.Fatalf("authenticated GET status=%d body=%s", getRecorder.Code, getRecorder.Body.String())
+	}
+	form := url.Values{"student_id": {studentID.String()}, "academic_year_id": {yearID.String()}}
+	missing := httptest.NewRequest(http.MethodPost, "/savings", strings.NewReader(form.Encode()))
+	missing.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	missing.AddCookie(&http.Cookie{Name: security.DefaultSessionCookieName, Value: session})
+	missingRecorder := httptest.NewRecorder()
+	router.ServeHTTP(missingRecorder, missing)
+	if missingRecorder.Code != http.StatusForbidden || accountFake.createCalls != 0 {
+		t.Fatalf("POST without CSRF status/calls=%d/%d", missingRecorder.Code, accountFake.createCalls)
+	}
+	token, err := security.GenerateCSRFToken()
+	if err != nil {
+		t.Fatal(err)
+	}
+	form.Set("csrf_token", token)
+	valid := httptest.NewRequest(http.MethodPost, "/savings", strings.NewReader(form.Encode()))
+	valid.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	valid.AddCookie(&http.Cookie{Name: security.DefaultSessionCookieName, Value: session})
+	valid.AddCookie(&http.Cookie{Name: security.DefaultCSRFCookieName, Value: token})
+	validRecorder := httptest.NewRecorder()
+	router.ServeHTTP(validRecorder, valid)
+	if validRecorder.Code != http.StatusSeeOther || accountFake.createCalls != 1 || accountFake.createInput.Actor.Role != domain.RoleAdmin {
+		t.Fatalf("POST with CSRF status/calls/role=%d/%d/%s", validRecorder.Code, accountFake.createCalls, accountFake.createInput.Actor.Role)
+	}
 }
 
 func TestClassTransferRoutesEnforceAuthenticationRoleAndCSRF(t *testing.T) {

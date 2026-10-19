@@ -144,3 +144,30 @@ func TestStudentPromotionTemplateRendersDecisions(t *testing.T) {
 		}
 	}
 }
+
+func TestSavingsTemplateRendersAccountCreationAndPassbook(t *testing.T) {
+	templates, err := template.ParseFS(templateFiles, "templates/layouts/*.html", "templates/partials/*.html", "templates/auth/*.html", "templates/pages/*.html")
+	if err != nil {
+		t.Fatal(err)
+	}
+	list := httpapp.SavingsPageViewModel{Title: "Tabungan", Heading: "Tabungan Siswa", Description: "Siklus", Role: "ADMIN", Username: "admin", CSRFToken: "csrf", AcademicYearID: "year", Years: []httpapp.SavingsYearOption{{ID: "year", Name: "2026/2027"}}, Rows: []httpapp.SavingsDirectoryRow{{StudentID: "student", Name: "Ani", StudentStatus: "ACTIVE", CanCreate: true}}}
+	var out strings.Builder
+	if err := templates.ExecuteTemplate(&out, "savings", list); err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"2026/2027", "Buat siklus", `action="/savings"`, `name="csrf_token"`} {
+		if !strings.Contains(out.String(), want) {
+			t.Errorf("savings list missing %q", want)
+		}
+	}
+	detail := httpapp.SavingsPageViewModel{Title: "Tabungan", Heading: "Tabungan Siswa", Description: "Siklus", Role: "SISWA", Username: "siswa", IsDetail: true, StudentName: "Ani", AccountStatus: "OPEN", YearName: "2026/2027", Balance: "Rp 15.000", Passbook: []httpapp.SavingsPassbookRow{{Date: "2026-08-01", Type: "Setor", Amount: "Rp 15.000", Balance: "Rp 15.000"}}}
+	out.Reset()
+	if err := templates.ExecuteTemplate(&out, "savings", detail); err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"Buku", "Saldo berjalan", "2026-08-01", "Rp 15.000"} {
+		if !strings.Contains(out.String(), want) {
+			t.Errorf("passbook detail missing %q", want)
+		}
+	}
+}

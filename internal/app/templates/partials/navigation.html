@@ -108,7 +108,8 @@
         <li>
             <a
                 href="/savings"
-                class="flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-gray-600 transition-colors hover:bg-gray-100 hover:text-gray-900 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-white"
+                {{if eq .ActiveNav "savings"}}aria-current="page"{{end}}
+                class="flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors {{if eq .ActiveNav "savings"}}bg-brand-500 text-white{{else}}text-gray-600 hover:bg-gray-100 hover:text-gray-900 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-white{{end}}"
             >
                 <svg class="h-5 w-5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
                     <rect x="3" y="5" width="18" height="14" rx="2"/>

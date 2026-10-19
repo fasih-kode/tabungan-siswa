@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/fasih/tabungan-siswa/internal/domain"
 	"github.com/fasih/tabungan-siswa/internal/repository"
@@ -140,6 +141,53 @@ func (f *savingsAccountServiceFakeTransactionRepository) ListActiveBySavingsAcco
 		return f.listActiveFn(ctx, savingsAccountID)
 	}
 	return nil, nil
+}
+
+func TestSavingsAccountServicePassbookSortsAndCalculatesRunningBalance(t *testing.T) {
+	account := newTestSavingsAccount(t)
+	day := time.Date(2026, 8, 1, 0, 0, 0, 0, time.UTC)
+	firstID, secondID := uuid.New(), uuid.New()
+	transactions := []domain.Transaction{
+		{ID: uuid.New(), SavingsAccountID: account.ID, Type: domain.TransactionWithdrawal, Amount: 25, TransactionDate: day.Add(12 * time.Hour), CreatedAt: day.Add(12 * time.Hour), Status: domain.TransactionActive},
+		{ID: secondID, SavingsAccountID: account.ID, Type: domain.TransactionDeposit, Amount: 40, TransactionDate: day, CreatedAt: day.Add(time.Hour), Status: domain.TransactionActive},
+		{ID: firstID, SavingsAccountID: account.ID, Type: domain.TransactionDeposit, Amount: 50, TransactionDate: day, CreatedAt: day, Status: domain.TransactionActive},
+	}
+	repos := repository.RepositorySet{
+		SavingsAccounts: &savingsAccountServiceFakeSavingsAccountRepository{getByIDFn: func(context.Context, uuid.UUID) (domain.SavingsAccount, error) { return account, nil }},
+		Transactions: &savingsAccountServiceFakeTransactionRepository{listActiveFn: func(_ context.Context, id uuid.UUID) ([]domain.Transaction, error) {
+			if id != account.ID {
+				t.Fatalf("account ID=%s, want %s", id, account.ID)
+			}
+			return transactions, nil
+		}},
+	}
+	svc := newSavingsAccountServiceForTest(t, repos, &savingsAccountServiceFakeUnitOfWorkManager{})
+	out, err := svc.GetPassbook(context.Background(), GetSavingsAccountPassbookInput{Actor: Actor{UserID: uuid.New(), Role: domain.RoleAdmin}, SavingsAccountID: account.ID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(out.Entries) != 3 || out.Balance != 65 {
+		t.Fatalf("entries=%d balance=%d, want 3/65", len(out.Entries), out.Balance)
+	}
+	if out.Entries[0].Transaction.ID != firstID || out.Entries[0].RunningBalance != 50 || out.Entries[1].Transaction.ID != secondID || out.Entries[1].RunningBalance != 90 || out.Entries[2].RunningBalance != 65 {
+		t.Fatalf("passbook order/balances = %+v", out.Entries)
+	}
+}
+
+func TestSavingsAccountServicePassbookRejectsOtherStudent(t *testing.T) {
+	account := newTestSavingsAccount(t)
+	ownerID := uuid.New()
+	repos := repository.RepositorySet{
+		SavingsAccounts: &savingsAccountServiceFakeSavingsAccountRepository{getByIDFn: func(context.Context, uuid.UUID) (domain.SavingsAccount, error) { return account, nil }},
+		Students: &savingsAccountServiceFakeStudentRepository{getByIDFn: func(context.Context, uuid.UUID) (domain.Student, error) {
+			return domain.Student{ID: account.StudentID, UserID: &ownerID}, nil
+		}},
+	}
+	svc := newSavingsAccountServiceForTest(t, repos, &savingsAccountServiceFakeUnitOfWorkManager{})
+	_, err := svc.GetPassbook(context.Background(), GetSavingsAccountPassbookInput{Actor: Actor{UserID: uuid.New(), Role: domain.RoleSiswa}, SavingsAccountID: account.ID})
+	if !errors.Is(err, ErrScopeViolation) {
+		t.Fatalf("GetPassbook() error=%v, want %v", err, ErrScopeViolation)
+	}
 }
 
 type savingsAccountServiceFakeAuditRepository struct {
@@ -868,9 +916,10 @@ func TestSavingsAccountServiceGetByStudentAndAcademicYearRejectsSiswaOtherStuden
 
 func TestSavingsAccountServiceGetBalance(t *testing.T) {
 	account := newTestSavingsAccount(t)
+	depositDate := time.Date(2026, 8, 1, 0, 0, 0, 0, time.UTC)
 	transactions := []domain.Transaction{
-		{ID: uuid.New(), SavingsAccountID: account.ID, Type: domain.TransactionDeposit, Amount: 100000, Status: domain.TransactionActive},
-		{ID: uuid.New(), SavingsAccountID: account.ID, Type: domain.TransactionWithdrawal, Amount: 25000, Status: domain.TransactionActive},
+		{ID: uuid.New(), SavingsAccountID: account.ID, Type: domain.TransactionDeposit, Amount: 100000, TransactionDate: depositDate, CreatedAt: depositDate, Status: domain.TransactionActive},
+		{ID: uuid.New(), SavingsAccountID: account.ID, Type: domain.TransactionWithdrawal, Amount: 25000, TransactionDate: depositDate.AddDate(0, 0, 1), CreatedAt: depositDate.AddDate(0, 0, 1), Status: domain.TransactionActive},
 		{ID: uuid.New(), SavingsAccountID: account.ID, Type: domain.TransactionDeposit, Amount: 10000, Status: domain.TransactionCancelled},
 	}
 
@@ -895,6 +944,33 @@ func TestSavingsAccountServiceGetBalance(t *testing.T) {
 	}
 	if got.Balance != 75000 {
 		t.Fatalf("Balance = %v, want 75000", got.Balance)
+	}
+}
+
+func TestSavingsAccountServiceBalanceDoesNotMixAcademicYears(t *testing.T) {
+	first, second := newTestSavingsAccount(t), newTestSavingsAccount(t)
+	studentID := uuid.New()
+	first.StudentID, second.StudentID = studentID, studentID
+	first.AcademicYearID, second.AcademicYearID = uuid.New(), uuid.New()
+	accounts := map[uuid.UUID]domain.SavingsAccount{first.ID: first, second.ID: second}
+	transactions := map[uuid.UUID][]domain.Transaction{
+		first.ID:  {{ID: uuid.New(), SavingsAccountID: first.ID, Type: domain.TransactionDeposit, Amount: 120_000, Status: domain.TransactionActive}},
+		second.ID: {{ID: uuid.New(), SavingsAccountID: second.ID, Type: domain.TransactionDeposit, Amount: 35_000, Status: domain.TransactionActive}},
+	}
+	repos := repository.RepositorySet{
+		SavingsAccounts: &savingsAccountServiceFakeSavingsAccountRepository{getByIDFn: func(_ context.Context, id uuid.UUID) (domain.SavingsAccount, error) { return accounts[id], nil }},
+		Transactions:    &savingsAccountServiceFakeTransactionRepository{listActiveFn: func(_ context.Context, id uuid.UUID) ([]domain.Transaction, error) { return transactions[id], nil }},
+	}
+	svc := newSavingsAccountServiceForTest(t, repos, &savingsAccountServiceFakeUnitOfWorkManager{})
+	actor := Actor{UserID: uuid.New(), Role: domain.RoleAdmin}
+	for _, tc := range []struct {
+		account domain.SavingsAccount
+		want    domain.Money
+	}{{first, 120_000}, {second, 35_000}} {
+		got, err := svc.GetBalance(context.Background(), GetSavingsAccountBalanceInput{Actor: actor, SavingsAccountID: tc.account.ID})
+		if err != nil || got.Balance != tc.want {
+			t.Fatalf("year %s balance=%d err=%v, want %d", tc.account.AcademicYearID, got.Balance, err, tc.want)
+		}
 	}
 }
 
