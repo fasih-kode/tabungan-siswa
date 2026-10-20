@@ -45,7 +45,7 @@ Rujuk kontrak fase untuk status terbarunya sebelum melanjutkan.
 
 ## Handover setelah review implementasi FASE 23
 
-- Branch/HEAD saat pemeriksaan: `main` / `55492cb` (`docs(fase-23): lock year-end settlement contract`). Tidak ada commit baru; working tree tetap memuat perubahan lokal Project Memory dan implementasi FASE 23.
+- Branch/HEAD awal pemeriksaan: `main` / `55492cb` (`docs(fase-23): lock year-end settlement contract`). Lihat catatan terbaru di bagian akhir untuk commit implementation lock.
 - Perbaikan review: detail settlement kini memuat history akun dan permintaan reopen terbaru (termasuk status final); implementasi repository `GetLatestReopenRequest` tersedia. Halaman preview menampilkan waktu hitung saldo. Overview tidak lagi menawarkan preview pada tahun ajaran yang belum berstatus `CLOSING`, mengarahkan ke daftar transfer tertunda untuk tahun terpilih, dan memberi label readiness sesuai cakupan Wali.
 - Form konfirmasi penyerahan tidak lagi meminta referensi bukti opsional karena formulir tersebut tidak diwajibkan kontrak. Detail permintaan reopen menampilkan waktu/alasan keputusan Admin bila tersedia.
 - Pemeriksaan yang dijalankan pada sesi ini: `git diff --check` lulus; `GOCACHE=/tmp/tabungan-siswa-gocache go build ./...` lulus; `GOCACHE=/tmp/tabungan-siswa-gocache go vet ./...` lulus; `GOCACHE=/tmp/tabungan-siswa-gocache go test ./internal/domain -count=1` lulus; `npm run test:instant-search` lulus (1 tes).
@@ -90,7 +90,7 @@ Rujuk kontrak fase untuk status terbarunya sebelum melanjutkan.
 - Tes integration diperluas: settlement bersamaan dengan penarikan dan duplicate settle, settlement/handover versus year close, handover student-leaving positif, approval dan rejection reopen, self-approval ditolak, Admin correction ditolak, koreksi/re-settlement, dan successor race. Fixture dibersihkan setelah tes.
 - Tes HTTP/template diperluas untuk overview Admin/Wali, unresolved group, safe error, stale preview 409 dengan CSRF dan saldo baru, tampilan kosong/siap/blocked, detail pelajar read-only, history settlement, dan nama pelaku.
 - Pemeriksaan akhir setelah penambahan tes: seluruh integration suite, race suite, `go vet`, build, frontend (7/7), dan `git diff --check` lulus.
-- Review teknis saat ini tidak menemukan blocker terhadap implementasi berdasarkan bukti tes tersebut. FASE 23 belum ditandai terkunci karena implementation lock record menurut kontrak dibuat setelah implementation commit dan owner review; tidak ada commit dalam sesi ini.
+- Review teknis saat itu tidak menemukan blocker; tindak lanjut dan status terbarunya dicatat di bagian akhir dokumen ini.
 
 ## Verifikasi akhir sebelum implementation lock — 2026-10-20
 
@@ -100,4 +100,12 @@ Rujuk kontrak fase untuk status terbarunya sebelum melanjutkan.
 - `GOCACHE=/tmp/tabungan-siswa-gocache go vet ./...` dan `GOCACHE=/tmp/tabungan-siswa-gocache go build ./...` lulus.
 - `npm run test:instant-search` lulus (7 tes); `git diff --check` lulus.
 - Migration 10 dan 11 sebelumnya telah diuji upgrade/rollback pada database disposable; database akhir versi 11 bersih. Database development/produksi tidak disentuh.
-- Bukti acceptance yang dijalankan lulus. Browser E2E tidak dijalankan. Commit implementasi dan lock record menyusul sebagai langkah penutupan resmi.
+- Bukti acceptance yang dijalankan lulus. Browser E2E tidak dijalankan. Commit implementation dan lock record dibuat; status akhir dicatat di bawah.
+
+## FASE 23 ditutup — 2026-10-20
+
+- Implementation commit: `9a0a0d0` (`feat(fase-23): implement year-end settlement workflows`). Catatan lock: [fase-23-implementation-lock.md](contracts/fase-23-implementation-lock.md).
+- Acceptance checks akhir lulus: tes integrasi PostgreSQL, tes integrasi dengan race detector, `go vet ./...`, `go build ./...`, tes frontend (7/7), dan `git diff --check`.
+- Migration 10 dan 11 telah diuji upgrade/rollback pada database disposable; database uji ditinggalkan pada versi 11 bersih. Tidak ada perubahan pada database development/produksi.
+- Tidak ada browser E2E; aplikasi belum dinyatakan siap produksi hanya berdasarkan tes ini.
+- Status FASE 23: **implementation lock dibuat**. Perubahan lanjutan yang mengubah perilaku FASE 23 perlu kontrak/amendment baru dan tes terkait.

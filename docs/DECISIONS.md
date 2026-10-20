@@ -32,7 +32,7 @@ Butir di atas hanya rekomendasi audit, bukan keputusan atau otorisasi implementa
 
 ## Review checkpoint FASE 23 — 2026-10-20
 
-Status: **review teknis dan verifikasi acceptance lulus; siap untuk implementation lock**.
+Status: **terkunci setelah review teknis, verifikasi acceptance, dan persetujuan owner**; lihat [catatan implementation lock FASE 23](contracts/fase-23-implementation-lock.md).
 
 ### Bukti yang dijalankan
 
@@ -44,6 +44,6 @@ Status: **review teknis dan verifikasi acceptance lulus; siap untuk implementati
 
 ### Keputusan review
 
-Bukti teknis dan acceptance checks yang ditinjau telah lulus. Tidak ditemukan alasan teknis untuk menahan implementation lock berdasarkan tes yang tersedia. Owner memberi instruksi untuk menuntaskan penutupan; implementation commit dan lock record akan dicatat setelah seluruh pemeriksaan akhir lulus.
+Bukti teknis dan acceptance checks yang ditinjau telah lulus. Owner menginstruksikan penutupan setelah status dan prasyarat commit/lock dijelaskan. Implementation commit dan catatan lock telah dibuat.
 
 Keputusan produk pada §14 tidak berubah. Tidak ada browser E2E yang dijalankan.
