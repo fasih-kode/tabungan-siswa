@@ -5,7 +5,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"sort"
+	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/fasih/tabungan-siswa/internal/domain"
 	"github.com/fasih/tabungan-siswa/internal/repository"
@@ -229,9 +231,15 @@ func (s *transactionService) List(
 		return ListTransactionsOutput{}, err
 	}
 
-	transactions, err := s.deps.Repositories.Transactions.ListActiveBySavingsAccount(ctx, account.ID)
+	allTransactions, err := s.deps.Repositories.Transactions.ListAllBySavingsAccount(ctx, account.ID)
 	if err != nil {
 		return ListTransactionsOutput{}, err
+	}
+	transactions := make([]domain.Transaction, 0, len(allTransactions))
+	for _, transaction := range allTransactions {
+		if transaction.Status == domain.TransactionActive {
+			transactions = append(transactions, transaction)
+		}
 	}
 	sortTransactionsChronologically(transactions)
 	runningBalances := make(map[uuid.UUID]domain.Money, len(transactions))
@@ -253,6 +261,7 @@ func (s *transactionService) List(
 		}
 		runningBalances[transaction.ID] = running
 	}
+	sortTransactionsChronologically(allTransactions)
 
 	start := input.Options.Offset
 	if start < 0 {
@@ -262,19 +271,19 @@ func (s *transactionService) List(
 	if limit <= 0 {
 		limit = 10
 	}
-	if start > len(transactions) {
-		start = len(transactions)
+	if start > len(allTransactions) {
+		start = len(allTransactions)
 	}
 	end := start + limit
-	if end < start || end > len(transactions) {
-		end = len(transactions)
+	if end < start || end > len(allTransactions) {
+		end = len(allTransactions)
 	}
-	page := transactions[start:end]
+	page := allTransactions[start:end]
 	return ListTransactionsOutput{
 		Transactions:    transactionPointers(page),
 		RunningBalances: runningBalances,
 		Balance:         running,
-		Total:           len(transactions),
+		Total:           len(allTransactions),
 	}, nil
 }
 
@@ -291,6 +300,10 @@ func (s *transactionService) Edit(
 	}
 	if !input.Amount.IsPositive() || input.Amount > domain.MaxMoney {
 		return EditTransactionOutput{}, domain.ErrInvalidAmount
+	}
+	reason, err := validatedCorrectionReason(input.Reason)
+	if err != nil {
+		return EditTransactionOutput{}, err
 	}
 
 	uow, repos, txCtx, ownsTransaction, err := beginTransaction(ctx, s.deps.UOW)
@@ -320,6 +333,9 @@ func (s *transactionService) Edit(
 	}
 	if !transactionDateWithinAcademicYear(input.TransactionDate, year) {
 		return EditTransactionOutput{}, ErrTransactionDateOutOfAcademicYear
+	}
+	if !correctionYearAllowed(ctx, year, unlockedAccount.ID) {
+		return EditTransactionOutput{}, domain.ErrInvalidTransition
 	}
 
 	account, err := repos.SavingsAccounts.GetByIDForUpdate(ctx, existing.SavingsAccountID)
@@ -384,13 +400,14 @@ func (s *transactionService) Edit(
 		return EditTransactionOutput{}, err
 	}
 
-	if err := s.createTransactionAudit(
+	if err := s.createCorrectionAudit(
 		ctx,
 		repos,
 		input.Actor,
 		"UPDATE",
 		updated,
-		&existing,
+		existing,
+		reason,
 	); err != nil {
 		return EditTransactionOutput{}, err
 	}
@@ -417,6 +434,10 @@ func (s *transactionService) Cancel(
 	if input.TransactionID == uuid.Nil {
 		return CancelTransactionOutput{}, ErrScopeViolation
 	}
+	reason, err := validatedCorrectionReason(input.Reason)
+	if err != nil {
+		return CancelTransactionOutput{}, err
+	}
 
 	uow, repos, txCtx, ownsTransaction, err := beginTransaction(ctx, s.deps.UOW)
 	if err != nil {
@@ -436,9 +457,23 @@ func (s *transactionService) Cancel(
 		return CancelTransactionOutput{}, err
 	}
 
+	unlockedAccount, err := repos.SavingsAccounts.GetByID(ctx, existing.SavingsAccountID)
+	if err != nil {
+		return CancelTransactionOutput{}, err
+	}
+	year, err := repos.AcademicYears.GetByIDForShare(ctx, unlockedAccount.AcademicYearID)
+	if err != nil {
+		return CancelTransactionOutput{}, err
+	}
+	if !correctionYearAllowed(ctx, year, unlockedAccount.ID) {
+		return CancelTransactionOutput{}, domain.ErrInvalidTransition
+	}
 	account, err := repos.SavingsAccounts.GetByIDForUpdate(ctx, existing.SavingsAccountID)
 	if err != nil {
 		return CancelTransactionOutput{}, err
+	}
+	if account.AcademicYearID != year.ID {
+		return CancelTransactionOutput{}, domain.ErrInvalidTransition
 	}
 
 	if err := s.authorizeAccount(ctx, repos, input.Actor, account); err != nil {
@@ -452,10 +487,13 @@ func (s *transactionService) Cancel(
 	if err != nil {
 		return CancelTransactionOutput{}, err
 	}
+	if !transactionDateWithinAcademicYear(existing.TransactionDate, year) {
+		return CancelTransactionOutput{}, ErrTransactionDateOutOfAcademicYear
+	}
 
 	before := existing
 	if existing.Status != domain.TransactionActive {
-		return CancelTransactionOutput{}, existing.Cancel()
+		return CancelTransactionOutput{}, domain.ErrAlreadyCancelled
 	}
 	transactions, err := repos.Transactions.ListActiveBySavingsAccount(ctx, account.ID)
 	if err != nil {
@@ -484,13 +522,14 @@ func (s *transactionService) Cancel(
 		return CancelTransactionOutput{}, err
 	}
 
-	if err := s.createTransactionAudit(
+	if err := s.createCorrectionAudit(
 		ctx,
 		repos,
 		input.Actor,
 		"CANCEL",
 		existing,
-		&before,
+		before,
+		reason,
 	); err != nil {
 		return CancelTransactionOutput{}, err
 	}
@@ -504,6 +543,62 @@ func (s *transactionService) Cancel(
 	}
 
 	return CancelTransactionOutput{Transaction: &existing}, nil
+}
+
+func validatedCorrectionReason(raw string) (string, error) {
+	reason := strings.TrimSpace(raw)
+	if reason == "" || utf8.RuneCountInString(reason) > 500 {
+		return "", domain.ErrInvalidValue
+	}
+	return reason, nil
+}
+
+func correctionYearAllowed(ctx context.Context, year domain.AcademicYear, accountID uuid.UUID) bool {
+	if year.IsOpen() {
+		return true
+	}
+	if !year.IsClosing() {
+		return false
+	}
+	scope, ok := approvedCorrectionScopeFromContext(ctx)
+	return ok && scope.AccountID == accountID
+}
+
+func (s *transactionService) createCorrectionAudit(
+	ctx context.Context,
+	repos repository.RepositorySet,
+	actor Actor,
+	action string,
+	after domain.Transaction,
+	before domain.Transaction,
+	reason string,
+) error {
+	beforeData, err := json.Marshal(before)
+	if err != nil {
+		return fmt.Errorf("marshal transaction audit before data: %w", err)
+	}
+	afterData, err := json.Marshal(struct {
+		Transaction          domain.Transaction `json:"transaction"`
+		Reason               string             `json:"reason"`
+		ApprovedCorrectionID *uuid.UUID         `json:"approved_correction_id,omitempty"`
+	}{Transaction: after, Reason: reason, ApprovedCorrectionID: approvedCorrectionID(ctx)})
+	if err != nil {
+		return fmt.Errorf("marshal transaction audit after data: %w", err)
+	}
+	_, err = recordAudit(ctx, repos, RecordAuditInput{
+		Actor: actor, Action: action, EntityType: domain.AuditEntityTransaction,
+		EntityID: after.ID, Before: beforeData, After: afterData,
+	})
+	return err
+}
+
+func approvedCorrectionID(ctx context.Context) *uuid.UUID {
+	scope, ok := approvedCorrectionScopeFromContext(ctx)
+	if !ok {
+		return nil
+	}
+	id := scope.RequestID
+	return &id
 }
 
 func (s *transactionService) authorizeAccount(

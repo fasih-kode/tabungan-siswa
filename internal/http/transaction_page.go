@@ -1,11 +1,14 @@
 package http
 
 import (
+	"encoding/json"
 	"errors"
+	"fmt"
 	"html/template"
 	"mime"
 	"net/http"
 	"net/url"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -13,6 +16,7 @@ import (
 	"github.com/fasih/tabungan-siswa/internal/domain"
 	"github.com/fasih/tabungan-siswa/internal/http/httperror"
 	"github.com/fasih/tabungan-siswa/internal/http/middleware"
+	"github.com/fasih/tabungan-siswa/internal/repository"
 	"github.com/fasih/tabungan-siswa/internal/service"
 	"github.com/google/uuid"
 )
@@ -20,7 +24,12 @@ import (
 const maxTransactionFormBytes = 16 << 10
 
 type TransactionPageRow struct {
-	ID, Date, Type, Amount, Balance string
+	ID, Date, Type, Amount, Balance, Status string
+}
+
+type TransactionAuditView struct {
+	Actor, Action, At, Reason, Changes string
+	AtTime                             time.Time
 }
 
 type TransactionPageViewModel struct {
@@ -28,10 +37,14 @@ type TransactionPageViewModel struct {
 	Error, Notice, AccountID, TransactionID, StudentName, NIS         string
 	YearName, AccountStatus, AccountBalance                           string
 	TransactionDate, TransactionType, Amount, RecordedAt              string
+	AmountValue, TransactionStatus                                    string
+	Reason                                                            string
 	Page, Limit                                                       int
 	IsDetail, CanWrite                                                bool
+	CanAudit                                                          bool
 	Pagination                                                        PaginationViewModel
 	Rows                                                              []TransactionPageRow
+	Audit                                                             []TransactionAuditView
 }
 
 type TransactionPageHandler struct {
@@ -39,6 +52,7 @@ type TransactionPageHandler struct {
 	accounts     service.SavingsAccountService
 	students     service.StudentService
 	years        service.AcademicYearService
+	audit        service.AuditService
 	templates    *template.Template
 }
 
@@ -48,6 +62,7 @@ func NewTransactionPageHandler(
 	students service.StudentService,
 	years service.AcademicYearService,
 	templates *template.Template,
+	auditServices ...service.AuditService,
 ) (*TransactionPageHandler, error) {
 	if transactions == nil || accounts == nil || students == nil || years == nil || templates == nil {
 		return nil, service.ErrInvalidDependency
@@ -57,6 +72,7 @@ func NewTransactionPageHandler(
 		accounts:     accounts,
 		students:     students,
 		years:        years,
+		audit:        firstAuditService(auditServices),
 		templates:    templates,
 	}, nil
 }
@@ -112,7 +128,7 @@ func (h *TransactionPageHandler) List(w http.ResponseWriter, r *http.Request) {
 		vm.Rows = append(vm.Rows, TransactionPageRow{
 			ID: tx.ID.String(), Date: tx.TransactionDate.Format("2006-01-02"),
 			Type: transactionTypeLabel(tx.Type), Amount: formatRupiah(tx.Amount),
-			Balance: formatRupiah(out.RunningBalances[tx.ID]),
+			Balance: formatTransactionBalance(out.RunningBalances[tx.ID], tx.Status), Status: string(tx.Status),
 		})
 	}
 	hasNext := page*tablePageSize < out.Total
@@ -168,8 +184,151 @@ func (h *TransactionPageHandler) Detail(w http.ResponseWriter, r *http.Request) 
 	vm.StudentName, vm.NIS, vm.YearName = student.Name, stringValue(student.NIS), year.Name
 	vm.AccountStatus, vm.AccountBalance, vm.CSRFToken = string(account.Status), formatRupiah(balance.Balance), csrf
 	vm.TransactionDate, vm.TransactionType = tx.TransactionDate.Format("2006-01-02"), transactionTypeLabel(tx.Type)
+	vm.TransactionStatus, vm.AmountValue = string(tx.Status), strconv.FormatInt(int64(tx.Amount), 10)
 	vm.Amount, vm.RecordedAt = formatRupiah(tx.Amount), tx.CreatedAt.Format(time.RFC3339)
+	vm.CanAudit = h.audit != nil && (actor.Role == domain.RoleAdmin || actor.Role == domain.RoleWaliKelas)
+	if vm.CanAudit {
+		logs, auditErr := h.audit.ListByEntity(r.Context(), service.ListAuditByEntityInput{
+			Actor: actor, EntityType: domain.AuditEntityTransaction, EntityID: tx.ID,
+			Options: service.ListOptions{Limit: 100},
+		})
+		if auditErr != nil {
+			httperror.Write(w, auditErr)
+			return
+		}
+		vm.Audit = make([]TransactionAuditView, 0, len(logs.AuditLogs))
+		for i := len(logs.AuditLogs) - 1; i >= 0; i-- {
+			entry := logs.AuditLogs[i]
+			if entry != nil {
+				vm.Audit = append(vm.Audit, transactionAuditView(*entry))
+			}
+		}
+		accountLogs, accountAuditErr := h.audit.ListByEntity(r.Context(), service.ListAuditByEntityInput{
+			Actor: actor, EntityType: domain.AuditEntitySavingsAccount, EntityID: account.ID,
+			Options: service.ListOptions{Limit: 100},
+		})
+		if accountAuditErr != nil {
+			httperror.Write(w, accountAuditErr)
+			return
+		}
+		for i := len(accountLogs.AuditLogs) - 1; i >= 0; i-- {
+			if entry := accountLogs.AuditLogs[i]; entry != nil {
+				vm.Audit = append(vm.Audit, transactionAuditView(*entry))
+			}
+		}
+		sort.SliceStable(vm.Audit, func(i, j int) bool { return vm.Audit[i].AtTime.Before(vm.Audit[j].AtTime) })
+	}
+	vm.CanWrite = actor.Role == domain.RoleWaliKelas && tx.Status == domain.TransactionActive && account.IsOpen() && year.IsOpen()
+	switch r.URL.Query().Get("notice") {
+	case "transaction_edited":
+		vm.Notice = "Transaksi berhasil dikoreksi."
+	case "transaction_cancelled":
+		vm.Notice = "Transaksi berhasil dibatalkan."
+	}
 	h.render(w, vm)
+}
+
+func (h *TransactionPageHandler) Edit(w http.ResponseWriter, r *http.Request) { h.correct(w, r, false) }
+func (h *TransactionPageHandler) Cancel(w http.ResponseWriter, r *http.Request) {
+	h.correct(w, r, true)
+}
+
+func (h *TransactionPageHandler) correct(w http.ResponseWriter, r *http.Request, cancel bool) {
+	if r.Method != http.MethodPost {
+		methodNotAllowed(w, http.MethodPost)
+		return
+	}
+	actor, ok := service.ActorFromContext(r.Context())
+	if !ok {
+		http.Error(w, http.StatusText(http.StatusUnauthorized), http.StatusUnauthorized)
+		return
+	}
+	if err := service.RequireRole(actor, domain.RoleWaliKelas); err != nil {
+		httperror.Write(w, err)
+		return
+	}
+	if err := parseCorrectionTransactionForm(w, r); err != nil {
+		http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
+		return
+	}
+	id, err := parseTransactionPathUUID(r, "transaction_id")
+	if err != nil {
+		http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
+		return
+	}
+	reason := r.PostForm.Get("reason")
+	if cancel {
+		_, err = h.transactions.Cancel(r.Context(), service.CancelTransactionInput{Actor: actor, TransactionID: id, Reason: reason})
+	} else {
+		amount, amountErr := strconv.ParseInt(r.PostForm.Get("amount"), 10, 64)
+		date, dateErr := time.Parse("2006-01-02", r.PostForm.Get("transaction_date"))
+		if amountErr != nil || amount <= 0 || amount > int64(domain.MaxMoney) || dateErr != nil {
+			http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
+			return
+		}
+		_, err = h.transactions.Edit(r.Context(), service.EditTransactionInput{Actor: actor, TransactionID: id, Amount: domain.Money(amount), TransactionDate: date, Reason: reason})
+	}
+	if err != nil {
+		writeCorrectionError(w, err)
+		return
+	}
+	notice := "transaction_edited"
+	if cancel {
+		notice = "transaction_cancelled"
+	}
+	http.Redirect(w, r, "/transactions/"+id.String()+"?notice="+url.QueryEscape(notice), http.StatusSeeOther)
+}
+
+func writeCorrectionError(w http.ResponseWriter, err error) {
+	status := httperror.Status(err)
+	message := http.StatusText(status)
+	switch {
+	case errors.Is(err, service.ErrTransactionDateOutOfAcademicYear):
+		message = "Tanggal transaksi harus berada dalam periode tahun ajaran."
+	case errors.Is(err, domain.ErrInvalidTransition):
+		message = "Koreksi hanya tersedia untuk rekening dan tahun yang terbuka atau melalui jendela koreksi yang disetujui."
+	case errors.Is(err, domain.ErrNegativeBalance):
+		message = "Koreksi ditolak karena saldo transaksi berikutnya akan menjadi negatif."
+	case errors.Is(err, domain.ErrAlreadyCancelled):
+		message = "Transaksi ini sudah dibatalkan."
+	case errors.Is(err, repository.ErrNotFound):
+		message = http.StatusText(http.StatusNotFound)
+	}
+	http.Error(w, message, status)
+}
+
+func firstAuditService(services []service.AuditService) service.AuditService {
+	if len(services) > 0 {
+		return services[0]
+	}
+	return nil
+}
+func formatTransactionBalance(balance domain.Money, status domain.TransactionStatus) string {
+	if status == domain.TransactionCancelled {
+		return "—"
+	}
+	return formatRupiah(balance)
+}
+func transactionAuditView(log domain.AuditLog) TransactionAuditView {
+	view := TransactionAuditView{Action: log.Action, At: log.OccurredAt.Format(time.RFC3339), AtTime: log.OccurredAt}
+	if log.ActorUserID != nil {
+		view.Actor = log.ActorUserID.String()
+	} else {
+		view.Actor = "Sistem"
+	}
+	var after struct {
+		Reason      string             `json:"reason"`
+		Transaction domain.Transaction `json:"transaction"`
+	}
+	_ = json.Unmarshal(log.AfterData, &after)
+	view.Reason = after.Reason
+	if len(log.BeforeData) > 0 && after.Transaction.ID != uuid.Nil {
+		var before domain.Transaction
+		if json.Unmarshal(log.BeforeData, &before) == nil {
+			view.Changes = fmt.Sprintf("Jumlah: %s → %s; tanggal: %s → %s", formatRupiah(before.Amount), formatRupiah(after.Transaction.Amount), before.TransactionDate.Format("2006-01-02"), after.Transaction.TransactionDate.Format("2006-01-02"))
+		}
+	}
+	return view
 }
 
 func (h *TransactionPageHandler) Deposit(w http.ResponseWriter, r *http.Request) {
@@ -302,6 +461,14 @@ func parseTransactionPage(r *http.Request) (int, error) {
 }
 
 func validateTransactionRequestForm(next http.Handler) http.Handler {
+	return validateTransactionForm(next, false)
+}
+
+func validateTransactionCorrectionForm(next http.Handler) http.Handler {
+	return validateTransactionForm(next, true)
+}
+
+func validateTransactionForm(next http.Handler, allowReason bool) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		actor, ok := service.ActorFromContext(r.Context())
 		if !ok {
@@ -312,7 +479,7 @@ func validateTransactionRequestForm(next http.Handler) http.Handler {
 			httperror.Write(w, err)
 			return
 		}
-		if err := parseTransactionForm(w, r); err != nil {
+		if err := parseTransactionFormFields(w, r, allowReason); err != nil {
 			http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
 			return
 		}
@@ -321,6 +488,14 @@ func validateTransactionRequestForm(next http.Handler) http.Handler {
 }
 
 func parseTransactionForm(w http.ResponseWriter, r *http.Request) error {
+	return parseTransactionFormFields(w, r, false)
+}
+
+func parseCorrectionTransactionForm(w http.ResponseWriter, r *http.Request) error {
+	return parseTransactionFormFields(w, r, true)
+}
+
+func parseTransactionFormFields(w http.ResponseWriter, r *http.Request, allowReason bool) error {
 	mediaType, _, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
 	if err != nil || mediaType != "application/x-www-form-urlencoded" {
 		return errors.New("invalid transaction form content type")
@@ -330,7 +505,7 @@ func parseTransactionForm(w http.ResponseWriter, r *http.Request) error {
 		return err
 	}
 	for key, values := range r.PostForm {
-		if key != "amount" && key != "transaction_date" && key != "csrf_token" {
+		if key != "amount" && key != "transaction_date" && key != "csrf_token" && !(allowReason && key == "reason") {
 			return errors.New("unsupported transaction form field")
 		}
 		if len(values) != 1 {

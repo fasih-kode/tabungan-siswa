@@ -233,6 +233,10 @@ type TransactionRepository interface {
 		ctx context.Context,
 		savingsAccountID uuid.UUID,
 	) ([]domain.Transaction, error)
+	ListAllBySavingsAccount(
+		ctx context.Context,
+		savingsAccountID uuid.UUID,
+	) ([]domain.Transaction, error)
 	Update(
 		ctx context.Context,
 		transaction domain.Transaction,

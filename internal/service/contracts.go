@@ -779,6 +779,7 @@ type EditTransactionInput struct {
 	TransactionID   uuid.UUID
 	Amount          domain.Money
 	TransactionDate time.Time
+	Reason          string
 }
 
 type EditTransactionOutput struct {
@@ -788,6 +789,7 @@ type EditTransactionOutput struct {
 type CancelTransactionInput struct {
 	Actor         Actor
 	TransactionID uuid.UUID
+	Reason        string
 }
 
 type CancelTransactionOutput struct {

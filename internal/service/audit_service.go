@@ -31,7 +31,7 @@ func (s *auditService) ListByEntity(
 	ctx context.Context,
 	input ListAuditByEntityInput,
 ) (ListAuditByEntityOutput, error) {
-	if err := RequireRole(input.Actor, domain.RoleAdmin); err != nil {
+	if err := input.Actor.Validate(); err != nil {
 		return ListAuditByEntityOutput{}, err
 	}
 
@@ -42,15 +42,57 @@ func (s *auditService) ListByEntity(
 	if input.EntityID == uuid.Nil {
 		return ListAuditByEntityOutput{}, domain.ErrInvalidID
 	}
+	if input.Actor.Role != domain.RoleAdmin && input.Actor.Role != domain.RoleWaliKelas {
+		return ListAuditByEntityOutput{}, ErrForbidden
+	}
+	var account domain.SavingsAccount
+	switch input.EntityType {
+	case domain.AuditEntityTransaction:
+		tx, err := s.deps.Repositories.Transactions.GetByID(ctx, input.EntityID)
+		if err != nil {
+			return ListAuditByEntityOutput{}, err
+		}
+		account, err = s.deps.Repositories.SavingsAccounts.GetByID(ctx, tx.SavingsAccountID)
+		if err != nil {
+			return ListAuditByEntityOutput{}, err
+		}
+	case domain.AuditEntitySavingsAccount:
+		var err error
+		account, err = s.deps.Repositories.SavingsAccounts.GetByID(ctx, input.EntityID)
+		if err != nil {
+			return ListAuditByEntityOutput{}, err
+		}
+	case domain.AuditEntitySavingsSettlement:
+		settlement, err := s.deps.Repositories.Settlements.GetByID(ctx, input.EntityID)
+		if err != nil {
+			return ListAuditByEntityOutput{}, err
+		}
+		account, err = s.deps.Repositories.SavingsAccounts.GetByID(ctx, settlement.SavingsAccountID)
+		if err != nil {
+			return ListAuditByEntityOutput{}, err
+		}
+	default:
+		return ListAuditByEntityOutput{}, ErrForbidden
+	}
+	switch input.Actor.Role {
+	case domain.RoleAdmin:
+	case domain.RoleWaliKelas:
+		if err := RequireStudentScope(ctx, s.deps.Repositories, input.Actor, account.StudentID, account.AcademicYearID); err != nil {
+			return ListAuditByEntityOutput{}, err
+		}
+	default:
+		return ListAuditByEntityOutput{}, ErrForbidden
+	}
+	options, err := normalizedAuditOptions(input.Options)
+	if err != nil {
+		return ListAuditByEntityOutput{}, err
+	}
 
 	auditLogs, err := s.deps.Repositories.AuditLogs.ListByEntity(
 		ctx,
 		input.EntityType,
 		input.EntityID,
-		repository.ListOptions{
-			Limit:  input.Options.Limit,
-			Offset: input.Options.Offset,
-		},
+		options,
 	)
 	if err != nil {
 		return ListAuditByEntityOutput{}, err
@@ -59,6 +101,17 @@ func (s *auditService) ListByEntity(
 	return ListAuditByEntityOutput{
 		AuditLogs: auditLogPointers(auditLogs),
 	}, nil
+}
+
+func normalizedAuditOptions(options ListOptions) (repository.ListOptions, error) {
+	if options.Offset < 0 || options.Limit < 0 || options.Limit > 100 {
+		return repository.ListOptions{}, domain.ErrInvalidValue
+	}
+	limit := options.Limit
+	if limit == 0 {
+		limit = 50
+	}
+	return repository.ListOptions{Limit: limit, Offset: options.Offset}, nil
 }
 
 func (s *auditService) ListByActor(

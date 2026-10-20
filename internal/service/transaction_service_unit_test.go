@@ -2,9 +2,12 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"strings"
 	"testing"
 	"time"
+	"unicode/utf8"
 
 	"github.com/fasih/tabungan-siswa/internal/domain"
 	"github.com/fasih/tabungan-siswa/internal/repository"
@@ -51,6 +54,7 @@ type transactionServiceFakeTransactionRepository struct {
 	getByIDFn                    func(context.Context, uuid.UUID) (domain.Transaction, error)
 	listBySavingsAccountFn       func(context.Context, uuid.UUID, repository.ListOptions) ([]domain.Transaction, error)
 	listActiveBySavingsAccountFn func(context.Context, uuid.UUID) ([]domain.Transaction, error)
+	listAllBySavingsAccountFn    func(context.Context, uuid.UUID) ([]domain.Transaction, error)
 	createFn                     func(context.Context, domain.Transaction) error
 	updateFn                     func(context.Context, domain.Transaction) error
 
@@ -93,6 +97,16 @@ func (f *transactionServiceFakeTransactionRepository) ListActiveBySavingsAccount
 	id uuid.UUID,
 ) ([]domain.Transaction, error) {
 	f.listActiveCalls++
+	if f.listActiveBySavingsAccountFn != nil {
+		return f.listActiveBySavingsAccountFn(ctx, id)
+	}
+	return nil, nil
+}
+
+func (f *transactionServiceFakeTransactionRepository) ListAllBySavingsAccount(ctx context.Context, id uuid.UUID) ([]domain.Transaction, error) {
+	if f.listAllBySavingsAccountFn != nil {
+		return f.listAllBySavingsAccountFn(ctx, id)
+	}
 	if f.listActiveBySavingsAccountFn != nil {
 		return f.listActiveBySavingsAccountFn(ctx, id)
 	}
@@ -645,7 +659,7 @@ func TestTransactionServiceEditRecalculatesBalanceAndAudits(t *testing.T) {
 
 	got, err := svc.Edit(context.Background(), EditTransactionInput{
 		Actor: Actor{UserID: financialTestTeacherID, Role: domain.RoleWaliKelas}, TransactionID: original.ID,
-		Amount: 75_000, TransactionDate: time.Date(2026, 10, 2, 0, 0, 0, 0, time.UTC),
+		Amount: 75_000, TransactionDate: time.Date(2026, 10, 2, 0, 0, 0, 0, time.UTC), Reason: "Tes koreksi",
 	})
 	if err != nil {
 		t.Fatalf("Edit() error = %v", err)
@@ -682,6 +696,63 @@ func TestTransactionServiceEditRejectsNonPositiveAmount(t *testing.T) {
 	}
 }
 
+func TestValidatedCorrectionReasonTrimsAndBoundsUnicode(t *testing.T) {
+	if got, err := validatedCorrectionReason("  data keliru  "); err != nil || got != "data keliru" {
+		t.Fatalf("validated reason=%q, err=%v", got, err)
+	}
+	if _, err := validatedCorrectionReason(" \t "); !errors.Is(err, domain.ErrInvalidValue) {
+		t.Fatalf("blank reason error=%v", err)
+	}
+	if _, err := validatedCorrectionReason(strings.Repeat("界", 501)); !errors.Is(err, domain.ErrInvalidValue) {
+		t.Fatalf("oversized Unicode reason error=%v", err)
+	}
+	if got, err := validatedCorrectionReason(strings.Repeat("界", 500)); err != nil || utf8.RuneCountInString(got) != 500 {
+		t.Fatalf("500-character reason length/error=%d/%v", utf8.RuneCountInString(got), err)
+	}
+}
+
+func TestTransactionEditAllowsClosingYearOnlyWithApprovedAccountScope(t *testing.T) {
+	account := newTransactionTestAccount(t)
+	original := newTransactionTestDeposit(t, account.ID, 100_000)
+	current := original
+	txRepo := &transactionServiceFakeTransactionRepository{
+		getByIDFn: func(context.Context, uuid.UUID) (domain.Transaction, error) { return current, nil },
+		listActiveBySavingsAccountFn: func(context.Context, uuid.UUID) ([]domain.Transaction, error) {
+			return []domain.Transaction{current}, nil
+		},
+	}
+	accountRepo := &transactionServiceFakeSavingsAccountRepository{getByIDForUpdateFn: func(context.Context, uuid.UUID) (domain.SavingsAccount, error) { return account, nil }}
+	requestID := uuid.New()
+	yearRepo := &transactionServiceFakeAcademicYearRepository{getByIDForShareFn: func(_ context.Context, id uuid.UUID) (domain.AcademicYear, error) {
+		return domain.AcademicYear{ID: id, StartDate: time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC), EndDate: time.Date(2027, 7, 1, 0, 0, 0, 0, time.UTC), Status: domain.AcademicYearClosing}, nil
+	}}
+	auditRepo := &transactionServiceFakeAuditRepository{}
+	repos := newTransactionTestRepositories(accountRepo, txRepo, nil, nil, nil, auditRepo)
+	repos.AcademicYears = yearRepo
+	uow := &transactionServiceFakeUnitOfWork{repos: repos}
+	svc := newScopedTransactionServiceForTest(t, repos, &transactionServiceFakeUnitOfWorkManager{uow: uow})
+	input := EditTransactionInput{Actor: Actor{UserID: financialTestTeacherID, Role: domain.RoleWaliKelas}, TransactionID: original.ID, Amount: 90_000, TransactionDate: original.TransactionDate, Reason: "Koreksi disetujui"}
+	if _, err := svc.Edit(context.Background(), input); !errors.Is(err, domain.ErrInvalidTransition) {
+		t.Fatalf("ordinary CLOSING edit error=%v", err)
+	}
+	if txRepo.updateCalls != 0 {
+		t.Fatal("ordinary CLOSING correction modified the transaction")
+	}
+	ctx := withApprovedCorrectionScope(context.Background(), requestID, account.ID)
+	if _, err := svc.Edit(ctx, input); err != nil {
+		t.Fatalf("approved CLOSING edit: %v", err)
+	}
+	var after struct {
+		ApprovedCorrectionID uuid.UUID `json:"approved_correction_id"`
+	}
+	if err := json.Unmarshal(auditRepo.lastAudit.AfterData, &after); err != nil {
+		t.Fatal(err)
+	}
+	if after.ApprovedCorrectionID != requestID {
+		t.Fatalf("audit approved correction id=%s want %s", after.ApprovedCorrectionID, requestID)
+	}
+}
+
 func TestTransactionServiceEditRejectsNegativeResultingBalance(t *testing.T) {
 	account := newTransactionTestAccount(t)
 	original := newTransactionTestDeposit(t, account.ID, 100_000)
@@ -707,7 +778,7 @@ func TestTransactionServiceEditRejectsNegativeResultingBalance(t *testing.T) {
 
 	_, err := svc.Edit(context.Background(), EditTransactionInput{
 		Actor: Actor{UserID: financialTestTeacherID, Role: domain.RoleWaliKelas}, TransactionID: original.ID,
-		Amount: 50_000, TransactionDate: time.Now(),
+		Amount: 50_000, TransactionDate: time.Now(), Reason: "Tes koreksi",
 	})
 	if !errors.Is(err, domain.ErrNegativeBalance) {
 		t.Fatalf("Edit() error = %v, want %v", err, domain.ErrNegativeBalance)
@@ -737,7 +808,7 @@ func TestTransactionServiceEditRejectsDateOutsideAcademicYear(t *testing.T) {
 	_, err := svc.Edit(context.Background(), EditTransactionInput{
 		Actor:         Actor{UserID: financialTestTeacherID, Role: domain.RoleWaliKelas},
 		TransactionID: transaction.ID, Amount: 50_000,
-		TransactionDate: time.Date(2027, 7, 1, 0, 0, 0, 0, time.UTC),
+		TransactionDate: time.Date(2027, 7, 1, 0, 0, 0, 0, time.UTC), Reason: "Tanggal salah",
 	})
 	if !errors.Is(err, ErrTransactionDateOutOfAcademicYear) {
 		t.Fatalf("Edit() error = %v, want %v", err, ErrTransactionDateOutOfAcademicYear)
@@ -766,6 +837,7 @@ func TestTransactionServiceCancelRejectsSettledAccount(t *testing.T) {
 
 	_, err := svc.Cancel(context.Background(), CancelTransactionInput{
 		Actor: Actor{UserID: financialTestTeacherID, Role: domain.RoleWaliKelas}, TransactionID: original.ID,
+		Reason: "Tes pembatalan",
 	})
 	if !errors.Is(err, domain.ErrInvalidTransition) {
 		t.Fatalf("Cancel() error = %v, want %v", err, domain.ErrInvalidTransition)
@@ -793,7 +865,7 @@ func TestTransactionServiceCancelRejectsInvalidHistoricalBalance(t *testing.T) {
 	}
 	uow := &transactionServiceFakeUnitOfWork{repos: newTransactionTestRepositories(accountRepo, transactionRepo, nil, nil, nil, &transactionServiceFakeAuditRepository{})}
 	svc := newScopedTransactionServiceForTest(t, uow.repos, &transactionServiceFakeUnitOfWorkManager{uow: uow})
-	_, err = svc.Cancel(context.Background(), CancelTransactionInput{Actor: Actor{UserID: financialTestTeacherID, Role: domain.RoleWaliKelas}, TransactionID: deposit.ID})
+	_, err = svc.Cancel(context.Background(), CancelTransactionInput{Actor: Actor{UserID: financialTestTeacherID, Role: domain.RoleWaliKelas}, TransactionID: deposit.ID, Reason: "Tes pembatalan"})
 	if !errors.Is(err, domain.ErrNegativeBalance) {
 		t.Fatalf("Cancel() error = %v, want %v", err, domain.ErrNegativeBalance)
 	}
@@ -951,6 +1023,7 @@ func TestTransactionServiceCancelAlreadyCancelled(t *testing.T) {
 
 	_, err := svc.Cancel(context.Background(), CancelTransactionInput{
 		Actor: Actor{UserID: financialTestTeacherID, Role: domain.RoleWaliKelas}, TransactionID: transaction.ID,
+		Reason: "Tes pembatalan",
 	})
 	if !errors.Is(err, domain.ErrAlreadyCancelled) {
 		t.Fatalf("Cancel() error = %v, want %v", err, domain.ErrAlreadyCancelled)

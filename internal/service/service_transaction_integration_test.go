@@ -3,6 +3,7 @@ package service_test
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"testing"
 	"time"
@@ -641,6 +642,101 @@ func TestTransactionServiceIntegration_DateBoundsConcurrentWithdrawalsAndLifecyc
 	}
 	if _, err := txService.Deposit(ctx, service.DepositInput{Actor: adminActor, SavingsAccountID: account3.ID, Amount: 1_000, TransactionDate: lastValidDate}); !errors.Is(err, domain.ErrInvalidTransition) {
 		t.Fatalf("deposit in CLOSING year error = %v, want invalid transition", err)
+	}
+}
+
+func TestTransactionCorrectionAuditIntegration(t *testing.T) {
+	db := openServiceScopeTestDatabase(t)
+	ctx := context.Background()
+	cleanupServiceScopeFixtures(t, db)
+	userRepo := postgres.NewUserRepository(db)
+	studentRepo := postgres.NewStudentRepository(db)
+	yearRepo := postgres.NewAcademicYearRepository(db)
+	accountRepo := postgres.NewSavingsAccountRepository(db)
+	txRepo := postgres.NewTransactionRepository(db)
+	auditRepo := postgres.NewAuditRepository(db)
+	historyRepo := postgres.NewStudentClassHistoryRepository(db)
+	assignmentRepo := postgres.NewTeacherClassAssignmentRepository(db)
+	manager := postgres.NewUnitOfWorkManager(db)
+	teacher := newServiceScopeUser(t, domain.RoleWaliKelas)
+	otherTeacher := newServiceScopeUser(t, domain.RoleWaliKelas)
+	admin := newServiceScopeUser(t, domain.RoleAdmin)
+	for _, user := range []domain.User{teacher, otherTeacher, admin} {
+		if err := userRepo.Create(ctx, user); err != nil {
+			t.Fatal(err)
+		}
+	}
+	student := newServiceScopeStudent(t, "Correction audit "+uuid.NewString())
+	if err := studentRepo.Create(ctx, student); err != nil {
+		t.Fatal(err)
+	}
+	year := newServiceScopeAcademicYear(t, "Correction audit "+uuid.NewString())
+	if err := yearRepo.Create(ctx, year); err != nil {
+		t.Fatal(err)
+	}
+	assignFinancialIntegrationScope(t, db, teacher.ID, student.ID, year.ID)
+	account, err := domain.NewSavingsAccount(student.ID, year.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := accountRepo.Create(ctx, account); err != nil {
+		t.Fatal(err)
+	}
+	repos := repository.RepositorySet{
+		AcademicYears: yearRepo, SavingsAccounts: accountRepo, Transactions: txRepo,
+		Students: studentRepo, StudentClassHistories: historyRepo,
+		TeacherClassAssignments: assignmentRepo, AuditLogs: auditRepo,
+	}
+	txService, err := service.NewTransactionService(service.Dependencies{Repositories: repos, UOW: manager})
+	if err != nil {
+		t.Fatal(err)
+	}
+	auditService, err := service.NewAuditService(service.Dependencies{Repositories: repos, UOW: manager})
+	if err != nil {
+		t.Fatal(err)
+	}
+	actor := service.Actor{UserID: teacher.ID, Role: domain.RoleWaliKelas}
+	adminActor := service.Actor{UserID: admin.ID, Role: domain.RoleAdmin}
+	created, err := txService.Deposit(ctx, service.DepositInput{Actor: actor, SavingsAccountID: account.ID, Amount: 100_000, TransactionDate: year.StartDate})
+	if err != nil {
+		t.Fatal(err)
+	}
+	correctedDate := year.StartDate.AddDate(0, 0, 1)
+	if _, err := txService.Edit(ctx, service.EditTransactionInput{Actor: actor, TransactionID: created.Transaction.ID, Amount: 75_000, TransactionDate: correctedDate, Reason: "Jumlah salah input"}); err != nil {
+		t.Fatalf("Edit(): %v", err)
+	}
+	logs, err := auditService.ListByEntity(ctx, service.ListAuditByEntityInput{Actor: actor, EntityType: domain.AuditEntityTransaction, EntityID: created.Transaction.ID, Options: service.ListOptions{Limit: 10}})
+	if err != nil {
+		t.Fatalf("Wali audit read: %v", err)
+	}
+	if len(logs.AuditLogs) != 2 || logs.AuditLogs[0].Action != "UPDATE" || logs.AuditLogs[1].Action != "CREATE" {
+		t.Fatalf("audit timeline = %#v", logs.AuditLogs)
+	}
+	var after struct {
+		Reason      string             `json:"reason"`
+		Transaction domain.Transaction `json:"transaction"`
+	}
+	if err := json.Unmarshal(logs.AuditLogs[0].AfterData, &after); err != nil {
+		t.Fatal(err)
+	}
+	if after.Reason != "Jumlah salah input" || after.Transaction.Amount != 75_000 || !after.Transaction.TransactionDate.Equal(correctedDate) {
+		t.Fatalf("audit after snapshot = %+v", after)
+	}
+	if _, err := auditService.ListByEntity(ctx, service.ListAuditByEntityInput{Actor: service.Actor{UserID: otherTeacher.ID, Role: domain.RoleWaliKelas}, EntityType: domain.AuditEntityTransaction, EntityID: created.Transaction.ID}); !errors.Is(err, service.ErrScopeViolation) {
+		t.Fatalf("out-of-scope Wali audit error = %v", err)
+	}
+	if _, err := auditService.ListByEntity(ctx, service.ListAuditByEntityInput{Actor: adminActor, EntityType: domain.AuditEntityTransaction, EntityID: created.Transaction.ID}); err != nil {
+		t.Fatalf("Admin audit read: %v", err)
+	}
+	if _, err := txService.Cancel(ctx, service.CancelTransactionInput{Actor: actor, TransactionID: created.Transaction.ID, Reason: "Setoran rangkap"}); err != nil {
+		t.Fatalf("Cancel(): %v", err)
+	}
+	listed, err := txService.List(ctx, service.ListTransactionsInput{Actor: actor, SavingsAccountID: account.ID, Options: service.ListOptions{Limit: 10}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if listed.Total != 1 || listed.Balance != 0 || len(listed.Transactions) != 1 || listed.Transactions[0].Status != domain.TransactionCancelled {
+		t.Fatalf("history after cancel: total=%d balance=%d rows=%+v", listed.Total, listed.Balance, listed.Transactions)
 	}
 }
 

@@ -6,6 +6,7 @@ import (
 	"fmt"
 
 	"github.com/fasih/tabungan-siswa/internal/repository"
+	"github.com/google/uuid"
 )
 
 type transactionScopeContextKey struct{}
@@ -13,6 +14,25 @@ type transactionScopeContextKey struct{}
 type transactionScope struct {
 	uow   repository.UnitOfWork
 	repos repository.RepositorySet
+}
+
+type approvedCorrectionContextKey struct{}
+
+type approvedCorrectionScope struct {
+	RequestID uuid.UUID
+	AccountID uuid.UUID
+}
+
+// withApprovedCorrectionScope is reserved for the FASE 23 settlement service.
+// Its caller must first validate an approved, active reopen request and the
+// responsible Wali Kelas. HTTP handlers cannot construct this scope.
+func withApprovedCorrectionScope(ctx context.Context, requestID, accountID uuid.UUID) context.Context {
+	return context.WithValue(ctx, approvedCorrectionContextKey{}, approvedCorrectionScope{RequestID: requestID, AccountID: accountID})
+}
+
+func approvedCorrectionScopeFromContext(ctx context.Context) (approvedCorrectionScope, bool) {
+	scope, ok := ctx.Value(approvedCorrectionContextKey{}).(approvedCorrectionScope)
+	return scope, ok && scope.RequestID != uuid.Nil && scope.AccountID != uuid.Nil
 }
 
 // WithinTransaction executes fn inside one UnitOfWork.

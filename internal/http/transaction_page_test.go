@@ -25,8 +25,11 @@ type transactionPageServiceFake struct {
 	getInput                      service.GetTransactionInput
 	depositInput                  service.DepositInput
 	withdrawalInput               service.WithdrawalInput
+	editInput                     service.EditTransactionInput
+	cancelInput                   service.CancelTransactionInput
 	depositErr, withdrawalErr     error
 	depositCalls, withdrawalCalls int
+	editCalls, cancelCalls        int
 }
 
 func (f *transactionPageServiceFake) List(_ context.Context, in service.ListTransactionsInput) (service.ListTransactionsOutput, error) {
@@ -47,11 +50,62 @@ func (f *transactionPageServiceFake) Withdrawal(_ context.Context, in service.Wi
 	f.withdrawalInput = in
 	return service.WithdrawalOutput{}, f.withdrawalErr
 }
+func (f *transactionPageServiceFake) Edit(_ context.Context, in service.EditTransactionInput) (service.EditTransactionOutput, error) {
+	f.editCalls++
+	f.editInput = in
+	return service.EditTransactionOutput{}, nil
+}
+func (f *transactionPageServiceFake) Cancel(_ context.Context, in service.CancelTransactionInput) (service.CancelTransactionOutput, error) {
+	f.cancelCalls++
+	f.cancelInput = in
+	return service.CancelTransactionOutput{}, nil
+}
 
 type transactionPageAccountsFake struct {
 	service.SavingsAccountService
 	account  domain.SavingsAccount
 	getInput service.GetSavingsAccountInput
+}
+
+func TestTransactionCorrectionRoutesRequireCSRFAndAcceptAllowedFields(t *testing.T) {
+	account := domain.SavingsAccount{ID: uuid.New(), StudentID: uuid.New(), AcademicYearID: uuid.New(), Status: domain.SavingsAccountOpen}
+	tx := &transactionPageServiceFake{}
+	handler := newTransactionPageHandlerForTest(t, tx, account)
+	userID := uuid.New()
+	sessionToken := "correction-session-" + uuid.NewString()
+	session := domain.Session{ID: uuid.New(), UserID: userID, TokenHash: security.HashSessionToken(sessionToken), ExpiresAt: time.Now().Add(time.Hour), CreatedAt: time.Now()}
+	user := domain.User{ID: userID, Username: "wali-correction", Role: domain.RoleWaliKelas}
+	auth, err := middleware.NewAuthenticationMiddleware(security.NewDefaultSessionCookie(), &routerSessionRepositoryFake{session: session}, &routerUserRepositoryFake{user: user})
+	if err != nil {
+		t.Fatal(err)
+	}
+	templates := template.Must(template.New("pages").Parse(`{{define "transactions"}}{{.StudentName}}{{end}}`))
+	dashboard, _ := NewDashboardPageHandler(templates)
+	router, err := NewRouter(HandlerSet{Authentication: &AuthenticationHandler{}, LoginPage: newTestLoginPageHandler(t), Dashboard: dashboard, AcademicYear: newTestAcademicYearPageHandler(t), Class: newTestClassPageHandler(t), Transactions: handler}, MiddlewareSet{Authentication: auth, CSRF: middleware.NewCSRFMiddleware(security.NewDefaultCSRFCookie())}, newTestStaticAssetHandler())
+	if err != nil {
+		t.Fatal(err)
+	}
+	txID := uuid.New()
+	form := url.Values{"amount": {"12345"}, "transaction_date": {"2026-10-20"}, "reason": {"Koreksi data"}}
+	missingCSRF := httptest.NewRequest(http.MethodPost, "/transactions/"+txID.String()+"/edit", strings.NewReader(form.Encode()))
+	missingCSRF.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	missingCSRF.AddCookie(&http.Cookie{Name: security.DefaultSessionCookieName, Value: sessionToken})
+	missingRecorder := httptest.NewRecorder()
+	router.ServeHTTP(missingRecorder, missingCSRF)
+	if missingRecorder.Code != http.StatusForbidden || tx.editCalls != 0 {
+		t.Fatalf("missing CSRF status/calls=%d/%d", missingRecorder.Code, tx.editCalls)
+	}
+	csrfToken := "valid-csrf-" + uuid.NewString()
+	form.Set("csrf_token", csrfToken)
+	post := httptest.NewRequest(http.MethodPost, "/transactions/"+txID.String()+"/edit", strings.NewReader(form.Encode()))
+	post.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	post.AddCookie(&http.Cookie{Name: security.DefaultSessionCookieName, Value: sessionToken})
+	post.AddCookie(&http.Cookie{Name: security.DefaultCSRFCookieName, Value: csrfToken})
+	recorder := httptest.NewRecorder()
+	router.ServeHTTP(recorder, post)
+	if recorder.Code != http.StatusSeeOther || tx.editCalls != 1 || tx.editInput.TransactionID != txID || tx.editInput.Amount != 12_345 || tx.editInput.Reason != "Koreksi data" {
+		t.Fatalf("edit status/calls/input=%d/%d/%+v", recorder.Code, tx.editCalls, tx.editInput)
+	}
 }
 
 func (f *transactionPageAccountsFake) Get(_ context.Context, in service.GetSavingsAccountInput) (service.GetSavingsAccountOutput, error) {
@@ -209,6 +263,7 @@ func TestTransactionPostRejectsMalformedAndOversizedForms(t *testing.T) {
 	}{
 		{name: "missing content type", body: "amount=1&transaction_date=2026-10-20"},
 		{name: "unsupported field", contentType: "application/x-www-form-urlencoded", body: "amount=1&transaction_date=2026-10-20&account_id=" + uuid.NewString()},
+		{name: "reason only accepted for correction", contentType: "application/x-www-form-urlencoded", body: "amount=1&transaction_date=2026-10-20&reason=extra"},
 		{name: "duplicate amount", contentType: "application/x-www-form-urlencoded", body: "amount=1&amount=2&transaction_date=2026-10-20"},
 		{name: "malformed encoding", contentType: "application/x-www-form-urlencoded", body: "amount=1&transaction_date=2026-10-20&x=%zz"},
 		{name: "oversized", contentType: "application/x-www-form-urlencoded", body: "amount=1&transaction_date=2026-10-20&x=" + strings.Repeat("a", maxTransactionFormBytes)},

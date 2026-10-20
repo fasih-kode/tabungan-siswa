@@ -72,6 +72,24 @@ func (f *auditServiceFakeAuditRepository) ListByActor(
 
 type auditServiceFakeUOWManager struct{}
 
+type auditServiceFakeTransactionRepository struct {
+	repository.TransactionRepository
+	transaction domain.Transaction
+}
+
+func (f auditServiceFakeTransactionRepository) GetByID(context.Context, uuid.UUID) (domain.Transaction, error) {
+	return f.transaction, nil
+}
+
+type auditServiceFakeSavingsAccountRepository struct {
+	repository.SavingsAccountRepository
+	account domain.SavingsAccount
+}
+
+func (f auditServiceFakeSavingsAccountRepository) GetByID(context.Context, uuid.UUID) (domain.SavingsAccount, error) {
+	return f.account, nil
+}
+
 func (auditServiceFakeUOWManager) Begin(context.Context) (repository.UnitOfWork, error) {
 	return nil, errors.New("not used")
 }
@@ -196,7 +214,15 @@ func TestAuditServiceListByEntityAdmin(t *testing.T) {
 			return []domain.AuditLog{log}, nil
 		},
 	}
-	svc := newAuditServiceForTest(t, auditRepo)
+	account := domain.SavingsAccount{ID: uuid.New(), StudentID: uuid.New(), AcademicYearID: uuid.New()}
+	tx := domain.Transaction{ID: entityID, SavingsAccountID: account.ID}
+	svc, err := NewAuditService(Dependencies{Repositories: repository.RepositorySet{
+		AuditLogs: auditRepo, Transactions: auditServiceFakeTransactionRepository{transaction: tx},
+		SavingsAccounts: auditServiceFakeSavingsAccountRepository{account: account},
+	}, UOW: auditServiceFakeUOWManager{}})
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	got, err := svc.ListByEntity(context.Background(), ListAuditByEntityInput{
 		Actor:      Actor{UserID: uuid.New(), Role: domain.RoleAdmin},
@@ -235,12 +261,12 @@ func TestAuditServiceListByEntityRejectsInvalidEntityType(t *testing.T) {
 	}
 }
 
-func TestAuditServiceListByEntityRejectsNonAdmin(t *testing.T) {
+func TestAuditServiceListByEntityRejectsStudent(t *testing.T) {
 	auditRepo := &auditServiceFakeAuditRepository{}
 	svc := newAuditServiceForTest(t, auditRepo)
 
 	_, err := svc.ListByEntity(context.Background(), ListAuditByEntityInput{
-		Actor:      Actor{UserID: uuid.New(), Role: domain.RoleWaliKelas},
+		Actor:      Actor{UserID: uuid.New(), Role: domain.RoleSiswa},
 		EntityType: domain.AuditEntityTransaction,
 		EntityID:   uuid.New(),
 	})

@@ -91,7 +91,7 @@ func NewHandlerSet(
 	}
 	var transactions *TransactionPageHandler
 	if services.Transaction != nil && services.SavingsAccount != nil && services.Student != nil && services.AcademicYear != nil {
-		transactions, err = NewTransactionPageHandler(services.Transaction, services.SavingsAccount, services.Student, services.AcademicYear, templates)
+		transactions, err = NewTransactionPageHandler(services.Transaction, services.SavingsAccount, services.Student, services.AcademicYear, templates, services.Audit)
 		if err != nil {
 			return HandlerSet{}, err
 		}

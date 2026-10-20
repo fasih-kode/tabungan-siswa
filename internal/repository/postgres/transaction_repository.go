@@ -161,6 +161,40 @@ func (r *TransactionRepository) ListActiveBySavingsAccount(
 	)
 }
 
+func (r *TransactionRepository) ListAllBySavingsAccount(
+	ctx context.Context,
+	savingsAccountID uuid.UUID,
+) ([]domain.Transaction, error) {
+	const query = `
+		SELECT id, savings_account_id, type, amount, transaction_date, status,
+		       created_by, created_at, updated_at
+		FROM transactions
+		WHERE savings_account_id = $1
+		ORDER BY transaction_date ASC, created_at ASC, id ASC
+	`
+	return r.listAll(ctx, query, savingsAccountID)
+}
+
+func (r *TransactionRepository) listAll(ctx context.Context, query string, accountID uuid.UUID) ([]domain.Transaction, error) {
+	rows, err := r.db.QueryContext(ctx, query, accountID)
+	if err != nil {
+		return nil, fmt.Errorf("list transactions: %w", err)
+	}
+	defer rows.Close()
+	transactions := make([]domain.Transaction, 0)
+	for rows.Next() {
+		tx, err := scanTransaction(rows)
+		if err != nil {
+			return nil, fmt.Errorf("scan transaction: %w", err)
+		}
+		transactions = append(transactions, tx)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate transactions: %w", err)
+	}
+	return transactions, nil
+}
+
 func (r *TransactionRepository) Update(
 	ctx context.Context,
 	transaction domain.Transaction,
