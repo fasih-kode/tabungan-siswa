@@ -299,10 +299,10 @@ func newTestScopeRepositories(
 	}
 }
 
-func TestSavingsAccountServiceCreateAdmin(t *testing.T) {
+func TestSavingsAccountServiceCreateWaliKelas(t *testing.T) {
 	studentID := uuid.New()
 	academicYearID := uuid.New()
-	actorID := uuid.New()
+	actorID := financialTestTeacherID
 
 	savingsRepo := &savingsAccountServiceFakeSavingsAccountRepository{}
 	auditRepo := &savingsAccountServiceFakeAuditRepository{}
@@ -313,7 +313,7 @@ func TestSavingsAccountServiceCreateAdmin(t *testing.T) {
 		},
 	}
 	manager := &savingsAccountServiceFakeUnitOfWorkManager{uow: uow}
-	svc := newSavingsAccountServiceForTest(
+	svc := newScopedSavingsAccountServiceForTest(
 		t,
 		uow.repos,
 		manager,
@@ -322,7 +322,7 @@ func TestSavingsAccountServiceCreateAdmin(t *testing.T) {
 	got, err := svc.Create(context.Background(), CreateSavingsAccountInput{
 		Actor: Actor{
 			UserID: actorID,
-			Role:   domain.RoleAdmin,
+			Role:   domain.RoleWaliKelas,
 		},
 		StudentID:      studentID,
 		AcademicYearID: academicYearID,
@@ -384,10 +384,10 @@ func TestSavingsAccountServiceCreateRejectsLeftStudent(t *testing.T) {
 	}
 	savingsRepo := &savingsAccountServiceFakeSavingsAccountRepository{}
 	uow := &savingsAccountServiceFakeUnitOfWork{repos: repository.RepositorySet{SavingsAccounts: savingsRepo, Students: studentRepo}}
-	svc := newSavingsAccountServiceForTest(t, uow.repos, &savingsAccountServiceFakeUnitOfWorkManager{uow: uow})
+	svc := newScopedSavingsAccountServiceForTest(t, uow.repos, &savingsAccountServiceFakeUnitOfWorkManager{uow: uow})
 
 	_, err := svc.Create(context.Background(), CreateSavingsAccountInput{
-		Actor: Actor{UserID: uuid.New(), Role: domain.RoleAdmin}, StudentID: studentID, AcademicYearID: academicYearID,
+		Actor: Actor{UserID: financialTestTeacherID, Role: domain.RoleWaliKelas}, StudentID: studentID, AcademicYearID: academicYearID,
 	})
 	if !errors.Is(err, domain.ErrInvalidTransition) {
 		t.Fatalf("Create(LEFT student) error = %v, want %v", err, domain.ErrInvalidTransition)
@@ -410,10 +410,10 @@ func TestSavingsAccountServiceCreateRejectsClosedAcademicYear(t *testing.T) {
 	}
 	savingsRepo := &savingsAccountServiceFakeSavingsAccountRepository{}
 	uow := &savingsAccountServiceFakeUnitOfWork{repos: repository.RepositorySet{SavingsAccounts: savingsRepo, Students: studentRepo, AcademicYears: yearRepo}}
-	svc := newSavingsAccountServiceForTest(t, uow.repos, &savingsAccountServiceFakeUnitOfWorkManager{uow: uow})
+	svc := newScopedSavingsAccountServiceForTest(t, uow.repos, &savingsAccountServiceFakeUnitOfWorkManager{uow: uow})
 
 	_, err := svc.Create(context.Background(), CreateSavingsAccountInput{
-		Actor: Actor{UserID: uuid.New(), Role: domain.RoleAdmin}, StudentID: studentID, AcademicYearID: academicYearID,
+		Actor: Actor{UserID: financialTestTeacherID, Role: domain.RoleWaliKelas}, StudentID: studentID, AcademicYearID: academicYearID,
 	})
 	if !errors.Is(err, domain.ErrInvalidTransition) {
 		t.Fatalf("Create(CLOSED year) error = %v, want %v", err, domain.ErrInvalidTransition)
@@ -495,7 +495,7 @@ func TestSavingsAccountServiceCreateRejectsForbiddenRole(t *testing.T) {
 }
 
 func TestSavingsAccountServiceCreateRejectsInvalidIDs(t *testing.T) {
-	svc := newSavingsAccountServiceForTest(
+	svc := newScopedSavingsAccountServiceForTest(
 		t,
 		repository.RepositorySet{},
 		&savingsAccountServiceFakeUnitOfWorkManager{},
@@ -513,7 +513,7 @@ func TestSavingsAccountServiceCreateRejectsInvalidIDs(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			_, err := svc.Create(context.Background(), CreateSavingsAccountInput{
-				Actor:          Actor{UserID: uuid.New(), Role: domain.RoleAdmin},
+				Actor:          Actor{UserID: financialTestTeacherID, Role: domain.RoleWaliKelas},
 				StudentID:      tt.studentID,
 				AcademicYearID: tt.academicYearID,
 			})
@@ -578,10 +578,10 @@ func TestSavingsAccountServiceCreatePropagatesRepositoryErrorAndRollsBack(t *tes
 		},
 	}
 	manager := &savingsAccountServiceFakeUnitOfWorkManager{uow: uow}
-	svc := newSavingsAccountServiceForTest(t, uow.repos, manager)
+	svc := newScopedSavingsAccountServiceForTest(t, uow.repos, manager)
 
 	_, err := svc.Create(context.Background(), CreateSavingsAccountInput{
-		Actor:          Actor{UserID: uuid.New(), Role: domain.RoleAdmin},
+		Actor:          Actor{UserID: financialTestTeacherID, Role: domain.RoleWaliKelas},
 		StudentID:      uuid.New(),
 		AcademicYearID: uuid.New(),
 	})
@@ -612,14 +612,14 @@ func TestSavingsAccountServiceCreateAuditErrorRollsBack(t *testing.T) {
 			AuditLogs:       auditRepo,
 		},
 	}
-	svc := newSavingsAccountServiceForTest(
+	svc := newScopedSavingsAccountServiceForTest(
 		t,
 		uow.repos,
 		&savingsAccountServiceFakeUnitOfWorkManager{uow: uow},
 	)
 
 	_, err := svc.Create(context.Background(), CreateSavingsAccountInput{
-		Actor:          Actor{UserID: uuid.New(), Role: domain.RoleAdmin},
+		Actor:          Actor{UserID: financialTestTeacherID, Role: domain.RoleWaliKelas},
 		StudentID:      uuid.New(),
 		AcademicYearID: uuid.New(),
 	})
@@ -643,14 +643,14 @@ func TestSavingsAccountServiceCreateCommitErrorRollsBack(t *testing.T) {
 		},
 		commitErr: wantErr,
 	}
-	svc := newSavingsAccountServiceForTest(
+	svc := newScopedSavingsAccountServiceForTest(
 		t,
 		uow.repos,
 		&savingsAccountServiceFakeUnitOfWorkManager{uow: uow},
 	)
 
 	_, err := svc.Create(context.Background(), CreateSavingsAccountInput{
-		Actor:          Actor{UserID: uuid.New(), Role: domain.RoleAdmin},
+		Actor:          Actor{UserID: financialTestTeacherID, Role: domain.RoleWaliKelas},
 		StudentID:      uuid.New(),
 		AcademicYearID: uuid.New(),
 	})
@@ -668,10 +668,10 @@ func TestSavingsAccountServiceCreateCommitErrorRollsBack(t *testing.T) {
 func TestSavingsAccountServiceCreateBeginError(t *testing.T) {
 	wantErr := errors.New("begin failed")
 	manager := &savingsAccountServiceFakeUnitOfWorkManager{beginErr: wantErr}
-	svc := newSavingsAccountServiceForTest(t, repository.RepositorySet{}, manager)
+	svc := newScopedSavingsAccountServiceForTest(t, repository.RepositorySet{}, manager)
 
 	_, err := svc.Create(context.Background(), CreateSavingsAccountInput{
-		Actor:          Actor{UserID: uuid.New(), Role: domain.RoleAdmin},
+		Actor:          Actor{UserID: financialTestTeacherID, Role: domain.RoleWaliKelas},
 		StudentID:      uuid.New(),
 		AcademicYearID: uuid.New(),
 	})

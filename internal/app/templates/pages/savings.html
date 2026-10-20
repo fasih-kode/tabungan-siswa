@@ -6,6 +6,7 @@
     <title>{{.Title}} - Tabungan Siswa</title>
     <link rel="stylesheet" href="/static/css/app.css?v=20261019-toast">
     <script src="/static/js/app.js?v=20261019-toast" defer></script>
+    <script src="/static/js/instant-search.js?v=20261019-toast" defer></script>
 </head>
 <body class="bg-gray-50 dark:bg-gray-900">
 <div class="flex h-screen overflow-hidden">{{template "sidebar" .}}<div class="relative flex min-w-0 flex-1 flex-col overflow-x-hidden overflow-y-auto">{{template "header" .}}
@@ -19,8 +20,37 @@
     <h3 class="mt-6 text-base font-semibold text-gray-800 dark:text-white">Buku Tabungan</h3><div class="mt-3 overflow-x-auto"><table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700"><thead class="bg-gray-50 dark:bg-gray-900"><tr><th class="px-5 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Tanggal</th><th class="px-5 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Jenis</th><th class="px-5 py-3 text-right text-xs font-medium uppercase tracking-wider text-gray-500">Jumlah</th><th class="px-5 py-3 text-right text-xs font-medium uppercase tracking-wider text-gray-500">Saldo berjalan</th></tr></thead><tbody class="divide-y divide-gray-200 dark:divide-gray-800">{{range .Passbook}}<tr><td class="px-5 py-4 text-sm">{{.Date}}</td><td class="px-5 py-4 text-sm">{{.Type}}</td><td class="px-5 py-4 text-right text-sm">{{.Amount}}</td><td class="px-5 py-4 text-right text-sm font-medium">{{.Balance}}</td></tr>{{else}}<tr><td colspan="4" class="px-5 py-12 text-center text-sm text-gray-500">Belum ada transaksi pada siklus tabungan ini.</td></tr>{{end}}</tbody></table></div>
 </section><a class="text-sm font-medium text-blue-600 hover:underline" href="/savings?academic_year_id={{.AcademicYearID}}">Kembali ke daftar tabungan</a>
 {{else}}
-<section class="rounded-2xl border border-gray-200 bg-white p-5 shadow-theme-sm dark:border-gray-800 dark:bg-gray-800"><form method="get" action="/savings" class="grid grid-cols-1 items-end gap-4 md:grid-cols-4"><div><label class="form-label" for="savings-year">Tahun ajaran</label><select class="form-input" id="savings-year" name="academic_year_id" required><option value="">Pilih tahun ajaran</option>{{range .Years}}<option value="{{.ID}}" {{if eq $.AcademicYearID .ID}}selected{{end}}>{{.Name}}</option>{{end}}</select></div>{{if eq .Role "WALI_KELAS"}}<div><label class="form-label" for="savings-class">Kelas</label><select class="form-input" id="savings-class" name="class_id"><option value="">Semua kelas yang diampu</option>{{range .Classes}}<option value="{{.ID}}" {{if eq $.ClassID .ID}}selected{{end}}>{{.Name}}</option>{{end}}</select></div>{{end}}{{if or (eq .Role "ADMIN") (eq .Role "WALI_KELAS")}}<div><label class="form-label" for="savings-search">Cari siswa</label><input class="form-input" id="savings-search" name="q" value="{{.Search}}" placeholder="Nama, NIS, atau NISN"></div><div><button class="form-button-primary w-full" type="submit">Tampilkan</button></div>{{else}}<div><button class="form-button-primary" type="submit">Tampilkan</button></div>{{end}}</form></section>
-{{if .AcademicYearID}}<section class="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-theme-sm dark:border-gray-800 dark:bg-gray-800"><div class="overflow-x-auto"><table class="min-w-full divide-y divide-gray-200 dark:divide-gray-800"><thead class="bg-gray-50 dark:bg-gray-900"><tr><th class="px-5 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Siswa</th><th class="px-5 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Kelas</th><th class="px-5 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Siklus</th><th class="px-5 py-3 text-right text-xs font-medium uppercase tracking-wider text-gray-500">Saldo</th><th class="px-5 py-3 text-right text-xs font-medium uppercase tracking-wider text-gray-500">Aksi</th></tr></thead><tbody class="divide-y divide-gray-200 dark:divide-gray-800">{{range .Rows}}<tr><td class="px-5 py-4"><div class="text-sm font-medium text-gray-800 dark:text-white">{{.Name}}</div><div class="text-xs text-gray-500">NIS {{.NIS}} · {{template "status-badge" .StudentStatus}}</div></td><td class="px-5 py-4 text-sm">{{if .Class}}{{.Class}}{{else}}—{{end}}</td><td class="px-5 py-4 text-sm">{{if .AccountID}}{{.AccountStatus}}{{else}}Belum dibuat{{end}}</td><td class="px-5 py-4 text-right text-sm">{{if .AccountID}}{{.Balance}}{{else}}—{{end}}</td><td class="px-5 py-4 text-right text-sm">{{if .AccountID}}<a class="font-medium text-blue-600 hover:underline" href="/savings/{{.AccountID}}">Buku tabungan</a>{{else if .CanCreate}}<form method="post" action="/savings" class="inline"><input type="hidden" name="csrf_token" value="{{$.CSRFToken}}"><input type="hidden" name="student_id" value="{{.StudentID}}"><input type="hidden" name="academic_year_id" value="{{$.AcademicYearID}}"><button class="font-medium text-blue-600 hover:underline" type="submit">Buat siklus</button></form>{{else}}—{{end}}</td></tr>{{else}}<tr><td colspan="5" class="px-5 py-12 text-center text-sm text-gray-500">Tidak ada siswa dalam cakupan tahun ajaran ini.</td></tr>{{end}}</tbody></table></div>{{template "pagination" .Pagination}}</section>{{end}}
+<section id="savings-directory" data-instant-region class="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-theme-sm dark:border-gray-800 dark:bg-gray-800">
+ <form method="get" action="/savings" class="directory-toolbar" data-instant-filter>
+  {{if or (eq .Role "ADMIN") (eq .Role "WALI_KELAS")}}
+  <div class="directory-search"><label class="sr-only" for="savings-search">Cari nama, NIS, atau NISN</label><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="10.5" cy="10.5" r="6.5"></circle><path d="m16 16 4.5 4.5"></path></svg><input class="form-input" type="search" id="savings-search" name="q" value="{{.Search}}" placeholder="Cari nama, NIS, NISN…" autocomplete="off" aria-controls="savings-results"></div>
+  {{end}}
+  {{if eq .Role "WALI_KELAS"}}<div class="directory-filter"><label class="sr-only" for="savings-class">Kelas</label><select class="form-input" id="savings-class" name="class_id" {{if not .AcademicYearID}}disabled{{end}}><option value="">{{if .AcademicYearID}}Semua kelas yang diampu{{else}}Pilih tahun ajaran{{end}}</option>{{range .Classes}}<option value="{{.ID}}" {{if eq $.ClassID .ID}}selected{{end}}>{{.Name}}</option>{{end}}</select></div>{{end}}
+  <div class="directory-filter"><label class="sr-only" for="savings-year">Tahun ajaran</label><select class="form-input" id="savings-year" name="academic_year_id" data-reset-filter="class_id"><option value="">Pilih tahun ajaran</option>{{range .Years}}<option value="{{.ID}}" {{if eq $.AcademicYearID .ID}}selected{{end}}>{{.Name}}</option>{{end}}</select></div>
+  <span class="directory-summary" data-instant-summary>Menampilkan {{len .Rows}} siswa</span>
+  <noscript><button class="form-button-primary" type="submit">Tampilkan</button></noscript>
+ </form>
+ <p class="instant-feedback" data-instant-status role="status" aria-live="polite"></p>
+ <div id="savings-results" data-instant-results>
+ {{if .AcademicYearID}}
+ <div class="overflow-x-auto"><table class="min-w-full divide-y divide-gray-200 dark:divide-gray-800">
+  <thead class="bg-gray-50 dark:bg-gray-900"><tr>
+   <th class="px-5 py-3 text-left text-xs uppercase text-gray-500">Nama</th><th class="px-5 py-3 text-left text-xs uppercase text-gray-500">NIS</th><th class="px-5 py-3 text-left text-xs uppercase text-gray-500">Kelas</th><th class="px-5 py-3 text-left text-xs uppercase text-gray-500">Status siswa</th><th class="px-5 py-3 text-left text-xs uppercase text-gray-500">Siklus</th><th class="px-5 py-3 text-right text-xs uppercase text-gray-500">Saldo</th><th class="px-5 py-3 text-left text-xs uppercase text-gray-500">Aksi</th>
+  </tr></thead>
+  <tbody class="divide-y divide-gray-200 dark:divide-gray-800">{{range .Rows}}<tr>
+   <td class="px-5 py-4 text-sm font-medium">{{.Name}}</td>
+   <td class="px-5 py-4 text-sm">{{.NIS}}</td>
+   <td class="px-5 py-4 text-sm">{{if .Class}}{{.Class}}{{else}}—{{end}}</td>
+   <td class="px-5 py-4 text-sm">{{template "status-badge" .StudentStatus}}</td>
+   <td class="px-5 py-4 text-sm">{{if .AccountID}}{{.AccountStatus}}{{else}}Belum dibuat{{end}}</td>
+   <td class="px-5 py-4 text-right text-sm">{{if .AccountID}}{{.Balance}}{{else}}—{{end}}</td>
+   <td class="px-5 py-4 text-sm">{{if .AccountID}}<a class="font-medium text-blue-600 hover:underline" href="/savings/{{.AccountID}}">Buku tabungan</a>{{else if and .CanCreate (eq $.Role "WALI_KELAS")}}<form method="post" action="/savings" class="inline"><input type="hidden" name="csrf_token" value="{{$.CSRFToken}}"><input type="hidden" name="student_id" value="{{.StudentID}}"><input type="hidden" name="academic_year_id" value="{{$.AcademicYearID}}"><button class="font-medium text-blue-600 hover:underline" type="submit">Buka tabungan</button></form>{{else}}—{{end}}</td>
+  </tr>{{else}}<tr><td colspan="7" class="px-5 py-12 text-center text-sm text-gray-500">Tidak ada siswa dalam cakupan tahun ajaran ini.</td></tr>{{end}}</tbody>
+ </table></div>
+ {{template "pagination" .Pagination}}
+ {{else}}<p class="px-5 py-12 text-center text-sm text-gray-500">Pilih tahun ajaran untuk melihat tabungan siswa.</p>{{end}}
+ </div>
+</section>
 {{end}}
 </div></div></main></div></div></body></html>
 {{end}}

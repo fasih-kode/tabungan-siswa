@@ -18,7 +18,7 @@ func (s *transactionService) Deposit(
 	ctx context.Context,
 	input DepositInput,
 ) (DepositOutput, error) {
-	if err := RequireRole(input.Actor, domain.RoleAdmin, domain.RoleWaliKelas); err != nil {
+	if err := RequireRole(input.Actor, domain.RoleWaliKelas); err != nil {
 		return DepositOutput{}, err
 	}
 
@@ -102,7 +102,7 @@ func (s *transactionService) Withdrawal(
 	ctx context.Context,
 	input WithdrawalInput,
 ) (WithdrawalOutput, error) {
-	if err := RequireRole(input.Actor, domain.RoleAdmin, domain.RoleWaliKelas); err != nil {
+	if err := RequireRole(input.Actor, domain.RoleWaliKelas); err != nil {
 		return WithdrawalOutput{}, err
 	}
 
@@ -256,7 +256,7 @@ func (s *transactionService) Edit(
 	ctx context.Context,
 	input EditTransactionInput,
 ) (EditTransactionOutput, error) {
-	if err := RequireRole(input.Actor, domain.RoleAdmin, domain.RoleWaliKelas); err != nil {
+	if err := RequireRole(input.Actor, domain.RoleWaliKelas); err != nil {
 		return EditTransactionOutput{}, err
 	}
 
@@ -370,7 +370,7 @@ func (s *transactionService) Cancel(
 	ctx context.Context,
 	input CancelTransactionInput,
 ) (CancelTransactionOutput, error) {
-	if err := RequireRole(input.Actor, domain.RoleAdmin, domain.RoleWaliKelas); err != nil {
+	if err := RequireRole(input.Actor, domain.RoleWaliKelas); err != nil {
 		return CancelTransactionOutput{}, err
 	}
 

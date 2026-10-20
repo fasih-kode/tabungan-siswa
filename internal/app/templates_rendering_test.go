@@ -150,12 +150,12 @@ func TestSavingsTemplateRendersAccountCreationAndPassbook(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	list := httpapp.SavingsPageViewModel{Title: "Tabungan", Heading: "Tabungan Siswa", Description: "Siklus", Role: "ADMIN", Username: "admin", CSRFToken: "csrf", AcademicYearID: "year", Years: []httpapp.SavingsYearOption{{ID: "year", Name: "2026/2027"}}, Rows: []httpapp.SavingsDirectoryRow{{StudentID: "student", Name: "Ani", StudentStatus: "ACTIVE", CanCreate: true}}}
+	list := httpapp.SavingsPageViewModel{Title: "Tabungan", Heading: "Tabungan Siswa", Description: "Siklus", Role: "WALI_KELAS", Username: "wali", CSRFToken: "csrf", AcademicYearID: "year", Years: []httpapp.SavingsYearOption{{ID: "year", Name: "2026/2027"}}, Rows: []httpapp.SavingsDirectoryRow{{StudentID: "student", Name: "Ani", StudentStatus: "ACTIVE", CanCreate: true}}}
 	var out strings.Builder
 	if err := templates.ExecuteTemplate(&out, "savings", list); err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"2026/2027", "Buat siklus", `action="/savings"`, `name="csrf_token"`} {
+	for _, want := range []string{"2026/2027", "Buka tabungan", `action="/savings"`, `name="csrf_token"`} {
 		if !strings.Contains(out.String(), want) {
 			t.Errorf("savings list missing %q", want)
 		}
@@ -170,4 +170,53 @@ func TestSavingsTemplateRendersAccountCreationAndPassbook(t *testing.T) {
 			t.Errorf("passbook detail missing %q", want)
 		}
 	}
+}
+
+func TestSavingsTemplateEmptyAndSettledStates(t *testing.T) {
+	templates, err := template.ParseFS(templateFiles, "templates/layouts/*.html", "templates/partials/*.html", "templates/auth/*.html", "templates/pages/*.html")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, status := range []string{"OPEN", "SETTLED"} {
+		t.Run(status, func(t *testing.T) {
+			vm := httpapp.SavingsPageViewModel{Title: "Tabungan", Role: "ADMIN", IsDetail: true, StudentName: "Ani", AccountStatus: status, Balance: "Rp 0"}
+			var out strings.Builder
+			if err := templates.ExecuteTemplate(&out, "savings", vm); err != nil {
+				t.Fatal(err)
+			}
+			for _, want := range []string{"Siklus " + status, "Rp 0", "Belum ada transaksi pada siklus tabungan ini."} {
+				if !strings.Contains(out.String(), want) {
+					t.Errorf("missing %q", want)
+				}
+			}
+			if strings.Contains(out.String(), "Buka tabungan") {
+				t.Error("detail must not offer account creation")
+			}
+		})
+	}
+	t.Run("settled directory", func(t *testing.T) {
+		vm := httpapp.SavingsPageViewModel{Title: "Tabungan", Role: "ADMIN", AcademicYearID: "year", Rows: []httpapp.SavingsDirectoryRow{{Name: "Ani", AccountID: "settled-account", AccountStatus: "SETTLED", Balance: "Rp 0"}}}
+		var out strings.Builder
+		if err := templates.ExecuteTemplate(&out, "savings", vm); err != nil {
+			t.Fatal(err)
+		}
+		for _, want := range []string{"SETTLED", `href="/savings/settled-account"`} {
+			if !strings.Contains(out.String(), want) {
+				t.Errorf("missing %q", want)
+			}
+		}
+		if strings.Contains(out.String(), "Buka tabungan") {
+			t.Error("settled cycle must remain readable without recreation")
+		}
+	})
+	t.Run("empty directory", func(t *testing.T) {
+		vm := httpapp.SavingsPageViewModel{Title: "Tabungan", Role: "ADMIN", AcademicYearID: "year"}
+		var out strings.Builder
+		if err := templates.ExecuteTemplate(&out, "savings", vm); err != nil {
+			t.Fatal(err)
+		}
+		if !strings.Contains(out.String(), "Tidak ada siswa dalam cakupan tahun ajaran ini.") {
+			t.Error("empty directory message missing")
+		}
+	})
 }

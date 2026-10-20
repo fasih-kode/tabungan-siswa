@@ -127,7 +127,7 @@ func TestSavingsPageCreateAndDetail(t *testing.T) {
 	account := domain.SavingsAccount{ID: uuid.New(), StudentID: studentID, AcademicYearID: yearID, Status: domain.SavingsAccountOpen}
 	accounts := &savingsPageAccountsFake{account: account}
 	h := newSavingsPageHandlerForTest(t, accounts, &savingsPageStudentsFake{getStudent: student}, &savingsPageYearsFake{get: year})
-	actor := service.Actor{UserID: uuid.New(), Role: domain.RoleAdmin}
+	actor := service.Actor{UserID: uuid.New(), Role: domain.RoleWaliKelas}
 	form := url.Values{"student_id": {studentID.String()}, "academic_year_id": {yearID.String()}}
 	req := httptest.NewRequest(http.MethodPost, "/savings", strings.NewReader(form.Encode()))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
@@ -152,7 +152,7 @@ func TestSavingsPageRejectsMalformedAccountCreate(t *testing.T) {
 	form := url.Values{"student_id": {"bad"}, "academic_year_id": {uuid.NewString()}}
 	req := httptest.NewRequest(http.MethodPost, "/savings", strings.NewReader(form.Encode()))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	req = req.WithContext(service.WithActor(req.Context(), service.Actor{UserID: uuid.New(), Role: domain.RoleAdmin}))
+	req = req.WithContext(service.WithActor(req.Context(), service.Actor{UserID: uuid.New(), Role: domain.RoleWaliKelas}))
 	recorder := httptest.NewRecorder()
 	h.Create(recorder, req)
 	if recorder.Code != http.StatusBadRequest {

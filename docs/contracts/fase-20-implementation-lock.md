@@ -32,3 +32,21 @@ and passbook according to the authorization contract.
 No database migration was required. Transaction entry, editing, and cancellation
 forms remain in FASE 21. A separate browser E2E session was not run; automated
 route, service, database integration, and template tests passed.
+
+## Audit follow-up — 2026-10-19
+
+- POST form validation now enforces a valid URL-encoded Content-Type and the
+  16 KiB body limit before CSRF parsing. Invalid encoding, multipart requests,
+  and oversized bodies cannot reach account creation.
+- Route regression tests cover those rejection cases with authenticated
+  sessions, valid CSRF tokens, and zero creation calls; URL-encoded forms with
+  a valid charset parameter still succeed.
+- Template tests explicitly cover empty OPEN/SETTLED passbooks, an empty
+  directory, and a readable SETTLED account without a recreation action.
+- The HTTP contract now specifies body fields, query parameters, pagination,
+  validation order, redirects, and error status mappings. Its status is LOCKED.
+- Reverification passed: `make test-integration` and
+  `GOFLAGS=-race make test-integration`, both against the guarded
+  `tabungan_siswa_fase168_clean_test` database; `go vet ./...`,
+  `go build ./...`, `npm run test:instant-search` (7 tests), and
+  `git diff --check` also passed.

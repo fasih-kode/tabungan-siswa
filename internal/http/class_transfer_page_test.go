@@ -1,9 +1,11 @@
 package http
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"html/template"
+	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -311,7 +313,7 @@ func TestSavingsRoutesRequireAuthenticationAndCSRF(t *testing.T) {
 	accountFake := &savingsPageAccountsFake{account: domain.SavingsAccount{ID: uuid.New(), StudentID: studentID, AcademicYearID: yearID}}
 	year := &domain.AcademicYear{ID: yearID, Name: "2026/2027", Status: domain.AcademicYearOpen}
 	savings := newSavingsPageHandlerForTest(t, accountFake, &savingsPageStudentsFake{}, &savingsPageYearsFake{years: []*domain.AcademicYear{year}, get: year})
-	router, session := newClassTransferRouterWithSession(t, domain.RoleAdmin, &classTransferPageServiceFake{}, savings)
+	router, session := newClassTransferRouterWithSession(t, domain.RoleWaliKelas, &classTransferPageServiceFake{}, savings)
 	unauthenticated := httptest.NewRecorder()
 	router.ServeHTTP(unauthenticated, httptest.NewRequest(http.MethodGet, "/savings", nil))
 	if unauthenticated.Code != http.StatusUnauthorized {
@@ -344,8 +346,58 @@ func TestSavingsRoutesRequireAuthenticationAndCSRF(t *testing.T) {
 	valid.AddCookie(&http.Cookie{Name: security.DefaultCSRFCookieName, Value: token})
 	validRecorder := httptest.NewRecorder()
 	router.ServeHTTP(validRecorder, valid)
-	if validRecorder.Code != http.StatusSeeOther || accountFake.createCalls != 1 || accountFake.createInput.Actor.Role != domain.RoleAdmin {
+	if validRecorder.Code != http.StatusSeeOther || accountFake.createCalls != 1 || accountFake.createInput.Actor.Role != domain.RoleWaliKelas {
 		t.Fatalf("POST with CSRF status/calls/role=%d/%d/%s", validRecorder.Code, accountFake.createCalls, accountFake.createInput.Actor.Role)
+	}
+}
+
+func TestSavingsRouteValidatesFormBeforeCSRF(t *testing.T) {
+	accounts := &savingsPageAccountsFake{}
+	savings := newSavingsPageHandlerForTest(t, accounts, &savingsPageStudentsFake{}, &savingsPageYearsFake{})
+	router, session := newClassTransferRouterWithSession(t, domain.RoleWaliKelas, &classTransferPageServiceFake{}, savings)
+	token, err := security.GenerateCSRFToken()
+	if err != nil {
+		t.Fatal(err)
+	}
+	form := url.Values{"student_id": {uuid.NewString()}, "academic_year_id": {uuid.NewString()}, "csrf_token": {token}}
+	var multipartBody bytes.Buffer
+	writer := multipart.NewWriter(&multipartBody)
+	for key := range form {
+		if err := writer.WriteField(key, form.Get(key)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatal(err)
+	}
+	for _, tt := range []struct {
+		name, contentType, body string
+		want                    int
+	}{
+		{"missing content type", "", form.Encode(), http.StatusBadRequest},
+		{"json", "application/json", `{}`, http.StatusBadRequest},
+		{"multipart with valid fields and CSRF", writer.FormDataContentType(), multipartBody.String(), http.StatusBadRequest},
+		{"invalid media type parameters", "application/x-www-form-urlencoded; charset", form.Encode(), http.StatusBadRequest},
+		{"malformed encoding", "application/x-www-form-urlencoded", form.Encode() + "&bad=%zz", http.StatusBadRequest},
+		{"oversized after valid fields", "application/x-www-form-urlencoded", form.Encode() + "&padding=" + strings.Repeat("x", maxSavingsFormBytes), http.StatusBadRequest},
+		{"valid charset parameter", "application/x-www-form-urlencoded; charset=UTF-8", form.Encode(), http.StatusSeeOther},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			before := accounts.createCalls
+			req := httptest.NewRequest(http.MethodPost, "/savings", strings.NewReader(tt.body))
+			req.Header.Set("Content-Type", tt.contentType)
+			req.AddCookie(&http.Cookie{Name: security.DefaultSessionCookieName, Value: session})
+			req.AddCookie(&http.Cookie{Name: security.DefaultCSRFCookieName, Value: token})
+			recorder := httptest.NewRecorder()
+			router.ServeHTTP(recorder, req)
+			wantCalls := before
+			if tt.want == http.StatusSeeOther {
+				wantCalls++
+			}
+			if recorder.Code != tt.want || accounts.createCalls != wantCalls {
+				t.Fatalf("status/calls = %d/%d, want %d/%d", recorder.Code, accounts.createCalls, tt.want, wantCalls)
+			}
+		})
 	}
 }
 

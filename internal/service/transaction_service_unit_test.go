@@ -269,7 +269,7 @@ func newTransactionTestRepositories(
 	}
 }
 
-func TestTransactionServiceDepositAdmin(t *testing.T) {
+func TestTransactionServiceDepositWaliKelas(t *testing.T) {
 	account := newTransactionTestAccount(t)
 	accountRepo := &transactionServiceFakeSavingsAccountRepository{
 		getByIDForUpdateFn: func(context.Context, uuid.UUID) (domain.SavingsAccount, error) {
@@ -282,8 +282,8 @@ func TestTransactionServiceDepositAdmin(t *testing.T) {
 		repos: newTransactionTestRepositories(accountRepo, transactionRepo, nil, nil, nil, auditRepo),
 	}
 	manager := &transactionServiceFakeUnitOfWorkManager{uow: uow}
-	svc := newTransactionServiceForTest(t, uow.repos, manager)
-	actor := Actor{UserID: uuid.New(), Role: domain.RoleAdmin}
+	svc := newScopedTransactionServiceForTest(t, uow.repos, manager)
+	actor := Actor{UserID: financialTestTeacherID, Role: domain.RoleWaliKelas}
 
 	got, err := svc.Deposit(context.Background(), DepositInput{
 		Actor: actor, SavingsAccountID: account.ID, Amount: 100_000,
@@ -321,9 +321,9 @@ func TestTransactionServiceDepositRejectsInvalidHistoricalBalance(t *testing.T) 
 		getByIDForUpdateFn: func(context.Context, uuid.UUID) (domain.SavingsAccount, error) { return account, nil },
 	}
 	uow := &transactionServiceFakeUnitOfWork{repos: newTransactionTestRepositories(accountRepo, transactionRepo, nil, nil, nil, &transactionServiceFakeAuditRepository{})}
-	svc := newTransactionServiceForTest(t, uow.repos, &transactionServiceFakeUnitOfWorkManager{uow: uow})
+	svc := newScopedTransactionServiceForTest(t, uow.repos, &transactionServiceFakeUnitOfWorkManager{uow: uow})
 
-	_, err = svc.Deposit(context.Background(), DepositInput{Actor: Actor{UserID: uuid.New(), Role: domain.RoleAdmin}, SavingsAccountID: account.ID, Amount: 200_000, TransactionDate: time.Date(2026, 10, 1, 0, 0, 0, 0, time.UTC)})
+	_, err = svc.Deposit(context.Background(), DepositInput{Actor: Actor{UserID: financialTestTeacherID, Role: domain.RoleWaliKelas}, SavingsAccountID: account.ID, Amount: 200_000, TransactionDate: time.Date(2026, 10, 1, 0, 0, 0, 0, time.UTC)})
 	if !errors.Is(err, domain.ErrNegativeBalance) {
 		t.Fatalf("Deposit() error = %v, want %v", err, domain.ErrNegativeBalance)
 	}
@@ -345,14 +345,14 @@ func TestTransactionServiceDepositReusesOuterTransaction(t *testing.T) {
 		repos: newTransactionTestRepositories(accountRepo, transactionRepo, nil, nil, nil, auditRepo),
 	}
 	manager := &transactionServiceFakeUnitOfWorkManager{uow: uow}
-	svc := newTransactionServiceForTest(t, uow.repos, manager)
+	svc := newScopedTransactionServiceForTest(t, uow.repos, manager)
 
 	err := WithinTransaction(
 		context.Background(),
 		manager,
 		func(ctx context.Context, _ repository.RepositorySet) error {
 			_, err := svc.Deposit(ctx, DepositInput{
-				Actor:            Actor{UserID: uuid.New(), Role: domain.RoleAdmin},
+				Actor:            Actor{UserID: financialTestTeacherID, Role: domain.RoleWaliKelas},
 				SavingsAccountID: account.ID,
 				Amount:           100_000,
 				TransactionDate:  time.Date(2026, 10, 1, 0, 0, 0, 0, time.UTC),
@@ -392,10 +392,10 @@ func TestTransactionServiceWithdrawalRejectsInsufficientBalance(t *testing.T) {
 	}
 	auditRepo := &transactionServiceFakeAuditRepository{}
 	uow := &transactionServiceFakeUnitOfWork{repos: newTransactionTestRepositories(accountRepo, transactionRepo, nil, nil, nil, auditRepo)}
-	svc := newTransactionServiceForTest(t, uow.repos, &transactionServiceFakeUnitOfWorkManager{uow: uow})
+	svc := newScopedTransactionServiceForTest(t, uow.repos, &transactionServiceFakeUnitOfWorkManager{uow: uow})
 
 	_, err := svc.Withdrawal(context.Background(), WithdrawalInput{
-		Actor:            Actor{UserID: uuid.New(), Role: domain.RoleAdmin},
+		Actor:            Actor{UserID: financialTestTeacherID, Role: domain.RoleWaliKelas},
 		SavingsAccountID: account.ID, Amount: 75_000,
 		TransactionDate: time.Now(),
 	})
@@ -424,10 +424,10 @@ func TestTransactionServiceWithdrawalUsesRowLockAndCommits(t *testing.T) {
 	}
 	auditRepo := &transactionServiceFakeAuditRepository{}
 	uow := &transactionServiceFakeUnitOfWork{repos: newTransactionTestRepositories(accountRepo, transactionRepo, nil, nil, nil, auditRepo)}
-	svc := newTransactionServiceForTest(t, uow.repos, &transactionServiceFakeUnitOfWorkManager{uow: uow})
+	svc := newScopedTransactionServiceForTest(t, uow.repos, &transactionServiceFakeUnitOfWorkManager{uow: uow})
 
 	got, err := svc.Withdrawal(context.Background(), WithdrawalInput{
-		Actor:            Actor{UserID: uuid.New(), Role: domain.RoleAdmin},
+		Actor:            Actor{UserID: financialTestTeacherID, Role: domain.RoleWaliKelas},
 		SavingsAccountID: account.ID, Amount: 75_000,
 		TransactionDate: time.Now(),
 	})
@@ -550,10 +550,10 @@ func TestTransactionServiceEditRecalculatesBalanceAndAudits(t *testing.T) {
 	}
 	auditRepo := &transactionServiceFakeAuditRepository{}
 	uow := &transactionServiceFakeUnitOfWork{repos: newTransactionTestRepositories(accountRepo, transactionRepo, nil, nil, nil, auditRepo)}
-	svc := newTransactionServiceForTest(t, uow.repos, &transactionServiceFakeUnitOfWorkManager{uow: uow})
+	svc := newScopedTransactionServiceForTest(t, uow.repos, &transactionServiceFakeUnitOfWorkManager{uow: uow})
 
 	got, err := svc.Edit(context.Background(), EditTransactionInput{
-		Actor: Actor{UserID: uuid.New(), Role: domain.RoleAdmin}, TransactionID: original.ID,
+		Actor: Actor{UserID: financialTestTeacherID, Role: domain.RoleWaliKelas}, TransactionID: original.ID,
 		Amount: 75_000, TransactionDate: time.Date(2026, 10, 2, 0, 0, 0, 0, time.UTC),
 	})
 	if err != nil {
@@ -581,8 +581,8 @@ func TestTransactionServiceEditRejectsNonPositiveAmount(t *testing.T) {
 	}
 	uow := &transactionServiceFakeUnitOfWork{repos: newTransactionTestRepositories(accountRepo, transactionRepo, nil, nil, nil, nil)}
 	manager := &transactionServiceFakeUnitOfWorkManager{uow: uow}
-	svc := newTransactionServiceForTest(t, uow.repos, manager)
-	_, err := svc.Edit(context.Background(), EditTransactionInput{Actor: Actor{UserID: uuid.New(), Role: domain.RoleAdmin}, TransactionID: original.ID, Amount: 0, TransactionDate: original.TransactionDate})
+	svc := newScopedTransactionServiceForTest(t, uow.repos, manager)
+	_, err := svc.Edit(context.Background(), EditTransactionInput{Actor: Actor{UserID: financialTestTeacherID, Role: domain.RoleWaliKelas}, TransactionID: original.ID, Amount: 0, TransactionDate: original.TransactionDate})
 	if !errors.Is(err, domain.ErrInvalidAmount) {
 		t.Fatalf("Edit() error = %v, want %v", err, domain.ErrInvalidAmount)
 	}
@@ -612,10 +612,10 @@ func TestTransactionServiceEditRejectsNegativeResultingBalance(t *testing.T) {
 		getByIDForUpdateFn: func(context.Context, uuid.UUID) (domain.SavingsAccount, error) { return account, nil },
 	}
 	uow := &transactionServiceFakeUnitOfWork{repos: newTransactionTestRepositories(accountRepo, transactionRepo, nil, nil, nil, nil)}
-	svc := newTransactionServiceForTest(t, uow.repos, &transactionServiceFakeUnitOfWorkManager{uow: uow})
+	svc := newScopedTransactionServiceForTest(t, uow.repos, &transactionServiceFakeUnitOfWorkManager{uow: uow})
 
 	_, err := svc.Edit(context.Background(), EditTransactionInput{
-		Actor: Actor{UserID: uuid.New(), Role: domain.RoleAdmin}, TransactionID: original.ID,
+		Actor: Actor{UserID: financialTestTeacherID, Role: domain.RoleWaliKelas}, TransactionID: original.ID,
 		Amount: 50_000, TransactionDate: time.Now(),
 	})
 	if !errors.Is(err, domain.ErrNegativeBalance) {
@@ -641,10 +641,10 @@ func TestTransactionServiceCancelRejectsSettledAccount(t *testing.T) {
 	}
 	auditRepo := &transactionServiceFakeAuditRepository{}
 	uow := &transactionServiceFakeUnitOfWork{repos: newTransactionTestRepositories(accountRepo, transactionRepo, nil, nil, nil, auditRepo)}
-	svc := newTransactionServiceForTest(t, uow.repos, &transactionServiceFakeUnitOfWorkManager{uow: uow})
+	svc := newScopedTransactionServiceForTest(t, uow.repos, &transactionServiceFakeUnitOfWorkManager{uow: uow})
 
 	_, err := svc.Cancel(context.Background(), CancelTransactionInput{
-		Actor: Actor{UserID: uuid.New(), Role: domain.RoleAdmin}, TransactionID: original.ID,
+		Actor: Actor{UserID: financialTestTeacherID, Role: domain.RoleWaliKelas}, TransactionID: original.ID,
 	})
 	if !errors.Is(err, domain.ErrInvalidTransition) {
 		t.Fatalf("Cancel() error = %v, want %v", err, domain.ErrInvalidTransition)
@@ -671,8 +671,8 @@ func TestTransactionServiceCancelRejectsInvalidHistoricalBalance(t *testing.T) {
 		getByIDForUpdateFn: func(context.Context, uuid.UUID) (domain.SavingsAccount, error) { return account, nil },
 	}
 	uow := &transactionServiceFakeUnitOfWork{repos: newTransactionTestRepositories(accountRepo, transactionRepo, nil, nil, nil, &transactionServiceFakeAuditRepository{})}
-	svc := newTransactionServiceForTest(t, uow.repos, &transactionServiceFakeUnitOfWorkManager{uow: uow})
-	_, err = svc.Cancel(context.Background(), CancelTransactionInput{Actor: Actor{UserID: uuid.New(), Role: domain.RoleAdmin}, TransactionID: deposit.ID})
+	svc := newScopedTransactionServiceForTest(t, uow.repos, &transactionServiceFakeUnitOfWorkManager{uow: uow})
+	_, err = svc.Cancel(context.Background(), CancelTransactionInput{Actor: Actor{UserID: financialTestTeacherID, Role: domain.RoleWaliKelas}, TransactionID: deposit.ID})
 	if !errors.Is(err, domain.ErrNegativeBalance) {
 		t.Fatalf("Cancel() error = %v, want %v", err, domain.ErrNegativeBalance)
 	}
@@ -709,10 +709,10 @@ func TestTransactionServiceRollsBackOnAuditFailure(t *testing.T) {
 		getByIDForUpdateFn: func(context.Context, uuid.UUID) (domain.SavingsAccount, error) { return account, nil },
 	}
 	uow := &transactionServiceFakeUnitOfWork{repos: newTransactionTestRepositories(accountRepo, transactionRepo, nil, nil, nil, auditRepo)}
-	svc := newTransactionServiceForTest(t, uow.repos, &transactionServiceFakeUnitOfWorkManager{uow: uow})
+	svc := newScopedTransactionServiceForTest(t, uow.repos, &transactionServiceFakeUnitOfWorkManager{uow: uow})
 
 	_, err := svc.Deposit(context.Background(), DepositInput{
-		Actor: Actor{UserID: uuid.New(), Role: domain.RoleAdmin}, SavingsAccountID: account.ID,
+		Actor: Actor{UserID: financialTestTeacherID, Role: domain.RoleWaliKelas}, SavingsAccountID: account.ID,
 		Amount: 100_000, TransactionDate: time.Now(),
 	})
 	if err == nil || err.Error() != "audit failure" {
@@ -725,9 +725,9 @@ func TestTransactionServiceRollsBackOnAuditFailure(t *testing.T) {
 
 func TestTransactionServiceBeginFailure(t *testing.T) {
 	beginErr := errors.New("begin failure")
-	svc := newTransactionServiceForTest(t, repository.RepositorySet{}, &transactionServiceFakeUnitOfWorkManager{beginErr: beginErr})
+	svc := newScopedTransactionServiceForTest(t, repository.RepositorySet{}, &transactionServiceFakeUnitOfWorkManager{beginErr: beginErr})
 	_, err := svc.Deposit(context.Background(), DepositInput{
-		Actor: Actor{UserID: uuid.New(), Role: domain.RoleAdmin}, SavingsAccountID: uuid.New(), Amount: 1,
+		Actor: Actor{UserID: financialTestTeacherID, Role: domain.RoleWaliKelas}, SavingsAccountID: uuid.New(), Amount: 1,
 		TransactionDate: time.Now(),
 	})
 	if err == nil || !errors.Is(err, beginErr) {
@@ -826,10 +826,10 @@ func TestTransactionServiceCancelAlreadyCancelled(t *testing.T) {
 	}
 	auditRepo := &transactionServiceFakeAuditRepository{}
 	uow := &transactionServiceFakeUnitOfWork{repos: newTransactionTestRepositories(accountRepo, transactionRepo, nil, nil, nil, auditRepo)}
-	svc := newTransactionServiceForTest(t, uow.repos, &transactionServiceFakeUnitOfWorkManager{uow: uow})
+	svc := newScopedTransactionServiceForTest(t, uow.repos, &transactionServiceFakeUnitOfWorkManager{uow: uow})
 
 	_, err := svc.Cancel(context.Background(), CancelTransactionInput{
-		Actor: Actor{UserID: uuid.New(), Role: domain.RoleAdmin}, TransactionID: transaction.ID,
+		Actor: Actor{UserID: financialTestTeacherID, Role: domain.RoleWaliKelas}, TransactionID: transaction.ID,
 	})
 	if !errors.Is(err, domain.ErrAlreadyCancelled) {
 		t.Fatalf("Cancel() error = %v, want %v", err, domain.ErrAlreadyCancelled)
@@ -851,10 +851,10 @@ func TestTransactionServiceCommitFailureRollsBack(t *testing.T) {
 		repos:     newTransactionTestRepositories(accountRepo, transactionRepo, nil, nil, nil, auditRepo),
 		commitErr: commitErr,
 	}
-	svc := newTransactionServiceForTest(t, uow.repos, &transactionServiceFakeUnitOfWorkManager{uow: uow})
+	svc := newScopedTransactionServiceForTest(t, uow.repos, &transactionServiceFakeUnitOfWorkManager{uow: uow})
 
 	_, err := svc.Deposit(context.Background(), DepositInput{
-		Actor: Actor{UserID: uuid.New(), Role: domain.RoleAdmin}, SavingsAccountID: account.ID,
+		Actor: Actor{UserID: financialTestTeacherID, Role: domain.RoleWaliKelas}, SavingsAccountID: account.ID,
 		Amount: 100_000, TransactionDate: time.Now(),
 	})
 	if !errors.Is(err, commitErr) {

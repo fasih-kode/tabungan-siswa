@@ -115,10 +115,11 @@
                     <rect x="3" y="5" width="18" height="14" rx="2"/>
                     <path stroke-linecap="round" stroke-linejoin="round" d="M3 9h18M16 13h2"/>
                 </svg>
-                <span>Tabungan</span>
+                <span>{{if eq .Role "ADMIN"}}Pengawasan Tabungan{{else}}Tabungan{{end}}</span>
             </a>
         </li>
 
+        {{if eq .Role "WALI_KELAS"}}
         <li>
             <a
                 href="/transactions"
@@ -131,6 +132,7 @@
                 <span>Transaksi</span>
             </a>
         </li>
+        {{end}}
     </ul>
 </nav>
 {{end}}

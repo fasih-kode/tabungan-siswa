@@ -2,6 +2,7 @@ package service_test
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"testing"
 	"time"
@@ -26,7 +27,7 @@ func TestSavingsAndTransactionServicesIntegration_CrossServiceCommit(t *testing.
 	transactionRepo := postgres.NewTransactionRepository(db)
 	auditRepo := postgres.NewAuditRepository(db)
 
-	actorUser := newServiceScopeUser(t, domain.RoleAdmin)
+	actorUser := newServiceScopeUser(t, domain.RoleWaliKelas)
 	if err := userRepo.Create(ctx, actorUser); err != nil {
 		t.Fatalf("create actor: %v", err)
 	}
@@ -44,11 +45,14 @@ func TestSavingsAndTransactionServicesIntegration_CrossServiceCommit(t *testing.
 		t.Fatalf("create academic year: %v", err)
 	}
 
+	assignFinancialIntegrationScope(t, db, actorUser.ID, student.ID, academicYear.ID)
 	manager := postgres.NewUnitOfWorkManager(db)
 
 	savingsService, err := service.NewSavingsAccountService(service.Dependencies{
 		Repositories: repository.RepositorySet{
-			Students: studentRepo, AcademicYears: academicYearRepo,
+			Students:                studentRepo,
+			StudentClassHistories:   postgres.NewStudentClassHistoryRepository(db),
+			TeacherClassAssignments: postgres.NewTeacherClassAssignmentRepository(db), AcademicYears: academicYearRepo,
 			SavingsAccounts: savingsAccountRepo, Transactions: transactionRepo, AuditLogs: auditRepo,
 		},
 		UOW: manager,
@@ -59,9 +63,11 @@ func TestSavingsAndTransactionServicesIntegration_CrossServiceCommit(t *testing.
 
 	transactionService, err := service.NewTransactionService(service.Dependencies{
 		Repositories: repository.RepositorySet{
-			Students:        studentRepo,
-			SavingsAccounts: savingsAccountRepo,
-			Transactions:    transactionRepo,
+			Students:                studentRepo,
+			StudentClassHistories:   postgres.NewStudentClassHistoryRepository(db),
+			TeacherClassAssignments: postgres.NewTeacherClassAssignmentRepository(db),
+			SavingsAccounts:         savingsAccountRepo,
+			Transactions:            transactionRepo,
 		},
 		UOW: manager,
 	})
@@ -71,7 +77,7 @@ func TestSavingsAndTransactionServicesIntegration_CrossServiceCommit(t *testing.
 
 	actor := service.Actor{
 		UserID: actorUser.ID,
-		Role:   domain.RoleAdmin,
+		Role:   domain.RoleWaliKelas,
 	}
 
 	var (
@@ -151,6 +157,7 @@ func TestSavingsAndTransactionServicesIntegration_CrossServiceCommit(t *testing.
 	if err := studentRepo.Create(ctx, secondStudent); err != nil {
 		t.Fatalf("create second student: %v", err)
 	}
+	assignFinancialIntegrationScope(t, db, actorUser.ID, secondStudent.ID, academicYear.ID)
 	secondAccount, err := savingsService.Create(ctx, service.CreateSavingsAccountInput{Actor: actor, StudentID: secondStudent.ID, AcademicYearID: academicYear.ID})
 	if err != nil {
 		t.Fatalf("create second student's savings account: %v", err)
@@ -158,11 +165,13 @@ func TestSavingsAndTransactionServicesIntegration_CrossServiceCommit(t *testing.
 	if _, err := transactionService.Deposit(ctx, service.DepositInput{Actor: actor, SavingsAccountID: secondAccount.Account.ID, Amount: domain.Money(25_000), TransactionDate: time.Date(2026, 10, 2, 0, 0, 0, 0, time.UTC)}); err != nil {
 		t.Fatalf("deposit to second student's account: %v", err)
 	}
-	firstBalance, err := savingsService.GetBalance(ctx, service.GetSavingsAccountBalanceInput{Actor: actor, SavingsAccountID: accountID})
+	// An admin without any class assignment can supervise both classes.
+	admin := service.Actor{UserID: uuid.New(), Role: domain.RoleAdmin}
+	firstBalance, err := savingsService.GetBalance(ctx, service.GetSavingsAccountBalanceInput{Actor: admin, SavingsAccountID: accountID})
 	if err != nil {
 		t.Fatal(err)
 	}
-	secondBalance, err := savingsService.GetBalance(ctx, service.GetSavingsAccountBalanceInput{Actor: actor, SavingsAccountID: secondAccount.Account.ID})
+	secondBalance, err := savingsService.GetBalance(ctx, service.GetSavingsAccountBalanceInput{Actor: admin, SavingsAccountID: secondAccount.Account.ID})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -223,7 +232,7 @@ func TestSavingsAndTransactionServicesIntegration_CrossServiceRollbackIsAtomic(t
 	transactionRepo := postgres.NewTransactionRepository(db)
 	auditRepo := postgres.NewAuditRepository(db)
 
-	actorUser := newServiceScopeUser(t, domain.RoleAdmin)
+	actorUser := newServiceScopeUser(t, domain.RoleWaliKelas)
 	if err := userRepo.Create(ctx, actorUser); err != nil {
 		t.Fatalf("create actor: %v", err)
 	}
@@ -241,11 +250,14 @@ func TestSavingsAndTransactionServicesIntegration_CrossServiceRollbackIsAtomic(t
 		t.Fatalf("create academic year: %v", err)
 	}
 
+	assignFinancialIntegrationScope(t, db, actorUser.ID, student.ID, academicYear.ID)
 	manager := postgres.NewUnitOfWorkManager(db)
 
 	savingsService, err := service.NewSavingsAccountService(service.Dependencies{
 		Repositories: repository.RepositorySet{
-			Students: studentRepo,
+			Students:                studentRepo,
+			StudentClassHistories:   postgres.NewStudentClassHistoryRepository(db),
+			TeacherClassAssignments: postgres.NewTeacherClassAssignmentRepository(db),
 		},
 		UOW: manager,
 	})
@@ -255,9 +267,11 @@ func TestSavingsAndTransactionServicesIntegration_CrossServiceRollbackIsAtomic(t
 
 	transactionService, err := service.NewTransactionService(service.Dependencies{
 		Repositories: repository.RepositorySet{
-			Students:        studentRepo,
-			SavingsAccounts: savingsAccountRepo,
-			Transactions:    transactionRepo,
+			Students:                studentRepo,
+			StudentClassHistories:   postgres.NewStudentClassHistoryRepository(db),
+			TeacherClassAssignments: postgres.NewTeacherClassAssignmentRepository(db),
+			SavingsAccounts:         savingsAccountRepo,
+			Transactions:            transactionRepo,
 		},
 		UOW: manager,
 	})
@@ -267,7 +281,7 @@ func TestSavingsAndTransactionServicesIntegration_CrossServiceRollbackIsAtomic(t
 
 	actor := service.Actor{
 		UserID: actorUser.ID,
-		Role:   domain.RoleAdmin,
+		Role:   domain.RoleWaliKelas,
 	}
 
 	wantErr := errors.New("force cross-service rollback")
@@ -358,5 +372,23 @@ func TestSavingsAndTransactionServicesIntegration_CrossServiceRollbackIsAtomic(t
 			"transaction audit count = %d, want 0 after rollback",
 			len(transactionAudits),
 		)
+	}
+}
+
+// Each student is placed in a distinct class assigned to the acting teacher.
+func assignFinancialIntegrationScope(t *testing.T, db *sql.DB, teacherID, studentID, yearID uuid.UUID) {
+	t.Helper()
+	ctx := context.Background()
+	class := newServiceScopeClass(t, "Financial "+uuid.NewString(), 8)
+	if err := postgres.NewClassRepository(db).Create(ctx, class); err != nil {
+		t.Fatal(err)
+	}
+	assignment := newServiceScopeAssignment(t, teacherID, yearID, class.ID)
+	if err := postgres.NewTeacherClassAssignmentRepository(db).Create(ctx, assignment); err != nil {
+		t.Fatal(err)
+	}
+	history := newServiceScopeStudentHistory(t, studentID, yearID, class.ID)
+	if err := postgres.NewStudentClassHistoryRepository(db).Create(ctx, history); err != nil {
+		t.Fatal(err)
 	}
 }

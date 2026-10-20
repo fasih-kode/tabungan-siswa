@@ -3,6 +3,7 @@ package http
 import (
 	"errors"
 	"html/template"
+	"mime"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -109,7 +110,7 @@ func (h *SavingsPageHandler) List(w http.ResponseWriter, r *http.Request) {
 	vm.AcademicYearID = yearID
 	vm.Page, vm.Limit = page, limit
 	if r.URL.Query().Get("notice") == "created" {
-		vm.Notice = "Siklus tabungan berhasil dibuat."
+		vm.Notice = "Tabungan berhasil dibuka."
 	}
 	for _, year := range yearsOut.AcademicYears {
 		if year != nil && year.ID == parsedYearID {
@@ -189,7 +190,7 @@ func (h *SavingsPageHandler) List(w http.ResponseWriter, r *http.Request) {
 			}
 			rowVM.Balance = formatRupiah(balance.Balance)
 		} else if errors.Is(accountErr, repository.ErrNotFound) {
-			rowVM.CanCreate = selectedYear.AcademicYear != nil && selectedYear.AcademicYear.IsOpen() && student.IsActive()
+			rowVM.CanCreate = actor.Role == domain.RoleWaliKelas && selectedYear.AcademicYear != nil && selectedYear.AcademicYear.IsOpen() && student.IsActive()
 		} else if accountErr != nil {
 			httperror.Write(w, accountErr)
 			return
@@ -218,8 +219,11 @@ func (h *SavingsPageHandler) Create(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, http.StatusText(http.StatusUnauthorized), http.StatusUnauthorized)
 		return
 	}
-	r.Body = http.MaxBytesReader(w, r.Body, maxSavingsFormBytes)
-	if err := r.ParseForm(); err != nil {
+	if err := service.RequireRole(actor, domain.RoleWaliKelas); err != nil {
+		httperror.Write(w, err)
+		return
+	}
+	if err := parseSavingsForm(w, r); err != nil {
 		http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
 		return
 	}
@@ -234,6 +238,26 @@ func (h *SavingsPageHandler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	http.Redirect(w, r, "/savings?academic_year_id="+url.QueryEscape(yearID.String())+"&notice=created", http.StatusSeeOther)
+}
+
+// Parse before CSRF middleware can cache form data or discard parsing errors.
+func validateSavingsRequestForm(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if err := parseSavingsForm(w, r); err != nil {
+			http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+func parseSavingsForm(w http.ResponseWriter, r *http.Request) error {
+	mediaType, _, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
+	if err != nil || mediaType != "application/x-www-form-urlencoded" {
+		return errors.New("invalid savings form content type")
+	}
+	r.Body = http.MaxBytesReader(w, r.Body, maxSavingsFormBytes)
+	return r.ParseForm()
 }
 
 func (h *SavingsPageHandler) Detail(w http.ResponseWriter, r *http.Request) {

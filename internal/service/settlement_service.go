@@ -17,7 +17,7 @@ func (s *settlementService) SettleYearEnd(
 	ctx context.Context,
 	input SettleYearEndInput,
 ) (SettleYearEndOutput, error) {
-	if err := RequireRole(input.Actor, domain.RoleAdmin, domain.RoleWaliKelas); err != nil {
+	if err := RequireRole(input.Actor, domain.RoleWaliKelas); err != nil {
 		return SettleYearEndOutput{}, err
 	}
 
@@ -122,7 +122,7 @@ func (s *settlementService) SettleStudentLeaving(
 	ctx context.Context,
 	input SettleStudentLeavingInput,
 ) (SettleStudentLeavingOutput, error) {
-	if err := RequireRole(input.Actor, domain.RoleAdmin, domain.RoleWaliKelas); err != nil {
+	if err := RequireRole(input.Actor, domain.RoleWaliKelas); err != nil {
 		return SettleStudentLeavingOutput{}, err
 	}
 
@@ -293,7 +293,8 @@ func (s *settlementService) Reopen(
 	ctx context.Context,
 	input ReopenSettlementInput,
 ) (ReopenSettlementOutput, error) {
-	if err := RequireRole(input.Actor, domain.RoleAdmin); err != nil {
+	// Reopening changes financial history; no current role is authorized.
+	if err := RequireRole(input.Actor); err != nil {
 		return ReopenSettlementOutput{}, err
 	}
 

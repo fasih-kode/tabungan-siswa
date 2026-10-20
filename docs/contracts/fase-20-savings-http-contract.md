@@ -1,6 +1,6 @@
 # FASE 20 — Savings Account and Passbook HTTP Contract
 
-Status: VERIFIED — READY TO LOCK
+Status: LOCKED
 Scope: server-rendered savings-cycle directory, account detail, and passbook.
 
 ## 1. Roadmap scope
@@ -48,6 +48,57 @@ All routes require authentication. POST requires CSRF, a bounded
 `application/x-www-form-urlencoded` body, actor identity from request context,
 and a 303 redirect after success. Services remain authoritative for role,
 scope, lifecycle, uniqueness, and balance rules.
+
+### Request fields and query parameters
+
+`POST /savings` accepts only `application/x-www-form-urlencoded` (valid
+media-type parameters such as `charset=UTF-8` are allowed). The complete body
+is limited to 16 KiB and parsed before CSRF validation. Missing/unsupported or
+malformed Content-Type, malformed form encoding, and oversized bodies return
+400 before the service is called.
+
+| POST body field | Requirement |
+|---|---|
+| `student_id` | Required, non-zero student UUID |
+| `academic_year_id` | Required, non-zero academic-year UUID |
+| `csrf_token` | CSRF token matching the CSRF cookie; the shared CSRF header may supply it instead |
+
+Actor identity always comes from the authenticated session. IDs in the query
+string cannot replace required POST body IDs.
+
+| GET `/savings` parameter | Behavior |
+|---|---|
+| `academic_year_id` | Optional year UUID; defaults to OPEN year, otherwise prompts for a year |
+| `class_id` | Optional class UUID for Wali Kelas only; service enforces assignment scope |
+| `q` | Optional trimmed student search text for Admin/Wali Kelas |
+| `page` | Positive integer, defaults to 1; overflowing offsets return 400 |
+| `limit` | Legacy parameter: accepts 1–100 but page size remains 10 |
+| `notice` | `created` displays the creation notice; does not authorize any operation |
+
+`GET /savings/{id}` requires a non-zero account UUID. GET routes also support
+HEAD. Student directory reads use the linked student only; staff filters do
+not expand student access. Missing pagination pages use the shared redirect
+behavior. Pagination links retain the selected filters.
+
+### Response and error mapping
+
+| Condition | Response |
+|---|---|
+| Successful list/detail | 200 HTML |
+| Successful creation | 303 to `/savings?academic_year_id={year_uuid}&notice=created` |
+| Missing/invalid authentication | 401 |
+| Invalid form, UUID, page, limit, or unsupported class filter | 400 |
+| Missing/invalid CSRF on an otherwise valid POST | 403 |
+| Forbidden role or student/class scope violation | 403 |
+| Requested account/student/year not found | 404 |
+| Duplicate cycle or incompatible student/year lifecycle | 409 |
+| Unsupported method | 405 |
+| Unexpected internal failure | 500 with public status text |
+
+Authentication runs before form validation. For POST, form validation runs
+before CSRF, followed by handler ID validation and authoritative service
+checks. Resource access is checked by services; a not-found response can
+precede a scope check when the requested account does not exist.
 
 ## 4. Verification before lock
 

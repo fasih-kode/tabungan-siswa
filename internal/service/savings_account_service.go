@@ -17,7 +17,6 @@ func (s *savingsAccountService) Create(
 ) (CreateSavingsAccountOutput, error) {
 	if err := RequireRole(
 		input.Actor,
-		domain.RoleAdmin,
 		domain.RoleWaliKelas,
 	); err != nil {
 		return CreateSavingsAccountOutput{}, err

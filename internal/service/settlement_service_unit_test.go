@@ -382,10 +382,10 @@ func newSettlementScopeRepositories(
 	}
 }
 
-func TestSettlementServiceSettleYearEndAdmin(t *testing.T) {
+func TestSettlementServiceSettleYearEndWaliKelas(t *testing.T) {
 	account := newSettlementTestAccount(t)
 	academicYear := newSettlementTestAcademicYear(t, account.AcademicYearID, domain.AcademicYearClosing)
-	actor := Actor{UserID: uuid.New(), Role: domain.RoleAdmin}
+	actor := Actor{UserID: financialTestTeacherID, Role: domain.RoleWaliKelas}
 	transactions := []domain.Transaction{
 		newSettlementTestTransaction(t, account.ID, domain.TransactionDeposit, 100000),
 		newSettlementTestTransaction(t, account.ID, domain.TransactionWithdrawal, 25000),
@@ -417,7 +417,7 @@ func TestSettlementServiceSettleYearEndAdmin(t *testing.T) {
 			AuditLogs:       auditRepo,
 		},
 	}
-	svc := newSettlementServiceForTest(
+	svc := newScopedSettlementServiceForTest(
 		t,
 		uow.repos,
 		&settlementServiceFakeUnitOfWorkManager{uow: uow},
@@ -477,10 +477,10 @@ func TestSettlementServiceSettleYearEndRejectsOpenAcademicYear(t *testing.T) {
 		Settlements:  &settlementServiceFakeSettlementRepository{},
 		AuditLogs:    &settlementServiceFakeAuditRepository{},
 	}}
-	svc := newSettlementServiceForTest(t, uow.repos, &settlementServiceFakeUnitOfWorkManager{uow: uow})
+	svc := newScopedSettlementServiceForTest(t, uow.repos, &settlementServiceFakeUnitOfWorkManager{uow: uow})
 
 	_, err := svc.SettleYearEnd(context.Background(), SettleYearEndInput{
-		Actor:            Actor{UserID: uuid.New(), Role: domain.RoleAdmin},
+		Actor:            Actor{UserID: financialTestTeacherID, Role: domain.RoleWaliKelas},
 		SavingsAccountID: account.ID,
 	})
 	if !errors.Is(err, domain.ErrInvalidTransition) {
@@ -566,10 +566,10 @@ func TestSettlementServiceSettleStudentLeaving(t *testing.T) {
 		Settlements:     settlementRepo,
 		AuditLogs:       auditRepo,
 	}}
-	svc := newSettlementServiceForTest(t, uow.repos, &settlementServiceFakeUnitOfWorkManager{uow: uow})
+	svc := newScopedSettlementServiceForTest(t, uow.repos, &settlementServiceFakeUnitOfWorkManager{uow: uow})
 
 	got, err := svc.SettleStudentLeaving(context.Background(), SettleStudentLeavingInput{
-		Actor:            Actor{UserID: uuid.New(), Role: domain.RoleAdmin},
+		Actor:            Actor{UserID: financialTestTeacherID, Role: domain.RoleWaliKelas},
 		SavingsAccountID: account.ID,
 	})
 	if err != nil {
@@ -603,10 +603,10 @@ func TestSettlementServiceSettleStudentLeavingRejectsActiveStudent(t *testing.T)
 			getByIDFn: func(context.Context, uuid.UUID) (domain.Student, error) { return student, nil },
 		},
 	}}
-	svc := newSettlementServiceForTest(t, uow.repos, &settlementServiceFakeUnitOfWorkManager{uow: uow})
+	svc := newScopedSettlementServiceForTest(t, uow.repos, &settlementServiceFakeUnitOfWorkManager{uow: uow})
 
 	_, err := svc.SettleStudentLeaving(context.Background(), SettleStudentLeavingInput{
-		Actor:            Actor{UserID: uuid.New(), Role: domain.RoleAdmin},
+		Actor:            Actor{UserID: financialTestTeacherID, Role: domain.RoleWaliKelas},
 		SavingsAccountID: account.ID,
 	})
 	if !errors.Is(err, domain.ErrInvalidTransition) {
@@ -707,126 +707,6 @@ func TestSettlementServiceListPassesOptions(t *testing.T) {
 	}
 }
 
-func TestSettlementServiceReopen(t *testing.T) {
-	account := newSettlementTestAccount(t)
-	if err := account.Settle(time.Date(2026, 10, 5, 0, 0, 0, 0, time.UTC)); err != nil {
-		t.Fatalf("SavingsAccount.Settle() error = %v", err)
-	}
-	settlement := newCompletedSettlement(t, account.ID, uuid.New(), 75000)
-	settlementRepo := &settlementServiceFakeSettlementRepository{
-		getByIDFn: func(context.Context, uuid.UUID) (domain.SavingsSettlement, error) { return settlement, nil },
-		getCompletedBySavingsAccountFn: func(context.Context, uuid.UUID) (domain.SavingsSettlement, error) {
-			return settlement, nil
-		},
-	}
-	savingsRepo := &settlementServiceFakeSavingsAccountRepository{
-		getByIDForUpdateFn: func(context.Context, uuid.UUID) (domain.SavingsAccount, error) { return account, nil },
-	}
-	auditRepo := &settlementServiceFakeAuditRepository{}
-	uow := &settlementServiceFakeUnitOfWork{repos: repository.RepositorySet{
-		SavingsAccounts: savingsRepo,
-		Settlements:     settlementRepo,
-		AuditLogs:       auditRepo,
-	}}
-	svc := newSettlementServiceForTest(t, uow.repos, &settlementServiceFakeUnitOfWorkManager{uow: uow})
-
-	got, err := svc.Reopen(context.Background(), ReopenSettlementInput{
-		Actor:        Actor{UserID: uuid.New(), Role: domain.RoleAdmin},
-		SettlementID: settlement.ID,
-	})
-	if err != nil {
-		t.Fatalf("Reopen() error = %v", err)
-	}
-	if got.PreviousSettlement == nil || !got.PreviousSettlement.IsSuperseded() {
-		t.Fatalf("PreviousSettlement = %#v, want superseded settlement", got.PreviousSettlement)
-	}
-	if got.Account == nil || !got.Account.IsOpen() {
-		t.Fatalf("Account = %#v, want open account", got.Account)
-	}
-	if settlementRepo.updateCalls != 1 || savingsRepo.updateCalls != 1 {
-		t.Fatalf("Settlement/Account Update calls = %d/%d, want 1/1", settlementRepo.updateCalls, savingsRepo.updateCalls)
-	}
-	if auditRepo.createCalls != 2 {
-		t.Fatalf("AuditLogs.Create calls = %d, want 2", auditRepo.createCalls)
-	}
-	if uow.commitCalls != 1 || uow.rollbackCalls != 0 {
-		t.Fatalf("Commit/Rollback = %d/%d, want 1/0", uow.commitCalls, uow.rollbackCalls)
-	}
-}
-
-func TestSettlementServiceReopenRejectsClosedAcademicYear(t *testing.T) {
-	account := newSettlementTestAccount(t)
-	if err := account.Settle(time.Now()); err != nil {
-		t.Fatalf("SavingsAccount.Settle() error = %v", err)
-	}
-	settlement := newCompletedSettlement(t, account.ID, uuid.New(), 1000)
-	savingsRepo := &settlementServiceFakeSavingsAccountRepository{
-		getByIDForUpdateFn: func(context.Context, uuid.UUID) (domain.SavingsAccount, error) { return account, nil },
-	}
-	settlementRepo := &settlementServiceFakeSettlementRepository{
-		getByIDFn: func(context.Context, uuid.UUID) (domain.SavingsSettlement, error) { return settlement, nil },
-	}
-	yearRepo := &settlementServiceFakeAcademicYearRepository{
-		getByIDFn: func(context.Context, uuid.UUID) (domain.AcademicYear, error) {
-			return newSettlementTestAcademicYear(t, account.AcademicYearID, domain.AcademicYearClosed), nil
-		},
-	}
-	uow := &settlementServiceFakeUnitOfWork{repos: repository.RepositorySet{SavingsAccounts: savingsRepo, Settlements: settlementRepo, AcademicYears: yearRepo}}
-	svc := newSettlementServiceForTest(t, uow.repos, &settlementServiceFakeUnitOfWorkManager{uow: uow})
-
-	_, err := svc.Reopen(context.Background(), ReopenSettlementInput{Actor: Actor{UserID: uuid.New(), Role: domain.RoleAdmin}, SettlementID: settlement.ID})
-	if !errors.Is(err, domain.ErrInvalidTransition) {
-		t.Fatalf("Reopen() error = %v, want %v", err, domain.ErrInvalidTransition)
-	}
-	if savingsRepo.updateCalls != 0 || settlementRepo.updateCalls != 0 || uow.commitCalls != 0 || uow.rollbackCalls != 1 {
-		t.Fatalf("account update/settlement update/commit/rollback = %d/%d/%d/%d, want 0/0/0/1", savingsRepo.updateCalls, settlementRepo.updateCalls, uow.commitCalls, uow.rollbackCalls)
-	}
-}
-
-func TestSettlementServiceReopenRejectsNonAdmin(t *testing.T) {
-	svc := newSettlementServiceForTest(t, repository.RepositorySet{}, &settlementServiceFakeUnitOfWorkManager{})
-
-	_, err := svc.Reopen(context.Background(), ReopenSettlementInput{
-		Actor:        Actor{UserID: uuid.New(), Role: domain.RoleWaliKelas},
-		SettlementID: uuid.New(),
-	})
-	if !errors.Is(err, ErrForbidden) {
-		t.Fatalf("Reopen() error = %v, want ErrForbidden", err)
-	}
-}
-
-func TestSettlementServiceReopenRejectsSupersededSettlement(t *testing.T) {
-	account := newSettlementTestAccount(t)
-	if err := account.Settle(time.Now()); err != nil {
-		t.Fatalf("SavingsAccount.Settle() error = %v", err)
-	}
-	settlement := newCompletedSettlement(t, account.ID, uuid.New(), 1000)
-	if err := settlement.Supersede(); err != nil {
-		t.Fatalf("SavingsSettlement.Supersede() error = %v", err)
-	}
-
-	uow := &settlementServiceFakeUnitOfWork{repos: repository.RepositorySet{
-		SavingsAccounts: &settlementServiceFakeSavingsAccountRepository{
-			getByIDForUpdateFn: func(context.Context, uuid.UUID) (domain.SavingsAccount, error) { return account, nil },
-		},
-		Settlements: &settlementServiceFakeSettlementRepository{
-			getByIDFn: func(context.Context, uuid.UUID) (domain.SavingsSettlement, error) { return settlement, nil },
-		},
-	}}
-	svc := newSettlementServiceForTest(t, uow.repos, &settlementServiceFakeUnitOfWorkManager{uow: uow})
-
-	_, err := svc.Reopen(context.Background(), ReopenSettlementInput{
-		Actor:        Actor{UserID: uuid.New(), Role: domain.RoleAdmin},
-		SettlementID: settlement.ID,
-	})
-	if !errors.Is(err, repository.ErrNotFound) && !errors.Is(err, domain.ErrInvalidTransition) {
-		t.Fatalf("Reopen() error = %v, want not found or invalid transition", err)
-	}
-	if uow.rollbackCalls != 1 {
-		t.Fatalf("Rollback calls = %d, want 1", uow.rollbackCalls)
-	}
-}
-
 func TestSettlementServiceMutationAuditErrorRollsBack(t *testing.T) {
 	wantErr := errors.New("audit create failed")
 	account := newSettlementTestAccount(t)
@@ -845,10 +725,10 @@ func TestSettlementServiceMutationAuditErrorRollsBack(t *testing.T) {
 		Settlements:  &settlementServiceFakeSettlementRepository{},
 		AuditLogs:    auditRepo,
 	}}
-	svc := newSettlementServiceForTest(t, uow.repos, &settlementServiceFakeUnitOfWorkManager{uow: uow})
+	svc := newScopedSettlementServiceForTest(t, uow.repos, &settlementServiceFakeUnitOfWorkManager{uow: uow})
 
 	_, err := svc.SettleYearEnd(context.Background(), SettleYearEndInput{
-		Actor:            Actor{UserID: uuid.New(), Role: domain.RoleAdmin},
+		Actor:            Actor{UserID: financialTestTeacherID, Role: domain.RoleWaliKelas},
 		SavingsAccountID: account.ID,
 	})
 	if !errors.Is(err, wantErr) {
@@ -856,74 +736,6 @@ func TestSettlementServiceMutationAuditErrorRollsBack(t *testing.T) {
 	}
 	if uow.commitCalls != 0 || uow.rollbackCalls != 1 {
 		t.Fatalf("Commit/Rollback = %d/%d, want 0/1", uow.commitCalls, uow.rollbackCalls)
-	}
-}
-
-func TestSettlementServiceReopenCommitFailureRollsBack(t *testing.T) {
-	wantErr := errors.New("commit failed")
-	account := newSettlementTestAccount(t)
-	if err := account.Settle(time.Now()); err != nil {
-		t.Fatalf("SavingsAccount.Settle() error = %v", err)
-	}
-	settlement := newCompletedSettlement(t, account.ID, uuid.New(), 1000)
-	uow := &settlementServiceFakeUnitOfWork{
-		commitErr: wantErr,
-		repos: repository.RepositorySet{
-			SavingsAccounts: &settlementServiceFakeSavingsAccountRepository{
-				getByIDForUpdateFn: func(context.Context, uuid.UUID) (domain.SavingsAccount, error) { return account, nil },
-			},
-			Settlements: &settlementServiceFakeSettlementRepository{
-				getByIDFn: func(context.Context, uuid.UUID) (domain.SavingsSettlement, error) { return settlement, nil },
-				getCompletedBySavingsAccountFn: func(context.Context, uuid.UUID) (domain.SavingsSettlement, error) {
-					return settlement, nil
-				},
-			},
-			AuditLogs: &settlementServiceFakeAuditRepository{},
-		},
-	}
-	svc := newSettlementServiceForTest(t, uow.repos, &settlementServiceFakeUnitOfWorkManager{uow: uow})
-
-	_, err := svc.Reopen(context.Background(), ReopenSettlementInput{
-		Actor:        Actor{UserID: uuid.New(), Role: domain.RoleAdmin},
-		SettlementID: settlement.ID,
-	})
-	if !errors.Is(err, wantErr) {
-		t.Fatalf("Reopen() error = %v, want %v", err, wantErr)
-	}
-	if uow.commitCalls != 1 || uow.rollbackCalls != 1 {
-		t.Fatalf("Commit/Rollback = %d/%d, want 1/1", uow.commitCalls, uow.rollbackCalls)
-	}
-}
-
-func TestSettlementServiceReopenConflictRollsBack(t *testing.T) {
-	account := newSettlementTestAccount(t)
-	if err := account.Settle(time.Now()); err != nil {
-		t.Fatalf("SavingsAccount.Settle() error = %v", err)
-	}
-	settlement := newCompletedSettlement(t, account.ID, uuid.New(), 1000)
-	otherSettlement := newCompletedSettlement(t, account.ID, uuid.New(), 2000)
-	uow := &settlementServiceFakeUnitOfWork{repos: repository.RepositorySet{
-		SavingsAccounts: &settlementServiceFakeSavingsAccountRepository{
-			getByIDForUpdateFn: func(context.Context, uuid.UUID) (domain.SavingsAccount, error) { return account, nil },
-		},
-		Settlements: &settlementServiceFakeSettlementRepository{
-			getByIDFn: func(context.Context, uuid.UUID) (domain.SavingsSettlement, error) { return settlement, nil },
-			getCompletedBySavingsAccountFn: func(context.Context, uuid.UUID) (domain.SavingsSettlement, error) {
-				return otherSettlement, nil
-			},
-		},
-	}}
-	svc := newSettlementServiceForTest(t, uow.repos, &settlementServiceFakeUnitOfWorkManager{uow: uow})
-
-	_, err := svc.Reopen(context.Background(), ReopenSettlementInput{
-		Actor:        Actor{UserID: uuid.New(), Role: domain.RoleAdmin},
-		SettlementID: settlement.ID,
-	})
-	if !errors.Is(err, repository.ErrConflict) {
-		t.Fatalf("Reopen() error = %v, want repository.ErrConflict", err)
-	}
-	if uow.rollbackCalls != 1 {
-		t.Fatalf("Rollback calls = %d, want 1", uow.rollbackCalls)
 	}
 }
 
@@ -942,10 +754,10 @@ func TestSettlementServiceAuditPayloadsAreValidJSON(t *testing.T) {
 		Settlements:  &settlementServiceFakeSettlementRepository{},
 		AuditLogs:    auditRepo,
 	}}
-	svc := newSettlementServiceForTest(t, uow.repos, &settlementServiceFakeUnitOfWorkManager{uow: uow})
+	svc := newScopedSettlementServiceForTest(t, uow.repos, &settlementServiceFakeUnitOfWorkManager{uow: uow})
 
 	_, err := svc.SettleYearEnd(context.Background(), SettleYearEndInput{
-		Actor:            Actor{UserID: uuid.New(), Role: domain.RoleAdmin},
+		Actor:            Actor{UserID: financialTestTeacherID, Role: domain.RoleWaliKelas},
 		SavingsAccountID: account.ID,
 	})
 	if err != nil {
