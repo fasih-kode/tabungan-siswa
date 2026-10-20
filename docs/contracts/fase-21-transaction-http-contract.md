@@ -1,7 +1,7 @@
 # FASE 21 — Transaction Engine and HTTP Contract
 
 Contract status: LOCKED  
-Implementation status: IMPLEMENTED; VERIFICATION PASSED; PHASE LOCK PENDING  
+Implementation status: IMPLEMENTED; VERIFICATION PASSED; LOCKED
 Roadmap: Roadmap Resmi Tabungan Siswa v3, FASE 21  
 Scope: deposit, withdrawal, transaction history/detail, and transaction forms.
 
@@ -370,7 +370,7 @@ FASE 21 may be locked only when all of the following are demonstrated:
       settlement races, chronological balance validation, and date boundaries.
 - [x] Build, vet, frontend tests, and race-enabled PostgreSQL integration suite
       pass.
-- [ ] Phase lock record and implementation commit created after owner review.
+- [x] Phase lock record and implementation commit created after owner review.
 
 Implementation must follow the normative lock order in §5 and satisfy the
 concurrency verification in §12. This is an implementation constraint, not an
@@ -450,4 +450,10 @@ The implementation and PostgreSQL integration coverage now demonstrate:
   independent accounts remain independent.
 - All above concurrency scenarios complete without deadlock against real
   PostgreSQL.
+
+## 13. Implementation verification — 2026-10-20
+
+The implementation and verification record is
+[`fase-21-implementation-lock.md`](fase-21-implementation-lock.md). FASE 21
+is locked at implementation commit `fe21e78`. No browser E2E run is claimed.
 
