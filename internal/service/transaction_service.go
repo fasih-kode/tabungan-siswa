@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"sort"
 	"strings"
@@ -15,6 +16,47 @@ import (
 )
 
 var _ TransactionService = (*transactionService)(nil)
+
+func (s *transactionService) CanCorrect(ctx context.Context, actor Actor, transactionID uuid.UUID) (bool, error) {
+	if actor.Role != domain.RoleWaliKelas || transactionID == uuid.Nil {
+		return false, nil
+	}
+	tx, err := s.deps.Repositories.Transactions.GetByID(ctx, transactionID)
+	if err != nil {
+		return false, err
+	}
+	if tx.Status != domain.TransactionActive {
+		return false, nil
+	}
+	account, err := s.deps.Repositories.SavingsAccounts.GetByID(ctx, tx.SavingsAccountID)
+	if err != nil {
+		return false, err
+	}
+	if !account.IsOpen() {
+		return false, nil
+	}
+	year, err := s.deps.Repositories.AcademicYears.GetByID(ctx, account.AcademicYearID)
+	if err != nil {
+		return false, err
+	}
+	if year.IsOpen() {
+		if err := s.authorizeAccount(ctx, s.deps.Repositories, actor, account); err != nil {
+			return false, nil
+		}
+		return true, nil
+	}
+	if year.IsClosing() {
+		_, err := correctionContextForApprovedRequest(ctx, s.deps.Repositories, actor, year, account.ID)
+		if err == nil {
+			return true, nil
+		}
+		if errors.Is(err, domain.ErrInvalidTransition) || errors.Is(err, ErrScopeViolation) {
+			return false, nil
+		}
+		return false, err
+	}
+	return false, nil
+}
 
 func (s *transactionService) Deposit(
 	ctx context.Context,
@@ -334,8 +376,9 @@ func (s *transactionService) Edit(
 	if !transactionDateWithinAcademicYear(input.TransactionDate, year) {
 		return EditTransactionOutput{}, ErrTransactionDateOutOfAcademicYear
 	}
-	if !correctionYearAllowed(ctx, year, unlockedAccount.ID) {
-		return EditTransactionOutput{}, domain.ErrInvalidTransition
+	ctx, err = correctionContextForApprovedRequest(ctx, repos, input.Actor, year, unlockedAccount.ID)
+	if err != nil {
+		return EditTransactionOutput{}, err
 	}
 
 	account, err := repos.SavingsAccounts.GetByIDForUpdate(ctx, existing.SavingsAccountID)
@@ -465,8 +508,9 @@ func (s *transactionService) Cancel(
 	if err != nil {
 		return CancelTransactionOutput{}, err
 	}
-	if !correctionYearAllowed(ctx, year, unlockedAccount.ID) {
-		return CancelTransactionOutput{}, domain.ErrInvalidTransition
+	ctx, err = correctionContextForApprovedRequest(ctx, repos, input.Actor, year, unlockedAccount.ID)
+	if err != nil {
+		return CancelTransactionOutput{}, err
 	}
 	account, err := repos.SavingsAccounts.GetByIDForUpdate(ctx, existing.SavingsAccountID)
 	if err != nil {

@@ -259,6 +259,10 @@ func safeAcademicYearTransitionError(action string, err error) string {
 		return "Tahun ajaran belum dapat ditutup karena masih ada rekening tabungan yang belum diselesaikan. Selesaikan settlement semua rekening lalu coba lagi."
 	case errors.Is(err, service.ErrAcademicYearHasPendingTransfers):
 		return "Tahun ajaran belum dapat diproses karena masih ada permintaan transfer kelas yang menunggu keputusan."
+	case errors.Is(err, service.ErrAcademicYearHasUnconfirmedHandover):
+		return "Tahun ajaran belum dapat ditutup karena masih ada penyerahan uang settlement yang belum dikonfirmasi atau direkonsiliasi. Periksa Pengawasan Tabungan."
+	case errors.Is(err, service.ErrAcademicYearHasActiveSettlementWorkflow):
+		return "Tahun ajaran belum dapat ditutup karena masih ada permintaan buka kembali atau koreksi settlement yang aktif."
 	case errors.Is(err, domain.ErrInvalidTransition) && action == "close":
 		return "Tahun ajaran belum dapat ditutup. Pastikan statusnya sedang proses penutupan dan semua syarat penutupan terpenuhi."
 	case errors.Is(err, domain.ErrInvalidTransition):

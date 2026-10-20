@@ -133,6 +133,16 @@ func (r *AcademicYearRepository) GetByIDForUpdate(
 	return r.getOne(ctx, query, id, "get academic year by id for update")
 }
 
+func (r *AcademicYearRepository) HasSuccessor(ctx context.Context, id uuid.UUID) (bool, error) {
+	const q = `SELECT EXISTS(SELECT 1 FROM academic_years p JOIN academic_years n ON n.start_date >= p.end_date WHERE p.id=$1 AND n.id<>p.id)`
+	var exists bool
+	err := r.db.QueryRowContext(ctx, q, id).Scan(&exists)
+	if err != nil {
+		return false, fmt.Errorf("check academic year successor: %w", err)
+	}
+	return exists, nil
+}
+
 // ListForUpdate locks all academic years in a deterministic order until the
 // caller's transaction ends. Create uses this to serialize its lifecycle
 // precondition against close/reopen transitions.

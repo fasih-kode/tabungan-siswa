@@ -90,7 +90,7 @@ func (*savingsPageClassesFake) List(context.Context, service.ListClassesInput) (
 
 func newSavingsPageHandlerForTest(t *testing.T, accounts service.SavingsAccountService, students service.StudentService, years service.AcademicYearService) *SavingsPageHandler {
 	t.Helper()
-	tmpl := template.Must(template.New("savings").Parse(`{{define "savings"}}{{.Heading}}|{{.AcademicYearID}}|{{.StudentName}}|{{.Balance}}{{range .Rows}}|{{.Name}}:{{.AccountID}}:{{.Balance}}:{{.CanCreate}}{{end}}{{range .Passbook}}|{{.Type}}:{{.Amount}}:{{.Balance}}{{end}}{{end}}`))
+	tmpl := template.Must(template.New("savings").Parse(`{{define "savings"}}{{.Heading}}|{{.AcademicYearID}}|{{.SettlementURL}}|{{.StudentName}}|{{.Balance}}{{range .Rows}}|{{.Name}}:{{.AccountID}}:{{.Balance}}:{{.CanCreate}}{{end}}{{range .Passbook}}|{{.Type}}:{{.Amount}}:{{.Balance}}{{end}}{{end}}`))
 	h, err := NewSavingsPageHandler(accounts, students, years, &savingsPageClassesFake{}, tmpl)
 	if err != nil {
 		t.Fatal(err)
@@ -115,7 +115,7 @@ func TestSavingsPageListScopesRosterAndShowsAccountOrCreateAction(t *testing.T) 
 		t.Fatalf("student query was not scoped by year/role: %+v", students.listInput)
 	}
 	body := recorder.Body.String()
-	if !strings.Contains(body, "Ani:") || !strings.Contains(body, "Rp 1.250.000") || !strings.Contains(body, "Budi::") || !strings.Contains(body, ":true") {
+	if !strings.Contains(body, "Ani:") || !strings.Contains(body, "Rp 1.250.000") || !strings.Contains(body, "Budi::") || !strings.Contains(body, ":true") || !strings.Contains(body, "/savings?view=settlement&amp;academic_year_id="+yearID.String()) {
 		t.Fatalf("list did not render account and eligible create state: %s", body)
 	}
 }

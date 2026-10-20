@@ -718,3 +718,33 @@ func assertSavingsSettlementEqual(
 		)
 	}
 }
+
+func TestSettlementRepository_ListYearReadinessIncludesLedgerAndUnassignedAccount(t *testing.T) {
+	db := openTestDatabase(t)
+	ctx := context.Background()
+	fixture := newSettlementFixture(t, db)
+	if _, err := db.ExecContext(ctx, `INSERT INTO transactions(savings_account_id,type,amount,transaction_date,status,created_by) VALUES($1,'DEPOSIT',12500,'2026-10-01','ACTIVE',$2)`, fixture.account.ID, fixture.user.ID); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if _, err := db.ExecContext(ctx, "DELETE FROM transactions WHERE savings_account_id=$1", fixture.account.ID); err != nil {
+			t.Error(err)
+		}
+	})
+	rows, err := postgres.NewSettlementRepository(db).ListYearReadiness(ctx, fixture.year.ID)
+	if err != nil {
+		t.Fatalf("ListYearReadiness() error=%v", err)
+	}
+	if len(rows) != 1 {
+		t.Fatalf("rows=%d, want 1", len(rows))
+	}
+	if rows[0].Account.ID != fixture.account.ID || rows[0].Student.ID != fixture.student.ID {
+		t.Fatalf("row account/student=%v/%v", rows[0].Account.ID, rows[0].Student.ID)
+	}
+	if rows[0].ClassID != nil || rows[0].WaliID != nil {
+		t.Fatalf("unassigned account attributed: %#v", rows[0])
+	}
+	if rows[0].CurrentBalance != 12500 {
+		t.Fatalf("CurrentBalance=%d, want 12500", rows[0].CurrentBalance)
+	}
+}

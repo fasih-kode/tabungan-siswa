@@ -37,7 +37,7 @@ type SavingsPageViewModel struct {
 	Title, Heading, Description, Role, Username, CSRFToken, ActiveNav       string
 	Error, Notice, AcademicYearID, ClassID, Search                          string
 	AccountID, StudentID, StudentName, NIS, AccountStatus, Balance          string
-	YearName                                                                string
+	YearName, SettlementURL                                                 string
 	Page, Limit, PreviousPage, NextPage                                     int
 	HasPrevious, HasNext, IsDetail, IsStudent                               bool
 	CanTransact                                                             bool
@@ -111,6 +111,12 @@ func (h *SavingsPageHandler) List(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	vm.AcademicYearID = yearID
+	if actor.Role == domain.RoleAdmin || actor.Role == domain.RoleWaliKelas {
+		vm.SettlementURL = "/savings?view=settlement"
+		if parsedYearID != uuid.Nil {
+			vm.SettlementURL += "&academic_year_id=" + parsedYearID.String()
+		}
+	}
 	vm.Page, vm.Limit = page, limit
 	switch r.URL.Query().Get("notice") {
 	case "created":

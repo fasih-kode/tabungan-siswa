@@ -1,6 +1,7 @@
 package http
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -219,6 +220,18 @@ func (h *TransactionPageHandler) Detail(w http.ResponseWriter, r *http.Request) 
 		sort.SliceStable(vm.Audit, func(i, j int) bool { return vm.Audit[i].AtTime.Before(vm.Audit[j].AtTime) })
 	}
 	vm.CanWrite = actor.Role == domain.RoleWaliKelas && tx.Status == domain.TransactionActive && account.IsOpen() && year.IsOpen()
+	if !vm.CanWrite && actor.Role == domain.RoleWaliKelas && tx.Status == domain.TransactionActive && account.IsOpen() && year.IsClosing() {
+		if checker, ok := h.transactions.(interface {
+			CanCorrect(context.Context, service.Actor, uuid.UUID) (bool, error)
+		}); ok {
+			allowed, checkErr := checker.CanCorrect(r.Context(), actor, tx.ID)
+			if checkErr != nil {
+				httperror.Write(w, checkErr)
+				return
+			}
+			vm.CanWrite = allowed
+		}
+	}
 	switch r.URL.Query().Get("notice") {
 	case "transaction_edited":
 		vm.Notice = "Transaksi berhasil dikoreksi."

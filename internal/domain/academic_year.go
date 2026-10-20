@@ -89,3 +89,14 @@ func (y *AcademicYear) Reopen() error {
 
 	return nil
 }
+
+// ReopenForCorrection returns a closed year to CLOSING, keeping regular
+// transactions and class transfers disabled during an approved correction.
+func (y *AcademicYear) ReopenForCorrection() error {
+	if y.Status != AcademicYearClosed {
+		return ErrInvalidTransition
+	}
+	y.Status = AcademicYearClosing
+	y.UpdatedAt = time.Now()
+	return nil
+}

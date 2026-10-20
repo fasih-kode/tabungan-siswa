@@ -249,3 +249,100 @@ func TestSavingsTemplateEmptyAndSettledStates(t *testing.T) {
 		}
 	})
 }
+
+func TestSettlementTemplateRendersActorNamesAndHistory(t *testing.T) {
+	templates, err := template.ParseFS(templateFiles, "templates/layouts/*.html", "templates/partials/*.html", "templates/auth/*.html", "templates/pages/*.html")
+	if err != nil {
+		t.Fatal(err)
+	}
+	view := httpapp.SettlementPageVM{
+		Title: "Detail Settlement", Heading: "Detail Settlement", Role: "ADMIN", Username: "admin-test",
+		IsDetail: true, StudentName: "Siswa Uji", SettlementType: "REGULAR_YEAR_END", Amount: "Rp 12.500",
+		ExecutedBy: "admin-pelaksana", ExecutedAt: "2026-10-20T10:00:00Z",
+		History:   []httpapp.SettlementHistoryVM{{Type: "REGULAR_YEAR_END", Amount: "Rp 12.500", Status: "COMPLETED", ExecutedBy: "admin-pelaksana", ExecutedAt: "2026-10-20T10:00:00Z"}},
+		Movements: []httpapp.SettlementMovementVM{{Kind: "HANDOVER", Amount: "Rp 12.500", Actor: "wali-penerima", At: "2026-10-20T10:01:00Z"}},
+	}
+	var out strings.Builder
+	if err := templates.ExecuteTemplate(&out, "settlement-page", view); err != nil {
+		t.Fatalf("ExecuteTemplate() error = %v", err)
+	}
+	for _, want := range []string{"Siswa Uji", "admin-pelaksana", "Riwayat settlement akun", "wali-penerima"} {
+		if !strings.Contains(out.String(), want) {
+			t.Errorf("settlement template does not contain %q", want)
+		}
+	}
+}
+
+func TestSettlementPreviewShowsStaleBalanceWarning(t *testing.T) {
+	templates, err := template.ParseFS(templateFiles, "templates/layouts/*.html", "templates/partials/*.html", "templates/auth/*.html", "templates/pages/*.html")
+	if err != nil {
+		t.Fatal(err)
+	}
+	view := httpapp.SettlementPageVM{
+		Title: "Pratinjau Settlement", Heading: "Konfirmasi Settlement", Role: "WALI_KELAS", Username: "wali-test",
+		IsPreview: true, CanSettle: true, StudentName: "Siswa Uji", Amount: "Rp 23.000", ExpectedBalance: "23000",
+		PreviewedAt: "2026-10-20T10:05:00Z", Error: "Saldo berubah sejak pratinjau.",
+	}
+	var out strings.Builder
+	if err := templates.ExecuteTemplate(&out, "settlement-page", view); err != nil {
+		t.Fatalf("ExecuteTemplate() error = %v", err)
+	}
+	for _, want := range []string{"Saldo berubah sejak pratinjau.", "Rp 23.000", `name="expected_balance" value="23000"`} {
+		if !strings.Contains(out.String(), want) {
+			t.Errorf("settlement preview does not contain %q", want)
+		}
+	}
+}
+
+func TestSettlementOverviewTemplateEmptyReadyAndBlockedStates(t *testing.T) {
+	templates, err := template.ParseFS(templateFiles, "templates/layouts/*.html", "templates/partials/*.html", "templates/auth/*.html", "templates/pages/*.html")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct {
+		name string
+		view httpapp.SettlementPageVM
+		want string
+	}{
+		{name: "empty", view: httpapp.SettlementPageVM{Title: "Pengawasan Tabungan", Heading: "Kesiapan", Role: "ADMIN", AcademicYearID: "year", TransferURL: "/class-transfer-requests/pending?academic_year_id=year", ReadinessLabel: "Kesiapan tahun ajaran"}, want: "Belum ada rekening dalam cakupan."},
+		{name: "admin ready", view: httpapp.SettlementPageVM{Title: "Pengawasan Tabungan", Heading: "Kesiapan", Role: "ADMIN", AcademicYearID: "year", TransferURL: "/class-transfer-requests/pending?academic_year_id=year", ReadinessLabel: "Kesiapan tahun ajaran", Ready: true}, want: "Siap ditutup"},
+		{name: "wali blocked", view: httpapp.SettlementPageVM{Title: "Pengawasan Tabungan", Heading: "Kesiapan", Role: "WALI_KELAS", AcademicYearID: "year", TransferURL: "/class-transfer-requests/pending?academic_year_id=year", ReadinessLabel: "Kesiapan cakupan Anda", PendingTransfers: 1}, want: "Belum siap"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var out strings.Builder
+			if err := templates.ExecuteTemplate(&out, "settlement-page", tc.view); err != nil {
+				t.Fatalf("ExecuteTemplate() error = %v", err)
+			}
+			if !strings.Contains(out.String(), tc.want) {
+				t.Fatalf("template output does not contain %q", tc.want)
+			}
+		})
+	}
+}
+
+func TestSettlementDetailTemplateIsReadOnlyForStudent(t *testing.T) {
+	templates, err := template.ParseFS(templateFiles, "templates/layouts/*.html", "templates/partials/*.html", "templates/auth/*.html", "templates/pages/*.html")
+	if err != nil {
+		t.Fatal(err)
+	}
+	view := httpapp.SettlementPageVM{
+		Title: "Detail Settlement", Heading: "Detail Settlement", Role: "SISWA", Username: "siswa-test",
+		IsDetail: true, StudentName: "Siswa Uji", SettlementID: "settlement-id", Amount: "Rp 12.500",
+		History: []httpapp.SettlementHistoryVM{{Type: "REGULAR_YEAR_END", Amount: "Rp 12.500", Status: "COMPLETED", ExecutedBy: "wali-test", ExecutedAt: "2026-10-20T10:00:00Z"}},
+	}
+	var out strings.Builder
+	if err := templates.ExecuteTemplate(&out, "settlement-page", view); err != nil {
+		t.Fatalf("ExecuteTemplate() error = %v", err)
+	}
+	body := out.String()
+	for _, want := range []string{"Siswa Uji", "Riwayat settlement akun", "wali-test"} {
+		if !strings.Contains(body, want) {
+			t.Errorf("student settlement detail does not contain %q", want)
+		}
+	}
+	for _, forbidden := range []string{"distribution-confirmation", "reopen-requests", "Mulai jendela koreksi", "Ajukan permintaan"} {
+		if strings.Contains(body, forbidden) {
+			t.Errorf("student settlement detail contains write control %q", forbidden)
+		}
+	}
+}

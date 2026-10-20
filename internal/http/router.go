@@ -56,9 +56,24 @@ func registerRoutes(
 		registerClassTransferRoutes(mux, handlers.ClassTransfer, middlewares.Authentication, middlewares.CSRF)
 	}
 	if handlers.Savings != nil {
-		mux.Handle("GET /savings", middlewares.Authentication.RequireAuthentication(middlewares.CSRF.Protect(http.HandlerFunc(handlers.Savings.List))))
+		mux.Handle("GET /savings", middlewares.Authentication.RequireAuthentication(middlewares.CSRF.Protect(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.URL.Query().Get("view") == "settlement" && handlers.Settlement != nil {
+				handlers.Settlement.Overview(w, r)
+				return
+			}
+			handlers.Savings.List(w, r)
+		}))))
 		mux.Handle("POST /savings", middlewares.Authentication.RequireAuthentication(validateSavingsRequestForm(middlewares.CSRF.Protect(http.HandlerFunc(handlers.Savings.Create)))))
 		mux.Handle("GET /savings/{id}", middlewares.Authentication.RequireAuthentication(middlewares.CSRF.Protect(http.HandlerFunc(handlers.Savings.Detail))))
+	}
+	if handlers.Settlement != nil {
+		mux.Handle("GET /savings/{account_id}/settlement-preview", middlewares.Authentication.RequireAuthentication(middlewares.CSRF.Protect(http.HandlerFunc(handlers.Settlement.Preview))))
+		mux.Handle("POST /savings/{account_id}/settlements", middlewares.Authentication.RequireAuthentication(validateSettlementRequestForm(middlewares.CSRF.Protect(http.HandlerFunc(handlers.Settlement.Create)))))
+		mux.Handle("GET /settlements/{settlement_id}", middlewares.Authentication.RequireAuthentication(middlewares.CSRF.Protect(http.HandlerFunc(handlers.Settlement.Detail))))
+		mux.Handle("POST /settlements/{settlement_id}/distribution-confirmation", middlewares.Authentication.RequireAuthentication(validateSettlementRequestForm(middlewares.CSRF.Protect(http.HandlerFunc(handlers.Settlement.Handover)))))
+		mux.Handle("POST /settlements/{settlement_id}/reopen-requests", middlewares.Authentication.RequireAuthentication(validateSettlementRequestForm(middlewares.CSRF.Protect(http.HandlerFunc(handlers.Settlement.RequestReopen)))))
+		mux.Handle("POST /settlement-reopen-requests/{request_id}/decision", middlewares.Authentication.RequireAuthentication(validateSettlementRequestForm(middlewares.CSRF.Protect(http.HandlerFunc(handlers.Settlement.DecideReopen)))))
+		mux.Handle("POST /settlements/{settlement_id}/reopen", middlewares.Authentication.RequireAuthentication(validateSettlementRequestForm(middlewares.CSRF.Protect(http.HandlerFunc(handlers.Settlement.Reopen)))))
 	}
 	if handlers.Transactions != nil {
 		mux.Handle("GET /savings/{account_id}/transactions", middlewares.Authentication.RequireAuthentication(middlewares.CSRF.Protect(http.HandlerFunc(handlers.Transactions.List))))

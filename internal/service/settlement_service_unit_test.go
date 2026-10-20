@@ -33,6 +33,9 @@ func (f *settlementServiceFakeSavingsAccountRepository) GetByID(
 	if f.getByIDFn != nil {
 		return f.getByIDFn(ctx, id)
 	}
+	if f.getByIDForUpdateFn != nil {
+		return f.getByIDForUpdateFn(ctx, id)
+	}
 	return domain.SavingsAccount{}, repository.ErrNotFound
 }
 
@@ -75,6 +78,10 @@ func (f *settlementServiceFakeAcademicYearRepository) GetByID(
 		return f.getByIDFn(ctx, id)
 	}
 	return domain.AcademicYear{}, repository.ErrNotFound
+}
+
+func (f *settlementServiceFakeAcademicYearRepository) GetByIDForShare(ctx context.Context, id uuid.UUID) (domain.AcademicYear, error) {
+	return f.GetByID(ctx, id)
 }
 
 type settlementServiceFakeStudentRepository struct {
@@ -191,6 +198,20 @@ func (f *settlementServiceFakeSettlementRepository) Update(
 	return nil
 }
 
+func (f *settlementServiceFakeSettlementRepository) ListCashMovements(context.Context, uuid.UUID) ([]domain.SettlementCashMovement, error) {
+	return nil, nil
+}
+
+func (f *settlementServiceFakeSettlementRepository) GetApprovedReopenRequestByAccount(context.Context, uuid.UUID) (domain.SettlementReopenRequest, error) {
+	return domain.SettlementReopenRequest{}, repository.ErrNotFound
+}
+func (f *settlementServiceFakeSettlementRepository) GetActiveReopenRequest(context.Context, uuid.UUID) (domain.SettlementReopenRequest, error) {
+	return domain.SettlementReopenRequest{}, repository.ErrNotFound
+}
+func (f *settlementServiceFakeSettlementRepository) GetLatestReopenRequest(context.Context, uuid.UUID) (domain.SettlementReopenRequest, error) {
+	return domain.SettlementReopenRequest{}, repository.ErrNotFound
+}
+
 type settlementServiceFakeAuditRepository struct {
 	repository.AuditRepository
 
@@ -227,6 +248,17 @@ func (f *settlementServiceFakeStudentClassHistoryRepository) ListByStudentAndAca
 		return f.listFn(ctx, studentID, academicYearID, options)
 	}
 	return nil, nil
+}
+
+func (f *settlementServiceFakeStudentClassHistoryRepository) GetCurrentByStudentAndAcademicYear(ctx context.Context, studentID, yearID uuid.UUID, _ time.Time) (domain.StudentClassHistory, error) {
+	rows, err := f.ListByStudentAndAcademicYear(ctx, studentID, yearID, repository.ListOptions{})
+	if err != nil {
+		return domain.StudentClassHistory{}, err
+	}
+	if len(rows) == 0 {
+		return domain.StudentClassHistory{}, repository.ErrNotFound
+	}
+	return rows[0], nil
 }
 
 type settlementServiceFakeTeacherAssignmentRepository struct {
@@ -318,9 +350,11 @@ func newSettlementTestAcademicYear(t *testing.T, id uuid.UUID, status domain.Aca
 	t.Helper()
 
 	return domain.AcademicYear{
-		ID:     id,
-		Name:   "2026/2027",
-		Status: status,
+		ID:        id,
+		Name:      "2026/2027",
+		StartDate: time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC),
+		EndDate:   time.Date(2027, 7, 1, 0, 0, 0, 0, time.UTC),
+		Status:    status,
 	}
 }
 
@@ -426,6 +460,7 @@ func TestSettlementServiceSettleYearEndWaliKelas(t *testing.T) {
 	got, err := svc.SettleYearEnd(context.Background(), SettleYearEndInput{
 		Actor:            actor,
 		SavingsAccountID: account.ID,
+		ExpectedBalance:  75000,
 	})
 	if err != nil {
 		t.Fatalf("SettleYearEnd() error = %v", err)
@@ -517,7 +552,7 @@ func TestSettlementServiceSettleYearEndWaliKelasInScope(t *testing.T) {
 		},
 		&settlementServiceFakeTeacherAssignmentRepository{
 			listByClassFn: func(context.Context, uuid.UUID, uuid.UUID, repository.ListOptions) ([]domain.TeacherClassAssignment, error) {
-				return []domain.TeacherClassAssignment{{UserID: actorID, ClassID: classID, AcademicYearID: account.AcademicYearID}}, nil
+				return []domain.TeacherClassAssignment{{UserID: actorID, ClassID: classID, AcademicYearID: account.AcademicYearID, Period: domain.DateRange{From: time.Time{}}}}, nil
 			},
 		},
 	)
@@ -561,10 +596,13 @@ func TestSettlementServiceSettleStudentLeaving(t *testing.T) {
 	auditRepo := &settlementServiceFakeAuditRepository{}
 	uow := &settlementServiceFakeUnitOfWork{repos: repository.RepositorySet{
 		SavingsAccounts: savingsRepo,
-		Students:        studentRepo,
-		Transactions:    transactionRepo,
-		Settlements:     settlementRepo,
-		AuditLogs:       auditRepo,
+		AcademicYears: &settlementServiceFakeAcademicYearRepository{getByIDFn: func(context.Context, uuid.UUID) (domain.AcademicYear, error) {
+			return newSettlementTestAcademicYear(t, account.AcademicYearID, domain.AcademicYearOpen), nil
+		}},
+		Students:     studentRepo,
+		Transactions: transactionRepo,
+		Settlements:  settlementRepo,
+		AuditLogs:    auditRepo,
 	}}
 	svc := newScopedSettlementServiceForTest(t, uow.repos, &settlementServiceFakeUnitOfWorkManager{uow: uow})
 
@@ -599,6 +637,9 @@ func TestSettlementServiceSettleStudentLeavingRejectsActiveStudent(t *testing.T)
 		SavingsAccounts: &settlementServiceFakeSavingsAccountRepository{
 			getByIDForUpdateFn: func(context.Context, uuid.UUID) (domain.SavingsAccount, error) { return account, nil },
 		},
+		AcademicYears: &settlementServiceFakeAcademicYearRepository{getByIDFn: func(context.Context, uuid.UUID) (domain.AcademicYear, error) {
+			return newSettlementTestAcademicYear(t, account.AcademicYearID, domain.AcademicYearOpen), nil
+		}},
 		Students: &settlementServiceFakeStudentRepository{
 			getByIDFn: func(context.Context, uuid.UUID) (domain.Student, error) { return student, nil },
 		},
@@ -770,5 +811,215 @@ func TestSettlementServiceAuditPayloadsAreValidJSON(t *testing.T) {
 		if !json.Valid(audit.AfterData) {
 			t.Fatalf("audit %d AfterData is invalid JSON: %s", i, audit.AfterData)
 		}
+	}
+}
+
+type settlementReadinessRepositoryFake struct {
+	repository.SettlementRepository
+	rows           []repository.SettlementReadinessAccount
+	pending        int
+	unreconciled   bool
+	activeReopen   bool
+	countedTeacher uuid.UUID
+}
+
+func (f *settlementReadinessRepositoryFake) ListYearReadiness(context.Context, uuid.UUID) ([]repository.SettlementReadinessAccount, error) {
+	return f.rows, nil
+}
+func (f *settlementReadinessRepositoryFake) CountPendingTransfersForTeacher(_ context.Context, _, teacherID uuid.UUID) (int, error) {
+	f.countedTeacher = teacherID
+	return f.pending, nil
+}
+func (f *settlementReadinessRepositoryFake) HasUnreconciledPositiveSettlements(context.Context, uuid.UUID) (bool, error) {
+	return f.unreconciled, nil
+}
+func (f *settlementReadinessRepositoryFake) HasActiveReopenWorkflow(context.Context, uuid.UUID) (bool, error) {
+	return f.activeReopen, nil
+}
+
+func TestSettlementServiceYearReadinessScopesWaliAndIncludesTransferBlocker(t *testing.T) {
+	yearID, waliID, otherWaliID := uuid.New(), uuid.New(), uuid.New()
+	classID := uuid.New()
+	amount := domain.Money(500)
+	rows := []repository.SettlementReadinessAccount{
+		{Account: domain.SavingsAccount{AcademicYearID: yearID, Status: domain.SavingsAccountSettled},
+			Student: domain.Student{Name: "Siswa cakupan"}, ClassID: &classID, ClassName: "VII A", WaliID: &waliID, WaliName: "Wali A",
+			Settlement: &domain.SavingsSettlement{Amount: amount}, CashDelivered: amount},
+		{Account: domain.SavingsAccount{AcademicYearID: yearID, Status: domain.SavingsAccountOpen},
+			Student: domain.Student{Name: "Siswa wali lain"}, ClassID: &classID, ClassName: "VII A", WaliID: &otherWaliID, WaliName: "Wali B"},
+	}
+	year := newSettlementTestAcademicYear(t, yearID, domain.AcademicYearClosing)
+	readinessRepo := &settlementReadinessRepositoryFake{rows: rows, pending: 1}
+	svc := newSettlementServiceForTest(t, repository.RepositorySet{
+		AcademicYears: &settlementServiceFakeAcademicYearRepository{getByIDFn: func(context.Context, uuid.UUID) (domain.AcademicYear, error) { return year, nil }},
+		Settlements:   readinessRepo,
+	}, &settlementServiceFakeUnitOfWorkManager{})
+	got, err := svc.YearReadiness(context.Background(), YearSettlementReadinessInput{Actor: Actor{UserID: waliID, Role: domain.RoleWaliKelas}, AcademicYearID: yearID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Total != 1 || got.Outstanding != 0 || got.AwaitingHandover != 0 || got.PendingTransfers != 1 || got.Ready {
+		t.Fatalf("readiness = %+v; want only wali's row and pending transfer blocker", got)
+	}
+	if readinessRepo.countedTeacher != waliID {
+		t.Fatalf("transfer count teacher = %s, want %s", readinessRepo.countedTeacher, waliID)
+	}
+}
+
+func TestSettlementServiceYearReadinessAdminSeesUnattributedAndGlobalBlockers(t *testing.T) {
+	yearID := uuid.New()
+	year := newSettlementTestAcademicYear(t, yearID, domain.AcademicYearClosing)
+	readinessRepo := &settlementReadinessRepositoryFake{
+		rows: []repository.SettlementReadinessAccount{{
+			Account: domain.SavingsAccount{AcademicYearID: yearID, Status: domain.SavingsAccountOpen},
+			Student: domain.Student{Name: "Tanpa penempatan"}, AttributionIssue: true,
+		}},
+		unreconciled: true,
+	}
+	svc := newSettlementServiceForTest(t, repository.RepositorySet{
+		AcademicYears: &settlementServiceFakeAcademicYearRepository{getByIDFn: func(context.Context, uuid.UUID) (domain.AcademicYear, error) { return year, nil }},
+		Settlements:   readinessRepo,
+	}, &settlementServiceFakeUnitOfWorkManager{})
+	got, err := svc.YearReadiness(context.Background(), YearSettlementReadinessInput{Actor: Actor{UserID: uuid.New(), Role: domain.RoleAdmin}, AcademicYearID: yearID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Total != 1 || got.Unattributed != 1 || got.Outstanding != 1 || got.Ready {
+		t.Fatalf("readiness = %+v; want unresolved account and global blockers", got)
+	}
+}
+
+func TestSettlementServiceYearReadinessRejectsStudent(t *testing.T) {
+	svc := newSettlementServiceForTest(t, repository.RepositorySet{}, &settlementServiceFakeUnitOfWorkManager{})
+	_, err := svc.YearReadiness(context.Background(), YearSettlementReadinessInput{Actor: Actor{UserID: uuid.New(), Role: domain.RoleSiswa}, AcademicYearID: uuid.New()})
+	if !errors.Is(err, ErrForbidden) {
+		t.Fatalf("YearReadiness() error = %v, want forbidden", err)
+	}
+}
+
+func TestSettlementServiceRejectsStalePreviewAndRollsBack(t *testing.T) {
+	account := newSettlementTestAccount(t)
+	year := newSettlementTestAcademicYear(t, account.AcademicYearID, domain.AcademicYearClosing)
+	tx := newSettlementTestTransaction(t, account.ID, domain.TransactionDeposit, 100)
+	accountRepo := &settlementServiceFakeSavingsAccountRepository{}
+	accountRepo.getByIDForUpdateFn = func(context.Context, uuid.UUID) (domain.SavingsAccount, error) {
+		if accountRepo.updateCalls > 0 {
+			return accountRepo.lastUpdated, nil
+		}
+		return account, nil
+	}
+	settlementRepo := &settlementServiceFakeSettlementRepository{}
+	uow := &settlementServiceFakeUnitOfWork{repos: repository.RepositorySet{
+		SavingsAccounts: accountRepo,
+		AcademicYears:   &settlementServiceFakeAcademicYearRepository{getByIDFn: func(context.Context, uuid.UUID) (domain.AcademicYear, error) { return year, nil }},
+		Transactions:    &settlementServiceFakeTransactionRepository{listActiveFn: func(context.Context, uuid.UUID) ([]domain.Transaction, error) { return []domain.Transaction{tx}, nil }},
+		Settlements:     settlementRepo, AuditLogs: &settlementServiceFakeAuditRepository{},
+	}}
+	svc := newScopedSettlementServiceForTest(t, uow.repos, &settlementServiceFakeUnitOfWorkManager{uow: uow})
+	_, err := svc.SettleYearEnd(context.Background(), SettleYearEndInput{Actor: Actor{UserID: financialTestTeacherID, Role: domain.RoleWaliKelas}, SavingsAccountID: account.ID, ExpectedBalance: 99})
+	if !errors.Is(err, repository.ErrConflict) {
+		t.Fatalf("SettleYearEnd() error = %v, want stale-preview conflict", err)
+	}
+	if settlementRepo.createCalls != 0 || accountRepo.updateCalls != 0 || uow.rollbackCalls != 1 || uow.commitCalls != 0 {
+		t.Fatalf("settlement=%d account-update=%d commit/rollback=%d/%d; stale preview must not mutate", settlementRepo.createCalls, accountRepo.updateCalls, uow.commitCalls, uow.rollbackCalls)
+	}
+}
+
+func TestSettlementServiceAllowsZeroBalanceAndRejectsDuplicateSettlement(t *testing.T) {
+	account := newSettlementTestAccount(t)
+	year := newSettlementTestAcademicYear(t, account.AcademicYearID, domain.AcademicYearClosing)
+	accountRepo := &settlementServiceFakeSavingsAccountRepository{}
+	accountRepo.getByIDForUpdateFn = func(context.Context, uuid.UUID) (domain.SavingsAccount, error) {
+		if accountRepo.updateCalls > 0 {
+			return accountRepo.lastUpdated, nil
+		}
+		return account, nil
+	}
+	settlementRepo := &settlementServiceFakeSettlementRepository{}
+	uow := &settlementServiceFakeUnitOfWork{repos: repository.RepositorySet{
+		SavingsAccounts: accountRepo,
+		AcademicYears:   &settlementServiceFakeAcademicYearRepository{getByIDFn: func(context.Context, uuid.UUID) (domain.AcademicYear, error) { return year, nil }},
+		Transactions:    &settlementServiceFakeTransactionRepository{}, Settlements: settlementRepo, AuditLogs: &settlementServiceFakeAuditRepository{},
+	}}
+	svc := newScopedSettlementServiceForTest(t, uow.repos, &settlementServiceFakeUnitOfWorkManager{uow: uow})
+	got, err := svc.SettleYearEnd(context.Background(), SettleYearEndInput{Actor: Actor{UserID: financialTestTeacherID, Role: domain.RoleWaliKelas}, SavingsAccountID: account.ID, ExpectedBalance: 0})
+	if err != nil {
+		t.Fatalf("zero-balance settlement error = %v", err)
+	}
+	if got.Settlement == nil || got.Settlement.Amount != 0 || got.Account == nil || !got.Account.IsSettled() {
+		t.Fatalf("zero-balance result = %+v, want settled zero-value account", got)
+	}
+	_, err = svc.SettleYearEnd(context.Background(), SettleYearEndInput{Actor: Actor{UserID: financialTestTeacherID, Role: domain.RoleWaliKelas}, SavingsAccountID: account.ID, ExpectedBalance: 0})
+	if !errors.Is(err, domain.ErrInvalidTransition) {
+		t.Fatalf("duplicate settlement error = %v, want invalid transition", err)
+	}
+}
+
+type settlementListTotalsFake struct {
+	repository.ListTotalsRepository
+	transfers int
+}
+
+func (f settlementListTotalsFake) Transfers(context.Context, uuid.UUID, uuid.UUID, bool) (int, error) {
+	return f.transfers, nil
+}
+
+type settlementTransferMarker struct {
+	repository.ClassTransferRequestRepository
+}
+
+func TestSettlementServiceAdminReadinessIncludesPendingTransfers(t *testing.T) {
+	yearID := uuid.New()
+	year := newSettlementTestAcademicYear(t, yearID, domain.AcademicYearClosing)
+	svc := newSettlementServiceForTest(t, repository.RepositorySet{
+		AcademicYears:         &settlementServiceFakeAcademicYearRepository{getByIDFn: func(context.Context, uuid.UUID) (domain.AcademicYear, error) { return year, nil }},
+		Settlements:           &settlementReadinessRepositoryFake{},
+		ClassTransferRequests: &settlementTransferMarker{},
+		ListTotals:            settlementListTotalsFake{transfers: 2},
+	}, &settlementServiceFakeUnitOfWorkManager{})
+	got, err := svc.YearReadiness(context.Background(), YearSettlementReadinessInput{Actor: Actor{UserID: uuid.New(), Role: domain.RoleAdmin}, AcademicYearID: yearID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.PendingTransfers != 2 || got.Ready {
+		t.Fatalf("readiness = %+v, want two pending transfers and blocked year", got)
+	}
+}
+
+func TestSettlementServiceAdminCannotSettleOrExecuteReopen(t *testing.T) {
+	admin := Actor{UserID: uuid.New(), Role: domain.RoleAdmin}
+	svc := newSettlementServiceForTest(t, repository.RepositorySet{}, &settlementServiceFakeUnitOfWorkManager{})
+	if _, err := svc.SettleYearEnd(context.Background(), SettleYearEndInput{Actor: admin, SavingsAccountID: uuid.New()}); !errors.Is(err, ErrForbidden) {
+		t.Fatalf("Admin SettleYearEnd() error = %v, want forbidden", err)
+	}
+	if _, err := svc.Reopen(context.Background(), ReopenSettlementInput{Actor: admin, SettlementID: uuid.New()}); !errors.Is(err, ErrForbidden) {
+		t.Fatalf("Admin Reopen() error = %v, want forbidden", err)
+	}
+}
+
+func TestSettlementServiceSettleYearEndRejectsWaliOutsideHistoricalScope(t *testing.T) {
+	account := newSettlementTestAccount(t)
+	year := newSettlementTestAcademicYear(t, account.AcademicYearID, domain.AcademicYearClosing)
+	actorID, historicalWaliID, classID := uuid.New(), uuid.New(), uuid.New()
+	repos := newSettlementScopeRepositories(
+		&settlementServiceFakeStudentClassHistoryRepository{listFn: func(context.Context, uuid.UUID, uuid.UUID, repository.ListOptions) ([]domain.StudentClassHistory, error) {
+			return []domain.StudentClassHistory{{StudentID: account.StudentID, AcademicYearID: account.AcademicYearID, ClassID: classID}}, nil
+		}},
+		&settlementServiceFakeTeacherAssignmentRepository{listByClassFn: func(context.Context, uuid.UUID, uuid.UUID, repository.ListOptions) ([]domain.TeacherClassAssignment, error) {
+			return []domain.TeacherClassAssignment{{UserID: historicalWaliID, ClassID: classID, AcademicYearID: account.AcademicYearID, Period: domain.DateRange{From: time.Time{}}}}, nil
+		}},
+	)
+	repos.SavingsAccounts = &settlementServiceFakeSavingsAccountRepository{getByIDForUpdateFn: func(context.Context, uuid.UUID) (domain.SavingsAccount, error) { return account, nil }}
+	repos.AcademicYears = &settlementServiceFakeAcademicYearRepository{getByIDFn: func(context.Context, uuid.UUID) (domain.AcademicYear, error) { return year, nil }}
+	repos.Transactions = &settlementServiceFakeTransactionRepository{}
+	repos.Settlements = &settlementServiceFakeSettlementRepository{}
+	uow := &settlementServiceFakeUnitOfWork{repos: repos}
+	svc := newSettlementServiceForTest(t, repos, &settlementServiceFakeUnitOfWorkManager{uow: uow})
+	_, err := svc.SettleYearEnd(context.Background(), SettleYearEndInput{Actor: Actor{UserID: actorID, Role: domain.RoleWaliKelas}, SavingsAccountID: account.ID, ExpectedBalance: 0})
+	if !errors.Is(err, ErrScopeViolation) {
+		t.Fatalf("SettleYearEnd() error = %v, want historical-scope violation", err)
+	}
+	if uow.commitCalls != 0 || uow.rollbackCalls != 1 {
+		t.Fatalf("commit/rollback = %d/%d, want 0/1", uow.commitCalls, uow.rollbackCalls)
 	}
 }

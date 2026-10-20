@@ -11,7 +11,7 @@
 <body class="bg-gray-50 dark:bg-gray-900">
 <div class="flex h-screen overflow-hidden">{{template "sidebar" .}}<div class="relative flex min-w-0 flex-1 flex-col overflow-x-hidden overflow-y-auto">{{template "header" .}}
 <main class="min-w-0"><div class="mx-auto w-full max-w-(--breakpoint-2xl) p-4 md:p-6"><div class="space-y-6">
-<div><h1 class="text-2xl font-semibold text-gray-800 dark:text-white">{{.Heading}}</h1><p class="mt-1 text-sm text-gray-500 dark:text-gray-400">{{.Description}}</p></div>
+<div class="flex flex-wrap items-start justify-between gap-4"><div><h1 class="text-2xl font-semibold text-gray-800 dark:text-white">{{.Heading}}</h1><p class="mt-1 text-sm text-gray-500 dark:text-gray-400">{{.Description}}</p></div>{{if .SettlementURL}}<a class="form-button-primary" href="{{.SettlementURL}}">{{if eq .Role "ADMIN"}}Pengawasan Penutupan Tahun{{else}}Proses Tutup Buku Tabungan{{end}}</a>{{end}}</div>
 {{if .Error}}<div role="alert" class="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{{.Error}}</div>{{end}}
 {{if .Notice}}<div role="status" class="rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-700">{{.Notice}}</div>{{end}}
 {{if .IsDetail}}

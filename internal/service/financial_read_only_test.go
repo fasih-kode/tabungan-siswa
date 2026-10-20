@@ -58,14 +58,20 @@ func TestAdminFinancialMutationPolicy(t *testing.T) {
 	}
 }
 
-// Reopening used to be admin-only. Read-only supervision withdraws that
-// permission without granting it implicitly to teachers or students.
-func TestSettlementReopenForbiddenForAllRoles(t *testing.T) {
+// Reopening is permitted only through the responsible Wali request/approval
+// workflow. Admin may decide but cannot execute the financial mutation.
+func TestSettlementReopenRoleGate(t *testing.T) {
 	for _, role := range []domain.UserRole{domain.RoleAdmin, domain.RoleWaliKelas, domain.RoleSiswa} {
 		t.Run(string(role), func(t *testing.T) {
 			_, err := (&settlementService{}).Reopen(context.Background(), ReopenSettlementInput{
 				Actor: Actor{UserID: uuid.New(), Role: role}, SettlementID: uuid.New(),
 			})
+			if role == domain.RoleWaliKelas {
+				if errors.Is(err, ErrForbidden) {
+					t.Fatalf("responsible Wali role should pass authorization gate: %v", err)
+				}
+				return
+			}
 			if !errors.Is(err, ErrForbidden) {
 				t.Fatalf("Reopen() = %v, want forbidden", err)
 			}

@@ -67,6 +67,15 @@ func (s *academicYearService) Create(
 		if existing.Status != domain.AcademicYearClosed {
 			return CreateAcademicYearOutput{}, domain.ErrInvalidTransition
 		}
+		if uow.Repositories().Settlements != nil {
+			active, err := uow.Repositories().Settlements.HasActiveReopenWorkflow(ctx, existing.ID)
+			if err != nil {
+				return CreateAcademicYearOutput{}, err
+			}
+			if active {
+				return CreateAcademicYearOutput{}, domain.ErrInvalidTransition
+			}
+		}
 	}
 
 	if err := uow.Repositories().AcademicYears.Create(ctx, academicYear); err != nil {
@@ -297,6 +306,22 @@ func (s *academicYearService) Close(
 		}
 		if len(pending) > 0 {
 			return CloseAcademicYearOutput{}, ErrAcademicYearHasPendingTransfers
+		}
+	}
+	if repos.Settlements != nil {
+		hasUnreconciled, err := repos.Settlements.HasUnreconciledPositiveSettlements(ctx, academicYear.ID)
+		if err != nil {
+			return CloseAcademicYearOutput{}, err
+		}
+		if hasUnreconciled {
+			return CloseAcademicYearOutput{}, ErrAcademicYearHasUnconfirmedHandover
+		}
+		active, err := repos.Settlements.HasActiveReopenWorkflow(ctx, academicYear.ID)
+		if err != nil {
+			return CloseAcademicYearOutput{}, err
+		}
+		if active {
+			return CloseAcademicYearOutput{}, ErrAcademicYearHasActiveSettlementWorkflow
 		}
 	}
 

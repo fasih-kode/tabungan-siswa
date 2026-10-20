@@ -109,6 +109,17 @@ func (f *savingsAccountServiceFakeStudentClassHistoryRepository) ListByStudentAn
 	return nil, nil
 }
 
+func (f *savingsAccountServiceFakeStudentClassHistoryRepository) GetCurrentByStudentAndAcademicYear(ctx context.Context, studentID, yearID uuid.UUID, _ time.Time) (domain.StudentClassHistory, error) {
+	rows, err := f.ListByStudentAndAcademicYear(ctx, studentID, yearID, repository.ListOptions{})
+	if err != nil {
+		return domain.StudentClassHistory{}, err
+	}
+	if len(rows) == 0 {
+		return domain.StudentClassHistory{}, repository.ErrNotFound
+	}
+	return rows[0], nil
+}
+
 type savingsAccountServiceFakeTeacherAssignmentRepository struct {
 	repository.TeacherClassAssignmentRepository
 

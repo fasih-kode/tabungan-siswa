@@ -1,13 +1,14 @@
 # FASE 23 — Year-End Settlement Contract
 
 Status: LOCKED — product owner approved  
-Implementation status: NOT STARTED  
+Implementation status: IN PROGRESS — local working-tree implementation; review and verification pending
 Roadmap: Roadmap Resmi Tabungan Siswa v3, FASE 23  
 Dependencies: FASE 18 academic-year lifecycle, FASE 20 savings cycles, FASE 21 transactions, FASE 22 correction and audit
 
 This contract defines the year-end settlement, monitoring, close, and
-controlled reopen workflows. Contract decisions are locked; code changes have
-not started and require a separate implementation instruction.
+controlled reopen workflows. Contract decisions are locked. Implementation
+work is in progress and is not considered accepted until review and required
+verification are complete.
 
 ## 1. Goal
 
@@ -175,8 +176,12 @@ inactive, graduated, or left; show their status and outstanding state.
 
 The attribution date and historical class/assignment source are defined in §3.
 If placement/assignment data are missing or ambiguous, show an unresolved data
-issue; do not attribute the account to the current teacher. Admin can still
-open the student/account detail under existing read scope.
+issue; do not attribute the account to the current teacher. Ambiguous matches
+must remain a single account row, count as unattributed, and block readiness.
+Admin can still open the student/account detail under existing read scope.
+Wali readiness counts pending transfers attributed to classes for which that
+Wali is responsible at the same historical year-end date; it must not expose
+the whole-year count to an individual Wali.
 
 ## 7. Settlement workflow
 

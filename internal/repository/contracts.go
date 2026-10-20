@@ -39,6 +39,7 @@ type AcademicYearRepository interface {
 	GetByID(ctx context.Context, id uuid.UUID) (domain.AcademicYear, error)
 	GetByIDForShare(ctx context.Context, id uuid.UUID) (domain.AcademicYear, error)
 	GetByIDForUpdate(ctx context.Context, id uuid.UUID) (domain.AcademicYear, error)
+	HasSuccessor(ctx context.Context, id uuid.UUID) (bool, error)
 	ListForUpdate(ctx context.Context) ([]domain.AcademicYear, error)
 	List(ctx context.Context, options ListOptions) ([]domain.AcademicYear, error)
 	Update(ctx context.Context, academicYear domain.AcademicYear) error
@@ -265,6 +266,35 @@ type SettlementRepository interface {
 		ctx context.Context,
 		settlement domain.SavingsSettlement,
 	) error
+	ListYearReadiness(ctx context.Context, academicYearID uuid.UUID) ([]SettlementReadinessAccount, error)
+	CountPendingTransfersForTeacher(ctx context.Context, academicYearID, teacherID uuid.UUID) (int, error)
+	HasUnreconciledPositiveSettlements(ctx context.Context, academicYearID uuid.UUID) (bool, error)
+	HasActiveReopenWorkflow(ctx context.Context, academicYearID uuid.UUID) (bool, error)
+	CreateCashMovement(ctx context.Context, movement domain.SettlementCashMovement) error
+	ListCashMovements(ctx context.Context, settlementID uuid.UUID) ([]domain.SettlementCashMovement, error)
+	CreateReopenRequest(ctx context.Context, request domain.SettlementReopenRequest) error
+	GetReopenRequest(ctx context.Context, id uuid.UUID) (domain.SettlementReopenRequest, error)
+	GetActiveReopenRequest(ctx context.Context, settlementID uuid.UUID) (domain.SettlementReopenRequest, error)
+	GetLatestReopenRequest(ctx context.Context, settlementID uuid.UUID) (domain.SettlementReopenRequest, error)
+	GetApprovedReopenRequestByAccount(ctx context.Context, accountID uuid.UUID) (domain.SettlementReopenRequest, error)
+	GetReopenRequestForUpdate(ctx context.Context, id uuid.UUID) (domain.SettlementReopenRequest, error)
+	UpdateReopenRequest(ctx context.Context, request domain.SettlementReopenRequest) error
+}
+
+// SettlementReadinessAccount is a server-derived row scoped to one academic
+// year; Wali attribution uses the year-end historical placement and assignment.
+type SettlementReadinessAccount struct {
+	Account          domain.SavingsAccount
+	Student          domain.Student
+	ClassID          *uuid.UUID
+	ClassName        string
+	WaliID           *uuid.UUID
+	WaliName         string
+	Settlement       *domain.SavingsSettlement
+	CashDelivered    domain.Money
+	CurrentBalance   domain.Money
+	ReopenStatus     domain.SettlementReopenRequestStatus
+	AttributionIssue bool
 }
 
 type AuditRepository interface {

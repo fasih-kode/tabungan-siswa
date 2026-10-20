@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/fasih/tabungan-siswa/internal/domain"
+	"github.com/fasih/tabungan-siswa/internal/repository"
 	"github.com/google/uuid"
 )
 
@@ -802,6 +803,11 @@ type CancelTransactionOutput struct {
 
 type SettlementService interface {
 	SettleYearEnd(ctx context.Context, input SettleYearEndInput) (SettleYearEndOutput, error)
+	PreviewYearEnd(ctx context.Context, input PreviewYearEndInput) (PreviewYearEndOutput, error)
+	ConfirmHandover(ctx context.Context, input ConfirmSettlementHandoverInput) (ConfirmSettlementHandoverOutput, error)
+	YearReadiness(ctx context.Context, input YearSettlementReadinessInput) (YearSettlementReadinessOutput, error)
+	RequestReopen(ctx context.Context, input RequestSettlementReopenInput) (RequestSettlementReopenOutput, error)
+	DecideReopen(ctx context.Context, input DecideSettlementReopenInput) (DecideSettlementReopenOutput, error)
 	SettleStudentLeaving(ctx context.Context, input SettleStudentLeavingInput) (SettleStudentLeavingOutput, error)
 	Get(ctx context.Context, input GetSettlementInput) (GetSettlementOutput, error)
 	List(ctx context.Context, input ListSettlementsInput) (ListSettlementsOutput, error)
@@ -811,6 +817,54 @@ type SettlementService interface {
 type SettleYearEndInput struct {
 	Actor            Actor
 	SavingsAccountID uuid.UUID
+	ExpectedBalance  domain.Money
+}
+
+type PreviewYearEndInput struct {
+	Actor            Actor
+	SavingsAccountID uuid.UUID
+}
+type PreviewYearEndOutput struct {
+	Account     *domain.SavingsAccount
+	Student     *domain.Student
+	Balance     domain.Money
+	PreviewedAt time.Time
+}
+type ConfirmSettlementHandoverInput struct {
+	Actor            Actor
+	SettlementID     uuid.UUID
+	Confirm          bool
+	ReceiptReference *string
+}
+type ConfirmSettlementHandoverOutput struct {
+	Movement *domain.SettlementCashMovement
+}
+type RequestSettlementReopenInput struct {
+	Actor        Actor
+	SettlementID uuid.UUID
+	Reason       string
+}
+type RequestSettlementReopenOutput struct {
+	Request *domain.SettlementReopenRequest
+}
+type DecideSettlementReopenInput struct {
+	Actor     Actor
+	RequestID uuid.UUID
+	Approve   bool
+	Reason    string
+}
+type DecideSettlementReopenOutput struct {
+	Request *domain.SettlementReopenRequest
+}
+type YearSettlementReadinessInput struct {
+	Actor          Actor
+	AcademicYearID uuid.UUID
+}
+type YearSettlementReadinessOutput struct {
+	AcademicYear                                                                             *domain.AcademicYear
+	Rows                                                                                     []repository.SettlementReadinessAccount
+	Total, Outstanding, Settled, AwaitingHandover, Completed, Unattributed, PendingTransfers int
+	Ready                                                                                    bool
 }
 
 type SettleYearEndOutput struct {
@@ -835,7 +889,13 @@ type GetSettlementInput struct {
 }
 
 type GetSettlementOutput struct {
-	Settlement *domain.SavingsSettlement
+	Settlement    *domain.SavingsSettlement
+	History       []domain.SavingsSettlement
+	Movements     []domain.SettlementCashMovement
+	Student       *domain.Student
+	ReopenRequest *domain.SettlementReopenRequest
+	Account       *domain.SavingsAccount
+	ActorNames    map[uuid.UUID]string
 }
 
 type ListSettlementsInput struct {
