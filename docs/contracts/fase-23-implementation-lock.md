@@ -33,10 +33,16 @@ The following checks passed on 2026-10-20:
 - Migration 10 and 11 upgrade/rollback cycles on the guarded disposable test
   database; final schema version 11, clean.
 
-Browser E2E was not run. The initial disposable database migration metadata
-did not match the existing schema objects; the condition and test-database-only
-alignment are recorded in [`HANDOVER.md`](../HANDOVER.md). Development and
-production databases were not changed.
+Manual browser E2E was subsequently run against the local server and guarded
+disposable database. It covered Wali login, readiness overview, preview,
+settlement confirmation, handover confirmation, updated ready state, Admin
+login, and year close. The temporary fixture was removed afterward; the two
+pre-existing test users were retained. At lock time, the repository did not
+have an automated browser E2E harness; a repeatable Playwright test was added
+later and its result is in [`HANDOVER.md`](../HANDOVER.md). The initial
+disposable database migration metadata did not match the existing schema
+objects; the condition and test-database-only alignment are also recorded
+there. Development and production databases were not changed.
 
 ## Boundary
 

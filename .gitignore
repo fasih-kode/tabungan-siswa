@@ -28,3 +28,7 @@ coverage.html
 
 # Frontend dependencies
 node_modules/
+
+# Browser E2E artifacts
+/playwright-report/
+/test-results/

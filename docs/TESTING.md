@@ -17,6 +17,29 @@ Perintah di bawah berasal dari `Makefile`, `package.json`, script tes, dan kontr
 - Tes JavaScript: `npm run test:instant-search` (Node test runner terhadap `scripts/instant-search.test.cjs`).
 - Build CSS: `npm run css:build`.
 
+## Browser E2E
+
+Persiapan satu kali:
+
+```bash
+npm install
+npm run test:e2e:install
+```
+
+Jalankan seluruh alur settlement dari browser Chromium:
+
+```bash
+npm run test:e2e
+```
+
+Perintah tersebut membutuhkan `.env` dengan `TABUNGAN_SISWA_DATABASE_DSN`, PostgreSQL yang dapat diakses, `psql`, Go, dan Node.js. Script mengganti hanya nama database pada DSN menjadi `tabungan_siswa_fase168_clean_test`, lalu memastikan database aktual dan schema v11 bersih. Jangan arahkan tes ke database development atau produksi. Aplikasi lokal dijalankan otomatis pada port `8080`; tes gagal jika port tersebut sudah dipakai agar tidak tanpa sengaja menguji server lain.
+
+Fixture akun Admin/Wali, siswa, kelas, tahun, dan rekening dibuat dengan ID khusus oleh `cmd/e2e-fixture`. Helper menolak target selain database uji yang diizinkan, menolak schema selain v11 bersih, dan menolak benturan ID. Setelah tes, script menghentikan server dan menghapus hanya fixture tersebut. Jangan jalankan Go integration suite bersamaan karena keduanya memakai database uji yang sama.
+
+Tes di `e2e/settlement.spec.cjs` memeriksa login Wali, overview dan preview, settlement, konfirmasi penyerahan, readiness siap, login Admin, dan tutup tahun. Trace dan screenshot disimpan otomatis ketika tes gagal. Untuk memasang Chromium di lokasi cache khusus, set `PLAYWRIGHT_BROWSERS_PATH` saat menjalankan `npm run test:e2e:install` dan gunakan nilai yang sama untuk `npm run test:e2e`.
+
+Jika proses dihentikan paksa sehingga trap cleanup tidak sempat berjalan, jalankan `npm run test:e2e:cleanup`. Perintah ini hanya menghapus ID fixture E2E yang tetap dan tetap menolak database selain database uji yang diizinkan.
+
 ## Pemeriksaan diff
 
 - `git diff --check` untuk whitespace/conflict-marker issues pada diff.

@@ -46,4 +46,4 @@ Status: **terkunci setelah review teknis, verifikasi acceptance, dan persetujuan
 
 Bukti teknis dan acceptance checks yang ditinjau telah lulus. Owner menginstruksikan penutupan setelah status dan prasyarat commit/lock dijelaskan. Implementation commit dan catatan lock telah dibuat.
 
-Keputusan produk pada §14 tidak berubah. Tidak ada browser E2E yang dijalankan.
+Keputusan produk pada §14 tidak berubah. E2E browser manual dan harness otomatis yang dibuat kemudian dicatat di [HANDOVER.md](HANDOVER.md) dan [TESTING.md](TESTING.md).

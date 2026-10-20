@@ -109,3 +109,18 @@ Rujuk kontrak fase untuk status terbarunya sebelum melanjutkan.
 - Migration 10 dan 11 telah diuji upgrade/rollback pada database disposable; database uji ditinggalkan pada versi 11 bersih. Tidak ada perubahan pada database development/produksi.
 - Tidak ada browser E2E; aplikasi belum dinyatakan siap produksi hanya berdasarkan tes ini.
 - Status FASE 23: **implementation lock dibuat**. Perubahan lanjutan yang mengubah perilaku FASE 23 perlu kontrak/amendment baru dan tes terkait.
+
+## E2E browser manual setelah implementation lock — 2026-10-20
+
+- Repository tidak menyediakan harness Playwright/Selenium; skenario dijalankan melalui browser lokal dengan server memakai database `tabungan_siswa_fase168_clean_test`.
+- Wali berhasil login, membuka overview settlement, melihat satu akun OPEN dengan saldo Rp 2.500, membuka preview, membuat settlement, dan mengonfirmasi penyerahan. Overview berubah menjadi `Belum settlement 0`, `Menunggu penyerahan 0`, `Selesai 1`, dan `Cakupan Anda siap`.
+- Admin berhasil login, melihat detail tahun, menjalankan `Tutup Tahun Ajaran`, dan UI menampilkan status `Ditutup`.
+- Setelah E2E, server dihentikan dan hanya fixture dengan ID `f2300000-...` yang dibuat untuk skenario ini dibersihkan dari database tes. Verifikasi menunjukkan fixture tidak tersisa; dua akun uji yang ada sebelumnya tetap ada. Database development/produksi tidak disentuh.
+- Hasil: seluruh alur manual browser yang dicoba lulus. Ini tidak menciptakan regression suite browser otomatis; tes HTTP, template, integration, dan concurrency otomatis tetap menjadi bukti berulang utama.
+
+## Harness E2E browser otomatis — 2026-10-20
+
+- Ditambahkan Playwright Test dengan Chromium, konfigurasi server lokal otomatis, tes alur Wali→settlement→penyerahan→readiness→Admin→tutup tahun, dan fixture Go ber-guard.
+- Jalur pengguna: `npm install`, `npm run test:e2e:install`, lalu `npm run test:e2e`. Petunjuk target database dan pembersihan ada di [TESTING.md](TESTING.md).
+- Verifikasi: `GOCACHE=/tmp/tabungan-siswa-gocache PLAYWRIGHT_BROWSERS_PATH=/tmp/tabungan-siswa-playwright-browsers npm run test:e2e` lulus (1/1). Fixture dibersihkan otomatis dari `tabungan_siswa_fase168_clean_test`; development/produksi tidak disentuh.
+- `git diff --check` lulus. Harness ini berjalan serial dan tidak boleh dijalankan paralel dengan Go integration suite pada database tes yang sama.
