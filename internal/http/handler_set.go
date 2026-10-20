@@ -21,6 +21,7 @@ type HandlerSet struct {
 	StudentPromotion  *StudentPromotionPageHandler
 	ClassTransfer     *ClassTransferPageHandler
 	Savings           *SavingsPageHandler
+	Transactions      *TransactionPageHandler
 	TeacherAssignment *TeacherAssignmentPageHandler
 	Users             *UserPageHandler
 }
@@ -88,6 +89,13 @@ func NewHandlerSet(
 			return HandlerSet{}, err
 		}
 	}
+	var transactions *TransactionPageHandler
+	if services.Transaction != nil && services.SavingsAccount != nil && services.Student != nil && services.AcademicYear != nil {
+		transactions, err = NewTransactionPageHandler(services.Transaction, services.SavingsAccount, services.Student, services.AcademicYear, templates)
+		if err != nil {
+			return HandlerSet{}, err
+		}
+	}
 
 	var teacherAssignment *TeacherAssignmentPageHandler
 	if services.ClassAssignment != nil && services.User != nil && services.Class != nil && services.AcademicYear != nil {
@@ -114,6 +122,7 @@ func NewHandlerSet(
 		StudentPromotion:  studentPromotion,
 		ClassTransfer:     classTransfer,
 		Savings:           savings,
+		Transactions:      transactions,
 		TeacherAssignment: teacherAssignment,
 		Users:             userPage,
 	}, nil

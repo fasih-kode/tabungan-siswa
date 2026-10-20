@@ -29,6 +29,7 @@ func TestStatus(t *testing.T) {
 		{"already settled", domain.ErrAlreadySettled, http.StatusConflict},
 		{"already cancelled", domain.ErrAlreadyCancelled, http.StatusConflict},
 		{"negative balance", domain.ErrNegativeBalance, http.StatusConflict},
+		{"transaction date outside academic year", service.ErrTransactionDateOutOfAcademicYear, http.StatusConflict},
 		{"money overflow", domain.ErrMoneyOverflow, http.StatusConflict},
 		{"session already revoked", domain.ErrSessionAlreadyRevoked, http.StatusConflict},
 		{"invalid amount", domain.ErrInvalidAmount, http.StatusBadRequest},

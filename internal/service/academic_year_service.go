@@ -57,6 +57,18 @@ func (s *academicYearService) Create(
 		}
 	}()
 
+	// Lock all existing years before checking the prerequisite. The PostgreSQL
+	// insert trigger independently enforces the same rule for non-service writes.
+	existingYears, err := uow.Repositories().AcademicYears.ListForUpdate(ctx)
+	if err != nil {
+		return CreateAcademicYearOutput{}, fmt.Errorf("lock existing academic years before create: %w", err)
+	}
+	for _, existing := range existingYears {
+		if existing.Status != domain.AcademicYearClosed {
+			return CreateAcademicYearOutput{}, domain.ErrInvalidTransition
+		}
+	}
+
 	if err := uow.Repositories().AcademicYears.Create(ctx, academicYear); err != nil {
 		return CreateAcademicYearOutput{}, err
 	}
@@ -198,7 +210,7 @@ func (s *academicYearService) StartClosing(
 			return StartClosingAcademicYearOutput{}, err
 		}
 		if len(pending) > 0 {
-			return StartClosingAcademicYearOutput{}, domain.ErrInvalidTransition
+			return StartClosingAcademicYearOutput{}, ErrAcademicYearHasPendingTransfers
 		}
 	}
 
@@ -271,7 +283,7 @@ func (s *academicYearService) Close(
 			return CloseAcademicYearOutput{}, err
 		}
 		if hasOpen {
-			return CloseAcademicYearOutput{}, domain.ErrInvalidTransition
+			return CloseAcademicYearOutput{}, ErrAcademicYearHasUnsettledAccounts
 		}
 	}
 	if repos.ClassTransferRequests != nil {
@@ -284,7 +296,7 @@ func (s *academicYearService) Close(
 			return CloseAcademicYearOutput{}, err
 		}
 		if len(pending) > 0 {
-			return CloseAcademicYearOutput{}, domain.ErrInvalidTransition
+			return CloseAcademicYearOutput{}, ErrAcademicYearHasPendingTransfers
 		}
 	}
 

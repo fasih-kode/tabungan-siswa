@@ -87,6 +87,29 @@ func (r *AcademicYearRepository) GetByID(
 	return r.getOne(ctx, query, id, "get academic year by id")
 }
 
+// GetByIDForShare holds a shared row lock until the caller's transaction ends.
+// It coordinates account financial writes with year lifecycle transitions.
+func (r *AcademicYearRepository) GetByIDForShare(
+	ctx context.Context,
+	id uuid.UUID,
+) (domain.AcademicYear, error) {
+	const query = `
+		SELECT
+			id,
+			name,
+			start_date,
+			end_date,
+			status,
+			created_at,
+			updated_at
+		FROM academic_years
+		WHERE id = $1
+		FOR SHARE
+	`
+
+	return r.getOne(ctx, query, id, "get academic year by id for share")
+}
+
 // GetByIDForUpdate mengambil kunci FOR UPDATE pada baris tahun ajaran.
 // Pemanggil harus berada di dalam transaksi; kunci dipertahankan sampai commit/rollback.
 func (r *AcademicYearRepository) GetByIDForUpdate(
@@ -108,6 +131,36 @@ func (r *AcademicYearRepository) GetByIDForUpdate(
 	`
 
 	return r.getOne(ctx, query, id, "get academic year by id for update")
+}
+
+// ListForUpdate locks all academic years in a deterministic order until the
+// caller's transaction ends. Create uses this to serialize its lifecycle
+// precondition against close/reopen transitions.
+func (r *AcademicYearRepository) ListForUpdate(ctx context.Context) ([]domain.AcademicYear, error) {
+	const query = `
+		SELECT id, name, start_date, end_date, status, created_at, updated_at
+		FROM academic_years
+		ORDER BY id
+		FOR UPDATE
+	`
+	rows, err := r.db.QueryContext(ctx, query)
+	if err != nil {
+		return nil, fmt.Errorf("lock academic years for update: %w", err)
+	}
+	defer rows.Close()
+
+	items := make([]domain.AcademicYear, 0)
+	for rows.Next() {
+		var item domain.AcademicYear
+		if err := rows.Scan(&item.ID, &item.Name, &item.StartDate, &item.EndDate, &item.Status, &item.CreatedAt, &item.UpdatedAt); err != nil {
+			return nil, fmt.Errorf("scan locked academic year: %w", err)
+		}
+		items = append(items, item)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate locked academic years: %w", err)
+	}
+	return items, nil
 }
 
 func (r *AcademicYearRepository) List(

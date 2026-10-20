@@ -33,7 +33,18 @@ Kelas may submit; Admin reviews and decides.
 
 ## Operational notes
 
-- Apply migrations through `000009_user_password_change_required` before
+## Post-lock lifecycle amendment — academic-year promotion order
+
+Product owner decision, 2026-10-20: the existing FASE 19 promotion workflow is
+amended to require the source academic year to be `CLOSED`. FASE 18's academic
+year creation contract now requires every existing year to be `CLOSED` before
+creating the next year (the first year is exempt). Since closure already
+requires all associated savings accounts to be `SETTLED`, the operational
+order is settlement → close old year → create new year → create target classes
+→ promote/graduate students. The service, database trigger, and integration
+tests must enforce this order.
+
+- Apply migrations through `000010_academic_year_create_requires_closed_previous` before
   running this application version.
 - Student account creation remains separate from student import/creation.
 - Transfer request submission remains Wali-only; Admin handles review.

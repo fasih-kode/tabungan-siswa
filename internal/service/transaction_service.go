@@ -18,7 +18,7 @@ func (s *transactionService) Deposit(
 	ctx context.Context,
 	input DepositInput,
 ) (DepositOutput, error) {
-	if err := RequireRole(input.Actor, domain.RoleWaliKelas); err != nil {
+	if err := RequireRole(input.Actor, domain.RoleAdmin, domain.RoleWaliKelas); err != nil {
 		return DepositOutput{}, err
 	}
 
@@ -39,17 +39,13 @@ func (s *transactionService) Deposit(
 		}
 	}()
 
-	account, err := repos.SavingsAccounts.GetByIDForUpdate(ctx, input.SavingsAccountID)
+	account, err := lockOpenTransactionAccount(ctx, repos, input.SavingsAccountID, input.TransactionDate)
 	if err != nil {
 		return DepositOutput{}, err
 	}
 
 	if err := s.authorizeAccount(ctx, repos, input.Actor, account); err != nil {
 		return DepositOutput{}, err
-	}
-
-	if !account.IsOpen() {
-		return DepositOutput{}, domain.ErrInvalidTransition
 	}
 
 	transaction, err := domain.NewDeposit(
@@ -102,7 +98,7 @@ func (s *transactionService) Withdrawal(
 	ctx context.Context,
 	input WithdrawalInput,
 ) (WithdrawalOutput, error) {
-	if err := RequireRole(input.Actor, domain.RoleWaliKelas); err != nil {
+	if err := RequireRole(input.Actor, domain.RoleAdmin, domain.RoleWaliKelas); err != nil {
 		return WithdrawalOutput{}, err
 	}
 
@@ -123,17 +119,13 @@ func (s *transactionService) Withdrawal(
 		}
 	}()
 
-	account, err := repos.SavingsAccounts.GetByIDForUpdate(ctx, input.SavingsAccountID)
+	account, err := lockOpenTransactionAccount(ctx, repos, input.SavingsAccountID, input.TransactionDate)
 	if err != nil {
 		return WithdrawalOutput{}, err
 	}
 
 	if err := s.authorizeAccount(ctx, repos, input.Actor, account); err != nil {
 		return WithdrawalOutput{}, err
-	}
-
-	if !account.IsOpen() {
-		return WithdrawalOutput{}, domain.ErrInvalidTransition
 	}
 
 	transactions, err := repos.Transactions.ListActiveBySavingsAccount(ctx, account.ID)
@@ -237,19 +229,53 @@ func (s *transactionService) List(
 		return ListTransactionsOutput{}, err
 	}
 
-	transactions, err := s.deps.Repositories.Transactions.ListBySavingsAccount(
-		ctx,
-		account.ID,
-		repository.ListOptions{
-			Limit:  input.Options.Limit,
-			Offset: input.Options.Offset,
-		},
-	)
+	transactions, err := s.deps.Repositories.Transactions.ListActiveBySavingsAccount(ctx, account.ID)
 	if err != nil {
 		return ListTransactionsOutput{}, err
 	}
+	sortTransactionsChronologically(transactions)
+	runningBalances := make(map[uuid.UUID]domain.Money, len(transactions))
+	var running domain.Money
+	for _, transaction := range transactions {
+		if !transaction.Amount.IsPositive() || transaction.Amount > domain.MaxMoney {
+			return ListTransactionsOutput{}, domain.ErrInvalidAmount
+		}
+		switch transaction.Type {
+		case domain.TransactionDeposit:
+			running, err = running.Add(transaction.Amount)
+		case domain.TransactionWithdrawal:
+			running, err = running.Subtract(transaction.Amount)
+		default:
+			return ListTransactionsOutput{}, domain.ErrInvalidValue
+		}
+		if err != nil {
+			return ListTransactionsOutput{}, err
+		}
+		runningBalances[transaction.ID] = running
+	}
 
-	return ListTransactionsOutput{Transactions: transactionPointers(transactions)}, nil
+	start := input.Options.Offset
+	if start < 0 {
+		return ListTransactionsOutput{}, domain.ErrInvalidValue
+	}
+	limit := input.Options.Limit
+	if limit <= 0 {
+		limit = 10
+	}
+	if start > len(transactions) {
+		start = len(transactions)
+	}
+	end := start + limit
+	if end < start || end > len(transactions) {
+		end = len(transactions)
+	}
+	page := transactions[start:end]
+	return ListTransactionsOutput{
+		Transactions:    transactionPointers(page),
+		RunningBalances: runningBalances,
+		Balance:         running,
+		Total:           len(transactions),
+	}, nil
 }
 
 func (s *transactionService) Edit(
@@ -284,10 +310,24 @@ func (s *transactionService) Edit(
 	if err != nil {
 		return EditTransactionOutput{}, err
 	}
+	unlockedAccount, err := repos.SavingsAccounts.GetByID(ctx, existing.SavingsAccountID)
+	if err != nil {
+		return EditTransactionOutput{}, err
+	}
+	year, err := repos.AcademicYears.GetByIDForShare(ctx, unlockedAccount.AcademicYearID)
+	if err != nil {
+		return EditTransactionOutput{}, err
+	}
+	if !transactionDateWithinAcademicYear(input.TransactionDate, year) {
+		return EditTransactionOutput{}, ErrTransactionDateOutOfAcademicYear
+	}
 
 	account, err := repos.SavingsAccounts.GetByIDForUpdate(ctx, existing.SavingsAccountID)
 	if err != nil {
 		return EditTransactionOutput{}, err
+	}
+	if account.AcademicYearID != year.ID {
+		return EditTransactionOutput{}, domain.ErrInvalidTransition
 	}
 
 	if err := s.authorizeAccount(ctx, repos, input.Actor, account); err != nil {
@@ -547,6 +587,56 @@ func sortTransactionsChronologically(transactions []domain.Transaction) {
 		}
 		return transactions[i].ID.String() < transactions[j].ID.String()
 	})
+}
+
+func lockOpenTransactionAccount(
+	ctx context.Context,
+	repos repository.RepositorySet,
+	accountID uuid.UUID,
+	transactionDate time.Time,
+) (domain.SavingsAccount, error) {
+	account, err := repos.SavingsAccounts.GetByID(ctx, accountID)
+	if err != nil {
+		return domain.SavingsAccount{}, err
+	}
+	if account.AcademicYearID == uuid.Nil {
+		return domain.SavingsAccount{}, domain.ErrInvalidID
+	}
+
+	year, err := repos.AcademicYears.GetByIDForShare(ctx, account.AcademicYearID)
+	if err != nil {
+		return domain.SavingsAccount{}, err
+	}
+	if !year.IsOpen() {
+		return domain.SavingsAccount{}, domain.ErrInvalidTransition
+	}
+	if !transactionDateWithinAcademicYear(transactionDate, year) {
+		return domain.SavingsAccount{}, ErrTransactionDateOutOfAcademicYear
+	}
+
+	account, err = repos.SavingsAccounts.GetByIDForUpdate(ctx, accountID)
+	if err != nil {
+		return domain.SavingsAccount{}, err
+	}
+	if account.AcademicYearID != year.ID {
+		return domain.SavingsAccount{}, domain.ErrInvalidTransition
+	}
+	if !account.IsOpen() {
+		return domain.SavingsAccount{}, domain.ErrInvalidTransition
+	}
+	return account, nil
+}
+
+func calendarDate(value time.Time) time.Time {
+	year, month, day := value.Date()
+	return time.Date(year, month, day, 0, 0, 0, 0, time.UTC)
+}
+
+func transactionDateWithinAcademicYear(date time.Time, year domain.AcademicYear) bool {
+	date = calendarDate(date)
+	start := calendarDate(year.StartDate)
+	end := calendarDate(year.EndDate)
+	return !date.Before(start) && date.Before(end)
 }
 
 func transactionPointers(transactions []domain.Transaction) []*domain.Transaction {

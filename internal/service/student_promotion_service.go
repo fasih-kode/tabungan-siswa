@@ -148,7 +148,7 @@ func previewStudentPromotion(ctx context.Context, repos repository.RepositorySet
 }
 
 func validatePromotionYears(from, to domain.AcademicYear) error {
-	if from.Status != domain.AcademicYearClosing && from.Status != domain.AcademicYearClosed {
+	if from.Status != domain.AcademicYearClosed {
 		return domain.ErrInvalidTransition
 	}
 	if !to.IsOpen() || to.StartDate.Before(from.EndDate) {

@@ -181,6 +181,18 @@ func TestRequireClassScopeIntegration(t *testing.T) {
 			"2027/2028",
 			2027,
 		)
+		if err := academicYear.StartClosing(); err != nil {
+			t.Fatalf("start closing source academic year: %v", err)
+		}
+		if err := academicYearRepo.Update(ctx, academicYear); err != nil {
+			t.Fatalf("update source academic year to CLOSING: %v", err)
+		}
+		if err := academicYear.Close(); err != nil {
+			t.Fatalf("close source academic year: %v", err)
+		}
+		if err := academicYearRepo.Update(ctx, academicYear); err != nil {
+			t.Fatalf("update source academic year to CLOSED: %v", err)
+		}
 
 		if err := otherYear.StartClosing(); err != nil {
 			t.Fatalf("start closing other academic year: %v", err)

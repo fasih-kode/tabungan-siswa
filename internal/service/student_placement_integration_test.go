@@ -37,10 +37,10 @@ func newStudentPlacementFixture(t *testing.T) studentPlacementFixture {
 		t.Fatal(err)
 	}
 	f.actor = service.Actor{UserID: user.ID, Role: domain.RoleAdmin}
-	f.year = newServiceScopeAcademicYearForStartYear(t, "2026/2027", 2026)
-	f.otherYear = newServiceScopeAcademicYearForStartYear(t, "2027/2028", 2027)
+	f.otherYear = newServiceScopeAcademicYearForStartYear(t, "2026/2027", 2026)
 	f.otherYear.Status = domain.AcademicYearClosed
-	for _, year := range []domain.AcademicYear{f.year, f.otherYear} {
+	f.year = newServiceScopeAcademicYearForStartYear(t, "2027/2028", 2027)
+	for _, year := range []domain.AcademicYear{f.otherYear, f.year} {
 		if err := f.repos.AcademicYears.Create(context.Background(), year); err != nil {
 			t.Fatal(err)
 		}
@@ -55,15 +55,15 @@ func newStudentPlacementFixture(t *testing.T) studentPlacementFixture {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for i, year := range []domain.AcademicYear{f.year, f.otherYear} {
+	for i, year := range []domain.AcademicYear{f.otherYear, f.year} {
 		output, err := f.classes.Create(context.Background(), service.CreateClassInput{Actor: f.actor, Name: "VII A", Level: 7, AcademicYearID: year.ID, EffectiveDate: year.StartDate.AddDate(0, 0, 14)})
 		if err != nil {
 			t.Fatal(err)
 		}
 		if i == 0 {
-			f.class = *output.Class
-		} else {
 			f.otherClass = *output.Class
+		} else {
+			f.class = *output.Class
 		}
 	}
 	return f
@@ -114,7 +114,7 @@ func TestStudentPlacementIntegrationManualAndDirectory(t *testing.T) {
 	for _, tc := range []struct {
 		year     uuid.UUID
 		expected domain.Class
-	}{{uuid.Nil, f.otherClass}, {f.year.ID, f.class}} {
+	}{{uuid.Nil, f.class}, {f.year.ID, f.class}} {
 		directory, err := f.students.List(ctx, service.ListStudentsInput{Actor: f.actor, IncludePlacement: true, AcademicYearID: tc.year, Options: service.ListOptions{Limit: 10}})
 		if err != nil || len(directory.Students) != 1 {
 			t.Fatalf("directory=%+v err=%v", directory, err)

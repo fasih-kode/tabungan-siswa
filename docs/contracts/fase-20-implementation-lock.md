@@ -29,9 +29,9 @@ and passbook according to the authorization contract.
   deterministic running balances, role scope, CSRF, account creation, and
   empty/populated passbook views.
 
-No database migration was required. Transaction entry, editing, and cancellation
-forms remain in FASE 21. A separate browser E2E session was not run; automated
-route, service, database integration, and template tests passed.
+No database migration was required. Transaction entry forms are owned by
+FASE 21. A separate browser E2E session was not run; automated route, service,
+database integration, and template tests passed.
 
 ## Audit follow-up — 2026-10-19
 
@@ -50,3 +50,12 @@ route, service, database integration, and template tests passed.
   `tabungan_siswa_fase168_clean_test` database; `go vet ./...`,
   `go build ./...`, `npm run test:instant-search` (7 tests), and
   `git diff --check` also passed.
+
+## Post-lock scope amendment — 2026-10-20
+
+The original FASE 20 wording assigned transaction editing and cancellation to
+FASE 21. The product owner approved the Roadmap v3 boundary: FASE 21 owns
+deposit/withdrawal entry and transaction reads; transaction edit, cancellation,
+and correction belong to FASE 22. The FASE 20 HTTP contract and FASE 21
+transaction contract are aligned with this amendment. No implementation code
+is changed by this documentation amendment.

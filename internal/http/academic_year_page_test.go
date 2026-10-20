@@ -215,6 +215,32 @@ func TestAcademicYearTransitionRedirectsToDetail(t *testing.T) {
 	}
 }
 
+func TestAcademicYearCloseFailureExplainsUnsettledAccounts(t *testing.T) {
+	year := *academicYearsForTest(1)[0]
+	year.Status = domain.AcademicYearClosing
+	fake := &academicYearServiceFake{years: []*domain.AcademicYear{&year}, transitionErr: service.ErrAcademicYearHasUnsettledAccounts}
+	handler := newAcademicYearHandlerForTest(t, fake)
+	form := url.Values{"csrf_token": {"token"}}
+	req := httptest.NewRequest(http.MethodPost, "/academic-years/"+year.ID.String()+"/close", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.SetPathValue("id", year.ID.String())
+	req.SetPathValue("action", "close")
+	req = req.WithContext(service.WithActor(req.Context(), service.Actor{UserID: uuid.New(), Role: domain.RoleAdmin}))
+	recorder := httptest.NewRecorder()
+	handler.Transition(recorder, req)
+	if recorder.Code != http.StatusConflict {
+		t.Fatalf("status = %d, want 409; body=%s", recorder.Code, recorder.Body.String())
+	}
+	for _, want := range []string{"rekening tabungan yang belum diselesaikan", "Selesaikan settlement", year.Name} {
+		if !strings.Contains(recorder.Body.String(), want) {
+			t.Errorf("body %q does not contain %q", recorder.Body.String(), want)
+		}
+	}
+	if strings.TrimSpace(recorder.Body.String()) == http.StatusText(http.StatusConflict) {
+		t.Fatal("transition failure rendered only the raw status text")
+	}
+}
+
 func TestAcademicYearListUsesLookaheadForNextPage(t *testing.T) {
 	actor := service.Actor{UserID: uuid.New(), Role: domain.RoleAdmin}
 	for _, tc := range []struct {

@@ -10,10 +10,10 @@ import (
 func TestValidatePromotionYears(t *testing.T) {
 	start := time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC)
 	end := time.Date(2027, 7, 1, 0, 0, 0, 0, time.UTC)
-	from := domain.AcademicYear{Status: domain.AcademicYearClosing, EndDate: start}
+	from := domain.AcademicYear{Status: domain.AcademicYearClosed, EndDate: start}
 	to := domain.AcademicYear{Status: domain.AcademicYearOpen, StartDate: start, EndDate: end}
 	if err := validatePromotionYears(from, to); err != nil {
-		t.Fatalf("adjacent closing/open years rejected: %v", err)
+		t.Fatalf("adjacent closed/open years rejected: %v", err)
 	}
 
 	tests := []struct {
@@ -21,6 +21,7 @@ func TestValidatePromotionYears(t *testing.T) {
 		from, to domain.AcademicYear
 	}{
 		{name: "source still open", from: domain.AcademicYear{Status: domain.AcademicYearOpen, EndDate: start}, to: to},
+		{name: "source still closing", from: domain.AcademicYear{Status: domain.AcademicYearClosing, EndDate: start}, to: to},
 		{name: "target not open", from: from, to: domain.AcademicYear{Status: domain.AcademicYearClosed, StartDate: start, EndDate: end}},
 		{name: "overlapping years", from: domain.AcademicYear{Status: domain.AcademicYearClosed, EndDate: start}, to: domain.AcademicYear{Status: domain.AcademicYearOpen, StartDate: start.Add(-time.Hour), EndDate: end}},
 	}

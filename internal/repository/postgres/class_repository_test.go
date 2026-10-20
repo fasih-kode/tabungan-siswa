@@ -357,6 +357,7 @@ func TestClassRepository_ListByTeacherAndAcademicYear(t *testing.T) {
 	if err := academicYearRepo.Create(ctx, academicYear); err != nil {
 		t.Fatalf("Create() academic year error = %v", err)
 	}
+	closeTestAcademicYear(t, db, academicYear)
 
 	secondAcademicYear := newTestAcademicYearWithDates(
 		t,

@@ -609,6 +609,7 @@ func TestTeacherClassAssignmentRepository_CreateDifferentAcademicYearSamePeriod(
 	ctx := context.Background()
 
 	fixture := newTeacherClassAssignmentFixture(t, db)
+	closeTestAcademicYear(t, db, fixture.academicYear)
 
 	secondAcademicYear := newTestAcademicYear(t)
 	secondAcademicYear.Name = "2027/2028"

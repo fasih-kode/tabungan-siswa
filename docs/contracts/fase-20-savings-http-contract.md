@@ -7,7 +7,8 @@ Scope: server-rendered savings-cycle directory, account detail, and passbook.
 
 This vertical slice exposes savings accounts by student and academic year,
 account balance, and deterministic transaction history. Deposit and withdrawal
-entry/edit forms remain in FASE 21; FASE 20 may display an empty passbook.
+entry forms belong to FASE 21; transaction edit and cancellation belong to
+FASE 22. FASE 20 may display an empty passbook.
 
 ## 2. Business rules inherited from the domain and service
 

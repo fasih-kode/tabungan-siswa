@@ -1,9 +1,12 @@
 # Kenaikan kelas dan kelulusan massal
 
-Admin membuka **Kenaikan & Kelulusan**, memilih tahun asal dan tujuan, lalu
-memeriksa pratinjau. Tahun asal harus berstatus `CLOSING` atau `CLOSED`; tahun
-tujuan harus `OPEN` dan dimulai pada atau setelah tanggal akhir tahun asal.
-Kelas tujuan harus sudah dibuat pada tahun tujuan.
+Admin menyelesaikan settlement dan menutup tahun ajaran asal terlebih dahulu.
+Tahun ajaran baru tidak boleh dibuat selama masih ada tahun berstatus `OPEN`
+atau `CLOSING`; penutupan tahun asal mensyaratkan semua rekening tabungannya
+`SETTLED`. Admin lalu membuat tahun tujuan berstatus `OPEN`, membuat kelas
+tujuannya, dan membuka **Kenaikan & Kelulusan** untuk memeriksa pratinjau.
+Tahun asal harus `CLOSED`; tahun tujuan harus dimulai pada atau setelah tanggal
+akhir tahun asal. Kelas tujuan harus sudah dibuat pada tahun tujuan.
 
 Setiap siswa aktif dengan riwayat di tahun asal mendapat pilihan kelas tingkat
 berikutnya atau kelas tingkat yang sama untuk mengulang. Kelas tingkat tertinggi

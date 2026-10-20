@@ -28,6 +28,9 @@ func (f *transactionServiceFakeSavingsAccountRepository) GetByID(
 	if f.getByIDFn != nil {
 		return f.getByIDFn(ctx, id)
 	}
+	if f.getByIDForUpdateFn != nil {
+		return f.getByIDForUpdateFn(ctx, id)
+	}
 	return domain.SavingsAccount{}, repository.ErrNotFound
 }
 
@@ -176,6 +179,26 @@ type transactionServiceFakeAuditRepository struct {
 	lastAudit   domain.AuditLog
 }
 
+type transactionServiceFakeAcademicYearRepository struct {
+	repository.AcademicYearRepository
+	getByIDForShareFn    func(context.Context, uuid.UUID) (domain.AcademicYear, error)
+	getByIDForShareCalls int
+}
+
+func (f *transactionServiceFakeAcademicYearRepository) GetByIDForShare(
+	ctx context.Context,
+	id uuid.UUID,
+) (domain.AcademicYear, error) {
+	f.getByIDForShareCalls++
+	if f.getByIDForShareFn != nil {
+		return f.getByIDForShareFn(ctx, id)
+	}
+	return domain.AcademicYear{
+		ID: id, StartDate: time.Date(2000, 1, 1, 0, 0, 0, 0, time.UTC),
+		EndDate: time.Date(2100, 1, 1, 0, 0, 0, 0, time.UTC), Status: domain.AcademicYearOpen,
+	}, nil
+}
+
 func (f *transactionServiceFakeAuditRepository) Create(
 	ctx context.Context,
 	auditLog domain.AuditLog,
@@ -260,6 +283,7 @@ func newTransactionTestRepositories(
 	auditRepo repository.AuditRepository,
 ) repository.RepositorySet {
 	return repository.RepositorySet{
+		AcademicYears:           &transactionServiceFakeAcademicYearRepository{},
 		SavingsAccounts:         accountRepo,
 		Transactions:            transactionRepo,
 		Students:                studentRepo,
@@ -303,6 +327,50 @@ func TestTransactionServiceDepositWaliKelas(t *testing.T) {
 	}
 	if auditRepo.lastAudit.Action != "CREATE" || auditRepo.lastAudit.EntityType != domain.AuditEntityTransaction {
 		t.Fatalf("audit = %#v, want CREATE TRANSACTION", auditRepo.lastAudit)
+	}
+	if accountRepo.getByIDCalls != 1 || accountRepo.getByIDForUpdateCalls != 1 {
+		t.Fatalf("account reads/unlocked-lock reads = %d/%d, want 1/1", accountRepo.getByIDCalls, accountRepo.getByIDForUpdateCalls)
+	}
+	yearRepo := uow.repos.AcademicYears.(*transactionServiceFakeAcademicYearRepository)
+	if yearRepo.getByIDForShareCalls != 1 {
+		t.Fatalf("year shared locks = %d, want 1", yearRepo.getByIDForShareCalls)
+	}
+}
+
+func TestTransactionServiceDepositRequiresOpenYearAndInRangeDate(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		date    time.Time
+		status  domain.AcademicYearStatus
+		wantErr error
+	}{
+		{name: "start inclusive", date: time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC), status: domain.AcademicYearOpen},
+		{name: "end exclusive", date: time.Date(2027, 7, 1, 0, 0, 0, 0, time.UTC), status: domain.AcademicYearOpen, wantErr: ErrTransactionDateOutOfAcademicYear},
+		{name: "year closing", date: time.Date(2026, 10, 1, 0, 0, 0, 0, time.UTC), status: domain.AcademicYearClosing, wantErr: domain.ErrInvalidTransition},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			account := newTransactionTestAccount(t)
+			accountRepo := &transactionServiceFakeSavingsAccountRepository{
+				getByIDForUpdateFn: func(context.Context, uuid.UUID) (domain.SavingsAccount, error) { return account, nil },
+			}
+			yearRepo := &transactionServiceFakeAcademicYearRepository{getByIDForShareFn: func(_ context.Context, id uuid.UUID) (domain.AcademicYear, error) {
+				return domain.AcademicYear{ID: id, StartDate: time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC), EndDate: time.Date(2027, 7, 1, 0, 0, 0, 0, time.UTC), Status: tc.status}, nil
+			}}
+			repos := newTransactionTestRepositories(accountRepo, &transactionServiceFakeTransactionRepository{}, nil, nil, nil, &transactionServiceFakeAuditRepository{})
+			repos.AcademicYears = yearRepo
+			uow := &transactionServiceFakeUnitOfWork{repos: repos}
+			svc := newScopedTransactionServiceForTest(t, repos, &transactionServiceFakeUnitOfWorkManager{uow: uow})
+			_, err := svc.Deposit(context.Background(), DepositInput{
+				Actor: Actor{UserID: financialTestTeacherID, Role: domain.RoleWaliKelas}, SavingsAccountID: account.ID,
+				Amount: 10_000, TransactionDate: tc.date,
+			})
+			if tc.wantErr == nil && err != nil || tc.wantErr != nil && !errors.Is(err, tc.wantErr) {
+				t.Fatalf("Deposit() error = %v, want %v", err, tc.wantErr)
+			}
+			if tc.wantErr != nil && (accountRepo.getByIDForUpdateCalls != 0 || uow.commitCalls != 0) {
+				t.Fatalf("rejected date/year proceeded to account write lock/commit: %d/%d", accountRepo.getByIDForUpdateCalls, uow.commitCalls)
+			}
+		})
 	}
 }
 
@@ -511,7 +579,7 @@ func TestTransactionServiceListPassesOptions(t *testing.T) {
 		getByIDFn: func(context.Context, uuid.UUID) (domain.SavingsAccount, error) { return account, nil },
 	}
 	transactionRepo := &transactionServiceFakeTransactionRepository{
-		listBySavingsAccountFn: func(context.Context, uuid.UUID, repository.ListOptions) ([]domain.Transaction, error) {
+		listActiveBySavingsAccountFn: func(context.Context, uuid.UUID) ([]domain.Transaction, error) {
 			return []domain.Transaction{transaction}, nil
 		},
 	}
@@ -522,7 +590,7 @@ func TestTransactionServiceListPassesOptions(t *testing.T) {
 
 	got, err := svc.List(context.Background(), ListTransactionsInput{
 		Actor: Actor{UserID: uuid.New(), Role: domain.RoleAdmin}, SavingsAccountID: account.ID,
-		Options: ListOptions{Limit: 10, Offset: 20},
+		Options: ListOptions{Limit: 10, Offset: 0},
 	})
 	if err != nil {
 		t.Fatalf("List() error = %v", err)
@@ -530,8 +598,31 @@ func TestTransactionServiceListPassesOptions(t *testing.T) {
 	if len(got.Transactions) != 1 || got.Transactions[0].ID != transaction.ID {
 		t.Fatalf("List() output = %#v, want one transaction", got.Transactions)
 	}
-	if transactionRepo.lastListOptions.Limit != 10 || transactionRepo.lastListOptions.Offset != 20 {
-		t.Fatalf("List() options = %#v, want limit 10 offset 20", transactionRepo.lastListOptions)
+	if got.Total != 1 || len(got.RunningBalances) != 1 || got.RunningBalances[transaction.ID] != 100_000 {
+		t.Fatalf("List() totals/balances = %d/%v", got.Total, got.RunningBalances)
+	}
+}
+
+func TestTransactionServiceListKeepsLedgerBalanceAcrossPages(t *testing.T) {
+	account := newTransactionTestAccount(t)
+	created := time.Date(2026, 8, 1, 0, 0, 0, 0, time.UTC)
+	deposit1 := domain.Transaction{ID: uuid.New(), SavingsAccountID: account.ID, Type: domain.TransactionDeposit, Amount: 100_000, Status: domain.TransactionActive, TransactionDate: created, CreatedAt: created}
+	withdrawal := domain.Transaction{ID: uuid.New(), SavingsAccountID: account.ID, Type: domain.TransactionWithdrawal, Amount: 20_000, Status: domain.TransactionActive, TransactionDate: created.AddDate(0, 0, 1), CreatedAt: created}
+	deposit2 := domain.Transaction{ID: uuid.New(), SavingsAccountID: account.ID, Type: domain.TransactionDeposit, Amount: 50_000, Status: domain.TransactionActive, TransactionDate: created.AddDate(0, 0, 2), CreatedAt: created}
+	accountRepo := &transactionServiceFakeSavingsAccountRepository{getByIDFn: func(context.Context, uuid.UUID) (domain.SavingsAccount, error) { return account, nil }}
+	txRepo := &transactionServiceFakeTransactionRepository{listActiveBySavingsAccountFn: func(context.Context, uuid.UUID) ([]domain.Transaction, error) {
+		return []domain.Transaction{deposit2, withdrawal, deposit1}, nil
+	}}
+	svc := newTransactionServiceForTest(t, newTransactionTestRepositories(accountRepo, txRepo, nil, nil, nil, nil), &transactionServiceFakeUnitOfWorkManager{})
+	out, err := svc.List(context.Background(), ListTransactionsInput{
+		Actor: Actor{UserID: uuid.New(), Role: domain.RoleAdmin}, SavingsAccountID: account.ID,
+		Options: ListOptions{Limit: 1, Offset: 1},
+	})
+	if err != nil {
+		t.Fatalf("List() error = %v", err)
+	}
+	if out.Total != 3 || out.Balance != 130_000 || len(out.Transactions) != 1 || out.Transactions[0].ID != withdrawal.ID || out.RunningBalances[withdrawal.ID] != 80_000 {
+		t.Fatalf("List() output = total %d final %d rows %+v balances %v", out.Total, out.Balance, out.Transactions, out.RunningBalances)
 	}
 }
 
@@ -623,6 +714,36 @@ func TestTransactionServiceEditRejectsNegativeResultingBalance(t *testing.T) {
 	}
 	if transactionRepo.updateCalls != 0 || uow.commitCalls != 0 || uow.rollbackCalls != 1 {
 		t.Fatalf("calls = update %d commit %d rollback %d; want 0 0 1", transactionRepo.updateCalls, uow.commitCalls, uow.rollbackCalls)
+	}
+}
+
+func TestTransactionServiceEditRejectsDateOutsideAcademicYear(t *testing.T) {
+	account := newTransactionTestAccount(t)
+	transaction := newTransactionTestDeposit(t, account.ID, 100_000)
+	accountRepo := &transactionServiceFakeSavingsAccountRepository{getByIDForUpdateFn: func(context.Context, uuid.UUID) (domain.SavingsAccount, error) { return account, nil }}
+	txRepo := &transactionServiceFakeTransactionRepository{
+		getByIDFn: func(context.Context, uuid.UUID) (domain.Transaction, error) { return transaction, nil },
+		listActiveBySavingsAccountFn: func(context.Context, uuid.UUID) ([]domain.Transaction, error) {
+			return []domain.Transaction{transaction}, nil
+		},
+	}
+	yearRepo := &transactionServiceFakeAcademicYearRepository{getByIDForShareFn: func(_ context.Context, id uuid.UUID) (domain.AcademicYear, error) {
+		return domain.AcademicYear{ID: id, StartDate: time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC), EndDate: time.Date(2027, 7, 1, 0, 0, 0, 0, time.UTC), Status: domain.AcademicYearOpen}, nil
+	}}
+	repos := newTransactionTestRepositories(accountRepo, txRepo, nil, nil, nil, &transactionServiceFakeAuditRepository{})
+	repos.AcademicYears = yearRepo
+	uow := &transactionServiceFakeUnitOfWork{repos: repos}
+	svc := newScopedTransactionServiceForTest(t, repos, &transactionServiceFakeUnitOfWorkManager{uow: uow})
+	_, err := svc.Edit(context.Background(), EditTransactionInput{
+		Actor:         Actor{UserID: financialTestTeacherID, Role: domain.RoleWaliKelas},
+		TransactionID: transaction.ID, Amount: 50_000,
+		TransactionDate: time.Date(2027, 7, 1, 0, 0, 0, 0, time.UTC),
+	})
+	if !errors.Is(err, ErrTransactionDateOutOfAcademicYear) {
+		t.Fatalf("Edit() error = %v, want %v", err, ErrTransactionDateOutOfAcademicYear)
+	}
+	if accountRepo.getByIDForUpdateCalls != 0 || txRepo.updateCalls != 0 || uow.commitCalls != 0 {
+		t.Fatalf("out-of-range edit proceeded: account locks=%d transaction updates=%d commits=%d", accountRepo.getByIDForUpdateCalls, txRepo.updateCalls, uow.commitCalls)
 	}
 }
 

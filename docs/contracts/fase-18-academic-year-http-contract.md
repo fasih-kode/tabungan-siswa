@@ -52,6 +52,25 @@ requests. This keeps the year `OPEN` so the existing transfer approval and
 rejection service operations remain available. `Close` also checks for
 pending requests as a defensive lifecycle guard.
 
+## Post-lock amendment — creating the next academic year
+
+Product owner decision, 2026-10-20: the books and academic year must be fully
+closed before the next academic year can be created. The first academic year
+is exempt because there is no predecessor. For every later creation, all
+existing academic years must be `CLOSED`; a year in `OPEN` or `CLOSING` blocks
+creation. `CLOSED` already requires every savings account in that year to be
+`SETTLED`, so settlement is part of this prerequisite.
+
+The rule is enforced in `AcademicYearService.Create` and by a PostgreSQL insert
+trigger, so direct repository/database inserts cannot bypass it. The service
+checks and inserts within one transaction. Existing one-`OPEN` and non-overlap
+constraints remain in force. After creating the new `OPEN` year, Admin creates
+its year-scoped classes and then runs promotion/graduation. Promotion requires
+the source year to be `CLOSED`.
+
+This amendment supersedes any workflow text that allows a `CLOSING` source year
+or creating a new year before the prior year is `CLOSED`.
+
 ## Verification requirements
 
 - Unit tests for route wiring, form validation, pagination (including lookahead boundary behavior), role context, redirects, error mapping, and rendering.

@@ -43,6 +43,9 @@ func TestAcademicYearTemplateRendersAcademicContentForAdminAndWali(t *testing.T)
 			if !strings.Contains(body, tc.want) {
 				t.Fatalf("academic-year page does not contain %q", tc.want)
 			}
+			if tc.role == "ADMIN" && !strings.Contains(body, "Tahun baru dapat dibuat setelah seluruh tahun sebelumnya ditutup") {
+				t.Fatal("academic-year page does not explain the year-creation prerequisite")
+			}
 			if strings.Contains(body, "Aktivitas Terbaru") || strings.Contains(body, "Belum ada aktivitas") {
 				t.Fatalf("academic-year page rendered dashboard content")
 			}
@@ -160,14 +163,40 @@ func TestSavingsTemplateRendersAccountCreationAndPassbook(t *testing.T) {
 			t.Errorf("savings list missing %q", want)
 		}
 	}
-	detail := httpapp.SavingsPageViewModel{Title: "Tabungan", Heading: "Tabungan Siswa", Description: "Siklus", Role: "SISWA", Username: "siswa", IsDetail: true, StudentName: "Ani", AccountStatus: "OPEN", YearName: "2026/2027", Balance: "Rp 15.000", Passbook: []httpapp.SavingsPassbookRow{{Date: "2026-08-01", Type: "Setor", Amount: "Rp 15.000", Balance: "Rp 15.000"}}}
+	detail := httpapp.SavingsPageViewModel{Title: "Tabungan", Heading: "Tabungan Siswa", Description: "Siklus", Role: "WALI_KELAS", Username: "wali", CSRFToken: "csrf", IsDetail: true, CanTransact: true, AccountID: "account", StudentName: "Ani", AccountStatus: "OPEN", YearName: "2026/2027", Balance: "Rp 15.000", TransactionURL: "/savings/account/transactions", TransactionDate: "2026-08-01", MinTransactionDate: "2026-07-01", MaxTransactionDate: "2027-06-30", Passbook: []httpapp.SavingsPassbookRow{{Date: "2026-08-01", Type: "Setor", Amount: "Rp 15.000", Balance: "Rp 15.000"}}}
 	out.Reset()
 	if err := templates.ExecuteTemplate(&out, "savings", detail); err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"Buku", "Saldo berjalan", "2026-08-01", "Rp 15.000"} {
+	for _, want := range []string{"Buku", "Saldo berjalan", "2026-08-01", "Rp 15.000", "action=\"/savings/account/transactions/deposits\"", "action=\"/savings/account/transactions/withdrawals\"", "name=\"csrf_token\""} {
 		if !strings.Contains(out.String(), want) {
 			t.Errorf("passbook detail missing %q", want)
+		}
+	}
+}
+
+func TestTransactionTemplateRendersListAndDetail(t *testing.T) {
+	templates, err := template.ParseFS(templateFiles, "templates/layouts/*.html", "templates/partials/*.html", "templates/auth/*.html", "templates/pages/*.html")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, view := range []httpapp.TransactionPageViewModel{
+		{Title: "Transaksi", Heading: "Transaksi Tabungan", Role: "ADMIN", Username: "admin", AccountID: "account", StudentName: "Ani", YearName: "2026/2027", AccountStatus: "OPEN", AccountBalance: "Rp 42.000", Rows: []httpapp.TransactionPageRow{{ID: "transaction", Date: "2026-10-01", Type: "Setoran", Amount: "Rp 42.000", Balance: "Rp 42.000"}}},
+		{Title: "Transaksi", Heading: "Transaksi Tabungan", Role: "SISWA", Username: "siswa", IsDetail: true, TransactionID: "transaction", AccountID: "account", StudentName: "Ani", YearName: "2026/2027", TransactionDate: "2026-10-01", TransactionType: "Setoran", Amount: "Rp 42.000", RecordedAt: "2026-10-01T10:00:00Z"},
+	} {
+		var out strings.Builder
+		if err := templates.ExecuteTemplate(&out, "transactions", view); err != nil {
+			t.Fatal(err)
+		}
+		body := out.String()
+		for _, want := range []string{"Ani", "2026/2027", "Detail Transaksi", "Riwayat Transaksi"} {
+			// The list and detail have separate content by design.
+			if want == "Detail Transaksi" && !view.IsDetail || want == "Riwayat Transaksi" && view.IsDetail {
+				continue
+			}
+			if !strings.Contains(body, want) {
+				t.Errorf("transaction template missing %q for detail=%v", want, view.IsDetail)
+			}
 		}
 	}
 }

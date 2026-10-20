@@ -133,6 +133,142 @@ func TestAcademicYearRepository_GetByIDForUpdateSerializesAccountCreation(t *tes
 	}
 }
 
+func TestAcademicYearRepository_GetByIDForShareBlocksLifecycleUpdate(t *testing.T) {
+	db := openTestDatabase(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	year := newTestAcademicYear(t)
+	repo := postgres.NewAcademicYearRepository(db)
+	if err := repo.Create(ctx, year); err != nil {
+		t.Fatalf("Create() error = %v", err)
+	}
+	t.Cleanup(func() { deleteTestAcademicYear(t, db, year.ID) })
+
+	sharedTx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		t.Fatalf("begin shared transaction: %v", err)
+	}
+	defer func() { _ = sharedTx.Rollback() }()
+	if _, err := postgres.NewAcademicYearRepository(sharedTx).GetByIDForShare(ctx, year.ID); err != nil {
+		t.Fatalf("GetByIDForShare() error = %v", err)
+	}
+
+	started := make(chan struct{})
+	updated := make(chan error, 1)
+	go func() {
+		updateTx, beginErr := db.BeginTx(ctx, nil)
+		if beginErr != nil {
+			started <- struct{}{}
+			updated <- beginErr
+			return
+		}
+		defer func() { _ = updateTx.Rollback() }()
+		started <- struct{}{}
+		locked, lockErr := postgres.NewAcademicYearRepository(updateTx).GetByIDForUpdate(ctx, year.ID)
+		if lockErr != nil {
+			updated <- lockErr
+			return
+		}
+		if err := locked.StartClosing(); err != nil {
+			updated <- err
+			return
+		}
+		if err := postgres.NewAcademicYearRepository(updateTx).Update(ctx, locked); err != nil {
+			updated <- err
+			return
+		}
+		updated <- updateTx.Commit()
+	}()
+	<-started
+	select {
+	case err := <-updated:
+		t.Fatalf("year lifecycle update completed while FOR SHARE was held: %v", err)
+	case <-time.After(150 * time.Millisecond):
+	}
+	if err := sharedTx.Commit(); err != nil {
+		t.Fatalf("release shared year lock: %v", err)
+	}
+	select {
+	case err := <-updated:
+		if err != nil {
+			t.Fatalf("lifecycle update after shared lock release: %v", err)
+		}
+	case <-ctx.Done():
+		t.Fatalf("lifecycle update did not finish after lock release: %v", ctx.Err())
+	}
+	got, err := repo.GetByID(ctx, year.ID)
+	if err != nil || got.Status != domain.AcademicYearClosing {
+		t.Fatalf("persisted year = %q, err=%v; want CLOSING", got.Status, err)
+	}
+}
+
+func TestAcademicYearRepository_ListForUpdateBlocksLifecycleUpdate(t *testing.T) {
+	db := openTestDatabase(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	cleanupAcademicYears(t, db)
+	year := newTestAcademicYear(t)
+	repo := postgres.NewAcademicYearRepository(db)
+	if err := repo.Create(ctx, year); err != nil {
+		t.Fatalf("Create() year: %v", err)
+	}
+	t.Cleanup(func() { deleteTestAcademicYear(t, db, year.ID) })
+
+	lockTx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		t.Fatalf("begin list-lock transaction: %v", err)
+	}
+	defer func() { _ = lockTx.Rollback() }()
+	lockedYears, err := postgres.NewAcademicYearRepository(lockTx).ListForUpdate(ctx)
+	if err != nil || len(lockedYears) != 1 || lockedYears[0].ID != year.ID {
+		t.Fatalf("ListForUpdate() = %+v, err=%v", lockedYears, err)
+	}
+
+	started := make(chan struct{})
+	updated := make(chan error, 1)
+	go func() {
+		updateTx, beginErr := db.BeginTx(ctx, nil)
+		if beginErr != nil {
+			started <- struct{}{}
+			updated <- beginErr
+			return
+		}
+		defer func() { _ = updateTx.Rollback() }()
+		started <- struct{}{}
+		locked, lockErr := postgres.NewAcademicYearRepository(updateTx).GetByIDForUpdate(ctx, year.ID)
+		if lockErr != nil {
+			updated <- lockErr
+			return
+		}
+		if err := locked.StartClosing(); err != nil {
+			updated <- err
+			return
+		}
+		if err := postgres.NewAcademicYearRepository(updateTx).Update(ctx, locked); err != nil {
+			updated <- err
+			return
+		}
+		updated <- updateTx.Commit()
+	}()
+	<-started
+	select {
+	case err := <-updated:
+		t.Fatalf("year lifecycle update completed while ListForUpdate lock was held: %v", err)
+	case <-time.After(150 * time.Millisecond):
+	}
+	if err := lockTx.Commit(); err != nil {
+		t.Fatalf("release ListForUpdate lock: %v", err)
+	}
+	select {
+	case err := <-updated:
+		if err != nil {
+			t.Fatalf("lifecycle update after ListForUpdate release: %v", err)
+		}
+	case <-ctx.Done():
+		t.Fatalf("lifecycle update did not finish after lock release: %v", ctx.Err())
+	}
+}
+
 func TestAcademicYearRepository_GetByIDNotFound(t *testing.T) {
 	db := openTestDatabase(t)
 	repo := postgres.NewAcademicYearRepository(db)
@@ -206,7 +342,7 @@ func TestAcademicYearRepository_List(t *testing.T) {
 		"2025/2026",
 		time.Date(2025, 7, 1, 0, 0, 0, 0, time.UTC),
 		time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC),
-		domain.AcademicYearClosing,
+		domain.AcademicYearClosed,
 	)
 
 	if err := repo.Create(ctx, first); err != nil {
@@ -387,7 +523,7 @@ func TestAcademicYearRepository_PeriodsDoNotOverlap(t *testing.T) {
 		"2021/2022",
 		time.Date(2021, 7, 1, 0, 0, 0, 0, time.UTC),
 		time.Date(2022, 7, 1, 0, 0, 0, 0, time.UTC),
-		domain.AcademicYearClosing,
+		domain.AcademicYearClosed,
 	)
 
 	if err := repo.Create(ctx, first); err != nil {
@@ -420,6 +556,27 @@ func TestAcademicYearRepository_PeriodsDoNotOverlap(t *testing.T) {
 	}
 }
 
+func closeTestAcademicYear(t *testing.T, db *sql.DB, year domain.AcademicYear) {
+	t.Helper()
+	repo := postgres.NewAcademicYearRepository(db)
+	if year.Status == domain.AcademicYearOpen {
+		if err := year.StartClosing(); err != nil {
+			t.Fatalf("start closing test academic year: %v", err)
+		}
+		if err := repo.Update(context.Background(), year); err != nil {
+			t.Fatalf("update test academic year to CLOSING: %v", err)
+		}
+	}
+	if year.Status == domain.AcademicYearClosing {
+		if err := year.Close(); err != nil {
+			t.Fatalf("close test academic year: %v", err)
+		}
+		if err := repo.Update(context.Background(), year); err != nil {
+			t.Fatalf("update test academic year to CLOSED: %v", err)
+		}
+	}
+}
+
 func TestAcademicYearRepository_CreateDuplicateOpen(t *testing.T) {
 	db := openTestDatabase(t)
 	repo := postgres.NewAcademicYearRepository(db)
@@ -446,12 +603,47 @@ func TestAcademicYearRepository_CreateDuplicateOpen(t *testing.T) {
 	)
 
 	err := repo.Create(ctx, second)
-	if !errors.Is(err, repository.ErrConflict) {
+	if !errors.Is(err, domain.ErrInvalidTransition) {
 		t.Fatalf(
-			"second Create() error = %v, want ErrConflict",
+			"second Create() error = %v, want ErrInvalidTransition from closed-year prerequisite",
 			err,
 		)
 	}
+}
+
+func TestAcademicYearRepository_CreateTriggerRequiresPreviousYearClosed(t *testing.T) {
+	db := openTestDatabase(t)
+	ctx := context.Background()
+	cleanupAcademicYears(t, db)
+	repo := postgres.NewAcademicYearRepository(db)
+	first := newTestAcademicYear(t)
+	if err := repo.Create(ctx, first); err != nil {
+		t.Fatalf("create first year: %v", err)
+	}
+	t.Cleanup(func() { deleteTestAcademicYear(t, db, first.ID) })
+	second := newTestAcademicYearWithDates(t, "Next", time.Date(2027, 7, 1, 0, 0, 0, 0, time.UTC), time.Date(2028, 7, 1, 0, 0, 0, 0, time.UTC), domain.AcademicYearOpen)
+	if err := repo.Create(ctx, second); !errors.Is(err, domain.ErrInvalidTransition) {
+		t.Fatalf("Create() with OPEN predecessor = %v, want ErrInvalidTransition", err)
+	}
+	if err := first.StartClosing(); err != nil {
+		t.Fatalf("StartClosing(): %v", err)
+	}
+	if err := repo.Update(ctx, first); err != nil {
+		t.Fatalf("update CLOSING predecessor: %v", err)
+	}
+	if err := repo.Create(ctx, second); !errors.Is(err, domain.ErrInvalidTransition) {
+		t.Fatalf("Create() with CLOSING predecessor = %v, want ErrInvalidTransition", err)
+	}
+	if err := first.Close(); err != nil {
+		t.Fatalf("Close(): %v", err)
+	}
+	if err := repo.Update(ctx, first); err != nil {
+		t.Fatalf("update CLOSED predecessor: %v", err)
+	}
+	if err := repo.Create(ctx, second); err != nil {
+		t.Fatalf("Create() with CLOSED predecessor: %v", err)
+	}
+	t.Cleanup(func() { deleteTestAcademicYear(t, db, second.ID) })
 }
 
 func assertAcademicYearEqual(

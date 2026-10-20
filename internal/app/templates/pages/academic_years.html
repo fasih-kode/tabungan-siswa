@@ -43,6 +43,7 @@
             <div class="app-modal-header"><h2 class="text-lg font-semibold text-gray-800 dark:text-white">Tambah Tahun Ajaran</h2><button class="app-modal-close" type="button" data-modal-close aria-label="Tutup">&times;</button></div>
             <form method="post" action="/academic-years" class="grid grid-cols-1 gap-4 p-5 md:grid-cols-2">
                 <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+                <p class="text-sm text-gray-600 md:col-span-2">Tahun baru dapat dibuat setelah seluruh tahun sebelumnya ditutup dan semua rekening tabungannya diselesaikan.</p>
                 <div class="md:col-span-2"><label class="form-label" for="name">Nama</label><input class="form-input" id="name" name="name" required maxlength="100" value="{{.Name}}" placeholder="2026/2027"></div>
                 <div><label class="form-label" for="start_date">Tanggal Mulai</label><input class="form-input" id="start_date" name="start_date" type="date" required value="{{.StartDate}}"></div>
                 <div><label class="form-label" for="end_date">Tanggal Akhir</label><input class="form-input" id="end_date" name="end_date" type="date" required value="{{.EndDate}}"></div>

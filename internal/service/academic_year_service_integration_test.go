@@ -108,6 +108,51 @@ func TestAcademicYearServiceIntegration_Create(t *testing.T) {
 	}
 }
 
+func TestAcademicYearServiceIntegration_CreateRequiresPreviousYearClosed(t *testing.T) {
+	db := openServiceScopeTestDatabase(t)
+	ctx := context.Background()
+	cleanupServiceScopeFixtures(t, db)
+	yearRepo := postgres.NewAcademicYearRepository(db)
+	svc, err := service.NewAcademicYearService(service.Dependencies{
+		Repositories: repository.RepositorySet{AcademicYears: yearRepo},
+		UOW:          postgres.NewUnitOfWorkManager(db),
+	})
+	if err != nil {
+		t.Fatalf("NewAcademicYearService(): %v", err)
+	}
+	actor := service.Actor{UserID: newServiceScopeUser(t, domain.RoleAdmin).ID, Role: domain.RoleAdmin}
+	create := func(name string, year int) error {
+		_, err := svc.Create(ctx, service.CreateAcademicYearInput{
+			Actor: actor, Name: name,
+			StartDate: time.Date(year, 7, 1, 0, 0, 0, 0, time.UTC),
+			EndDate:   time.Date(year+1, 7, 1, 0, 0, 0, 0, time.UTC),
+		})
+		return err
+	}
+	if err := create("Lifecycle 2026/2027 "+uuid.NewString(), 2026); err != nil {
+		t.Fatalf("create first year: %v", err)
+	}
+	first, err := yearRepo.GetOpen(ctx)
+	if err != nil {
+		t.Fatalf("GetOpen(): %v", err)
+	}
+	if err := create("Lifecycle 2027/2028 "+uuid.NewString(), 2027); !errors.Is(err, domain.ErrInvalidTransition) {
+		t.Fatalf("create with OPEN predecessor = %v, want ErrInvalidTransition", err)
+	}
+	if _, err := svc.StartClosing(ctx, service.StartClosingAcademicYearInput{Actor: actor, AcademicYearID: first.ID}); err != nil {
+		t.Fatalf("StartClosing(): %v", err)
+	}
+	if err := create("Lifecycle 2027/2028 "+uuid.NewString(), 2027); !errors.Is(err, domain.ErrInvalidTransition) {
+		t.Fatalf("create with CLOSING predecessor = %v, want ErrInvalidTransition", err)
+	}
+	if _, err := svc.Close(ctx, service.CloseAcademicYearInput{Actor: actor, AcademicYearID: first.ID}); err != nil {
+		t.Fatalf("Close(): %v", err)
+	}
+	if err := create("Lifecycle 2027/2028 "+uuid.NewString(), 2027); err != nil {
+		t.Fatalf("create with CLOSED predecessor: %v", err)
+	}
+}
+
 func TestAcademicYearServiceIntegration_GetAndList(t *testing.T) {
 	db := openServiceScopeTestDatabase(t)
 	ctx := context.Background()

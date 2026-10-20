@@ -264,7 +264,7 @@ func translateError(operation string, err error) error {
 		}
 		if pgErr.Code == "23514" {
 			switch pgErr.ConstraintName {
-			case "academic_years_close_requires_settled_accounts", "classes_referenced_year_check":
+			case "academic_years_close_requires_settled_accounts", "academic_years_create_requires_closed_previous", "classes_referenced_year_check":
 				return fmt.Errorf("%s: %w", operation, domain.ErrInvalidTransition)
 			case "class_reference_academic_year_check":
 				return fmt.Errorf("%s: %w", operation, domain.ErrInvalidValue)

@@ -224,10 +224,48 @@ func (h *AcademicYearPageHandler) Transition(w http.ResponseWriter, r *http.Requ
 		return
 	}
 	if transitionErr != nil {
-		httperror.Write(w, transitionErr)
+		if httperror.Status(transitionErr) >= http.StatusInternalServerError {
+			httperror.Write(w, transitionErr)
+			return
+		}
+		h.renderTransitionError(w, r, actor, id, r.PathValue("action"), transitionErr, r.PostForm.Get("csrf_token"))
 		return
 	}
 	http.Redirect(w, r, "/academic-years/"+id.String(), http.StatusSeeOther)
+}
+
+func (h *AcademicYearPageHandler) renderTransitionError(w http.ResponseWriter, r *http.Request, actor service.Actor, id uuid.UUID, action string, transitionErr error, csrfToken string) {
+	output, err := h.academicYears.Get(r.Context(), service.GetAcademicYearInput{Actor: actor, AcademicYearID: id})
+	if err != nil || output.AcademicYear == nil {
+		httperror.Write(w, transitionErr)
+		return
+	}
+	row := academicYearRow(*output.AcademicYear)
+	vm := AcademicYearPageViewModel{
+		Title: "Detail Tahun Ajaran", Heading: row.Name, Description: "Detail dan lifecycle tahun ajaran.",
+		CSRFToken: csrfToken, Role: string(actor.Role), Username: actor.Username,
+		ActiveNav: "academic-years", AcademicYear: &row,
+		Error: safeAcademicYearTransitionError(action, transitionErr),
+	}
+	w.WriteHeader(httperror.Status(transitionErr))
+	if err := h.templates.ExecuteTemplate(w, "academic-years", vm); err != nil {
+		return
+	}
+}
+
+func safeAcademicYearTransitionError(action string, err error) string {
+	switch {
+	case errors.Is(err, service.ErrAcademicYearHasUnsettledAccounts):
+		return "Tahun ajaran belum dapat ditutup karena masih ada rekening tabungan yang belum diselesaikan. Selesaikan settlement semua rekening lalu coba lagi."
+	case errors.Is(err, service.ErrAcademicYearHasPendingTransfers):
+		return "Tahun ajaran belum dapat diproses karena masih ada permintaan transfer kelas yang menunggu keputusan."
+	case errors.Is(err, domain.ErrInvalidTransition) && action == "close":
+		return "Tahun ajaran belum dapat ditutup. Pastikan statusnya sedang proses penutupan dan semua syarat penutupan terpenuhi."
+	case errors.Is(err, domain.ErrInvalidTransition):
+		return "Status tahun ajaran tidak memungkinkan tindakan ini. Muat ulang halaman untuk melihat status terbaru."
+	default:
+		return "Tindakan tidak dapat diproses. Silakan coba lagi."
+	}
 }
 
 func (h *AcademicYearPageHandler) renderFormError(
@@ -329,7 +367,9 @@ func safeAcademicYearError(err error) string {
 		return "Nama tahun ajaran wajib diisi."
 	case errors.Is(err, domain.ErrInvalidDateRange):
 		return "Tanggal mulai harus lebih awal daripada tanggal akhir."
-	case errors.Is(err, repository.ErrConflict), errors.Is(err, domain.ErrInvalidTransition):
+	case errors.Is(err, domain.ErrInvalidTransition):
+		return "Tahun ajaran baru hanya dapat dibuat setelah semua tahun sebelumnya ditutup dan rekeningnya diselesaikan."
+	case errors.Is(err, repository.ErrConflict):
 		return "Perubahan tidak dapat dilakukan karena bertentangan dengan status atau data yang ada."
 	case errors.Is(err, service.ErrForbidden):
 		return "Akses ditolak untuk tindakan ini."

@@ -60,6 +60,12 @@ func registerRoutes(
 		mux.Handle("POST /savings", middlewares.Authentication.RequireAuthentication(validateSavingsRequestForm(middlewares.CSRF.Protect(http.HandlerFunc(handlers.Savings.Create)))))
 		mux.Handle("GET /savings/{id}", middlewares.Authentication.RequireAuthentication(middlewares.CSRF.Protect(http.HandlerFunc(handlers.Savings.Detail))))
 	}
+	if handlers.Transactions != nil {
+		mux.Handle("GET /savings/{account_id}/transactions", middlewares.Authentication.RequireAuthentication(middlewares.CSRF.Protect(http.HandlerFunc(handlers.Transactions.List))))
+		mux.Handle("POST /savings/{account_id}/transactions/deposits", middlewares.Authentication.RequireAuthentication(validateTransactionRequestForm(middlewares.CSRF.Protect(http.HandlerFunc(handlers.Transactions.Deposit)))))
+		mux.Handle("POST /savings/{account_id}/transactions/withdrawals", middlewares.Authentication.RequireAuthentication(validateTransactionRequestForm(middlewares.CSRF.Protect(http.HandlerFunc(handlers.Transactions.Withdrawal)))))
+		mux.Handle("GET /transactions/{transaction_id}", middlewares.Authentication.RequireAuthentication(middlewares.CSRF.Protect(http.HandlerFunc(handlers.Transactions.Detail))))
+	}
 	if handlers.TeacherAssignment != nil {
 		registerTeacherAssignmentRoutes(mux, handlers.TeacherAssignment, middlewares.Authentication, middlewares.CSRF)
 	}

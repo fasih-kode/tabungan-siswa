@@ -14,18 +14,20 @@ import (
 type academicYearServiceFakeAcademicYearRepository struct {
 	repository.AcademicYearRepository
 
-	createFn  func(context.Context, domain.AcademicYear) error
-	getByIDFn func(context.Context, uuid.UUID) (domain.AcademicYear, error)
-	listFn    func(context.Context, repository.ListOptions) ([]domain.AcademicYear, error)
-	updateFn  func(context.Context, domain.AcademicYear) error
-	getOpenFn func(context.Context) (domain.AcademicYear, error)
+	createFn        func(context.Context, domain.AcademicYear) error
+	getByIDFn       func(context.Context, uuid.UUID) (domain.AcademicYear, error)
+	listForUpdateFn func(context.Context) ([]domain.AcademicYear, error)
+	listFn          func(context.Context, repository.ListOptions) ([]domain.AcademicYear, error)
+	updateFn        func(context.Context, domain.AcademicYear) error
+	getOpenFn       func(context.Context) (domain.AcademicYear, error)
 
-	created      domain.AcademicYear
-	updated      domain.AcademicYear
-	createCalls  int
-	getByIDCalls int
-	listCalls    int
-	updateCalls  int
+	created            domain.AcademicYear
+	updated            domain.AcademicYear
+	createCalls        int
+	getByIDCalls       int
+	listCalls          int
+	listForUpdateCalls int
+	updateCalls        int
 }
 
 func (f *academicYearServiceFakeAcademicYearRepository) Create(
@@ -60,6 +62,14 @@ func (f *academicYearServiceFakeAcademicYearRepository) GetByIDForUpdate(
 	id uuid.UUID,
 ) (domain.AcademicYear, error) {
 	return f.GetByID(ctx, id)
+}
+
+func (f *academicYearServiceFakeAcademicYearRepository) ListForUpdate(ctx context.Context) ([]domain.AcademicYear, error) {
+	f.listForUpdateCalls++
+	if f.listForUpdateFn != nil {
+		return f.listForUpdateFn(ctx)
+	}
+	return nil, nil
 }
 
 func (f *academicYearServiceFakeAcademicYearRepository) List(
@@ -300,6 +310,26 @@ func TestAcademicYearService_Create(t *testing.T) {
 			)
 		}
 	})
+
+	for _, status := range []domain.AcademicYearStatus{domain.AcademicYearOpen, domain.AcademicYearClosing} {
+		t.Run("blocks create while existing year is "+string(status), func(t *testing.T) {
+			repo := &academicYearServiceFakeAcademicYearRepository{
+				listForUpdateFn: func(context.Context) ([]domain.AcademicYear, error) {
+					return []domain.AcademicYear{{Status: status}}, nil
+				},
+			}
+			uow := &academicYearServiceFakeUnitOfWork{repos: repository.RepositorySet{AcademicYears: repo}}
+			manager := &academicYearServiceFakeUnitOfWorkManager{uow: uow}
+			svc := newAcademicYearServiceForTest(t, repository.RepositorySet{AcademicYears: repo}, manager)
+			_, err := svc.Create(ctx, CreateAcademicYearInput{Actor: admin, Name: "next", StartDate: start, EndDate: end})
+			if !errors.Is(err, domain.ErrInvalidTransition) {
+				t.Fatalf("Create() error = %v, want ErrInvalidTransition", err)
+			}
+			if repo.createCalls != 0 || uow.commitCount != 0 || uow.rollbackCount != 1 {
+				t.Fatalf("create/commit/rollback = %d/%d/%d, want 0/0/1", repo.createCalls, uow.commitCount, uow.rollbackCount)
+			}
+		})
+	}
 
 	for _, role := range []domain.UserRole{
 		domain.RoleWaliKelas,

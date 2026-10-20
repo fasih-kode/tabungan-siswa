@@ -93,7 +93,7 @@ func (h *StudentPromotionPageHandler) Get(w http.ResponseWriter, r *http.Request
 		}
 		out, err := h.promotions.Preview(r.Context(), service.PreviewStudentPromotionInput{Actor: actor, FromAcademicYearID: from, ToAcademicYearID: to})
 		if err != nil {
-			vm.PageError = "Pastikan tahun asal berstatus penutupan/ditutup dan tahun tujuan terbuka dengan tanggal yang berurutan."
+			vm.PageError = "Pastikan tahun asal sudah ditutup dan tahun tujuan terbuka dengan tanggal yang berurutan."
 		} else {
 			vm.FromYearName, vm.ToYearName = out.FromAcademicYear.Name, out.ToAcademicYear.Name
 			vm.Excluded = out.Excluded

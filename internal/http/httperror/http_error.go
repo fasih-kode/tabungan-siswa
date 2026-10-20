@@ -23,6 +23,7 @@ func Status(err error) int {
 		return http.StatusNotFound
 
 	case errors.Is(err, repository.ErrConflict),
+		errors.Is(err, service.ErrTransactionDateOutOfAcademicYear),
 		errors.Is(err, domain.ErrInvalidTransition),
 		errors.Is(err, domain.ErrAlreadySettled),
 		errors.Is(err, domain.ErrAlreadyCancelled),

@@ -9,7 +9,7 @@ import (
 	"github.com/google/uuid"
 )
 
-func TestAdminFinancialWritesForbidden(t *testing.T) {
+func TestAdminFinancialMutationPolicy(t *testing.T) {
 	actor := Actor{UserID: uuid.New(), Role: domain.RoleAdmin}
 	ctx := context.Background()
 	// Empty dependencies ensure authorization happens before accessing any data.
@@ -46,8 +46,13 @@ func TestAdminFinancialWritesForbidden(t *testing.T) {
 	}
 	for name, call := range cases {
 		t.Run(name, func(t *testing.T) {
-			if err := call(); !errors.Is(err, ErrForbidden) {
-				t.Fatalf("got %v, want forbidden", err)
+			err := call()
+			want := ErrForbidden
+			if name == "deposit" || name == "withdraw" {
+				want = ErrScopeViolation // The ADMIN role passes the write role gate; the empty account ID is rejected next.
+			}
+			if !errors.Is(err, want) {
+				t.Fatalf("got %v, want %v", err, want)
 			}
 		})
 	}

@@ -42,7 +42,8 @@ serializing against transfer writes that take a share lock on that row. The
 - Template rendering tests verify the Admin and Wali Kelas academic-year page
   is not replaced by the dashboard content.
 
-No migration or recovery script was run or changed for this phase.
+No migration or recovery script was run or changed for the original FASE 18
+implementation.
 
 ## Post-lock amendment — class-transfer requester role
 
@@ -62,3 +63,17 @@ The implementation reuses the existing class-transfer service and its domain
 rules. HTTP handlers do not read repositories or replace service authorization
 and lifecycle decisions. All phase verification is complete; this checkpoint
 locks the FASE 18 contracts and implementation together.
+
+## Post-lock amendment — next-year creation prerequisite
+
+Product owner decision, 2026-10-20: a new academic year may be created only
+after all existing years are `CLOSED`; the first year is exempt. `Create`
+locks the existing year rows in deterministic order and checks their status
+inside its transaction. Migration `000010` adds a PostgreSQL insert trigger as
+a backstop for direct writes. The existing close guard ensures all associated
+savings accounts are `SETTLED` before a year reaches `CLOSED`.
+
+PostgreSQL integration tests verify OPEN/CLOSING rejection, CLOSED acceptance,
+direct-insert trigger enforcement, and serialization of lifecycle updates
+against the `ListForUpdate` lock. Race-enabled integration tests, build, vet,
+frontend tests, and `git diff --check` passed after the amendment.

@@ -768,7 +768,10 @@ type ListTransactionsInput struct {
 }
 
 type ListTransactionsOutput struct {
-	Transactions []*domain.Transaction
+	Transactions    []*domain.Transaction
+	RunningBalances map[uuid.UUID]domain.Money
+	Balance         domain.Money
+	Total           int
 }
 
 type EditTransactionInput struct {

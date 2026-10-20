@@ -8,6 +8,7 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/fasih/tabungan-siswa/internal/domain"
 	"github.com/fasih/tabungan-siswa/internal/http/httperror"
@@ -33,17 +34,19 @@ type SavingsYearOption struct{ ID, Name string }
 type SavingsClassOption struct{ ID, Name string }
 
 type SavingsPageViewModel struct {
-	Title, Heading, Description, Role, Username, CSRFToken, ActiveNav string
-	Error, Notice, AcademicYearID, ClassID, Search                    string
-	AccountID, StudentID, StudentName, NIS, AccountStatus, Balance    string
-	YearName                                                          string
-	Page, Limit, PreviousPage, NextPage                               int
-	HasPrevious, HasNext, IsDetail, IsStudent                         bool
-	Years                                                             []SavingsYearOption
-	Classes                                                           []SavingsClassOption
-	Rows                                                              []SavingsDirectoryRow
-	Passbook                                                          []SavingsPassbookRow
-	Pagination                                                        PaginationViewModel
+	Title, Heading, Description, Role, Username, CSRFToken, ActiveNav       string
+	Error, Notice, AcademicYearID, ClassID, Search                          string
+	AccountID, StudentID, StudentName, NIS, AccountStatus, Balance          string
+	YearName                                                                string
+	Page, Limit, PreviousPage, NextPage                                     int
+	HasPrevious, HasNext, IsDetail, IsStudent                               bool
+	CanTransact                                                             bool
+	TransactionURL, TransactionDate, MinTransactionDate, MaxTransactionDate string
+	Years                                                                   []SavingsYearOption
+	Classes                                                                 []SavingsClassOption
+	Rows                                                                    []SavingsDirectoryRow
+	Passbook                                                                []SavingsPassbookRow
+	Pagination                                                              PaginationViewModel
 }
 
 type SavingsPageHandler struct {
@@ -109,8 +112,13 @@ func (h *SavingsPageHandler) List(w http.ResponseWriter, r *http.Request) {
 	}
 	vm.AcademicYearID = yearID
 	vm.Page, vm.Limit = page, limit
-	if r.URL.Query().Get("notice") == "created" {
+	switch r.URL.Query().Get("notice") {
+	case "created":
 		vm.Notice = "Tabungan berhasil dibuka."
+	case "deposit_created":
+		vm.Notice = "Setoran berhasil dicatat."
+	case "withdrawal_created":
+		vm.Notice = "Penarikan berhasil dicatat."
 	}
 	for _, year := range yearsOut.AcademicYears {
 		if year != nil && year.ID == parsedYearID {
@@ -317,6 +325,16 @@ func (h *SavingsPageHandler) Detail(w http.ResponseWriter, r *http.Request) {
 	vm.IsDetail, vm.AccountID, vm.StudentID = true, accountID.String(), account.Account.StudentID.String()
 	vm.StudentName, vm.NIS, vm.AccountStatus = studentOut.Student.Name, stringValue(studentOut.Student.NIS), string(account.Account.Status)
 	vm.AcademicYearID, vm.YearName = account.Account.AcademicYearID.String(), yearOut.AcademicYear.Name
+	vm.TransactionURL = "/savings/" + accountID.String() + "/transactions"
+	vm.MinTransactionDate = yearOut.AcademicYear.StartDate.Format("2006-01-02")
+	vm.MaxTransactionDate = yearOut.AcademicYear.EndDate.AddDate(0, 0, -1).Format("2006-01-02")
+	today := time.Now().UTC()
+	if today.Before(yearOut.AcademicYear.StartDate) || !today.Before(yearOut.AcademicYear.EndDate) {
+		today = yearOut.AcademicYear.StartDate
+	}
+	vm.TransactionDate = today.Format("2006-01-02")
+	vm.CanTransact = (actor.Role == domain.RoleAdmin || actor.Role == domain.RoleWaliKelas) &&
+		account.Account.IsOpen() && yearOut.AcademicYear.IsOpen()
 	vm.Balance = formatRupiah(passbook.Balance)
 	for _, entry := range passbook.Entries {
 		if entry == nil || entry.Transaction == nil {
