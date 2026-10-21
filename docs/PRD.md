@@ -37,7 +37,7 @@ Roadmap menetapkan syarat produksi sebagai akumulasi integritas finansial, otori
 - FASE 21 memiliki catatan implementation lock di [fase-21-implementation-lock.md](contracts/fase-21-implementation-lock.md).
 - Kontrak FASE 22 menyatakan implementasi terverifikasi, dengan owner review dan catatan lock masih tertunda; lihat [fase-22-transaction-correction-audit-contract.md](contracts/fase-22-transaction-correction-audit-contract.md).
 - FASE 23 mempunyai kontrak dan implementation lock; lihat [kontrak FASE 23](contracts/fase-23-year-end-settlement-contract.md) dan [catatan implementation lock](contracts/fase-23-implementation-lock.md).
-- FASE 24 mempunyai kebijakan user administration yang disetujui dan implementasi sedang berjalan; lihat [kontrak FASE 24](contracts/fase-24-user-administration-contract.md). Status selesai menunggu pemeriksaan akhir dan owner acceptance.
+- FASE 24 sudah diimplementasikan, diterima owner, dan dikunci; lihat [kontrak FASE 24](contracts/fase-24-user-administration-contract.md) dan [implementation lock](contracts/fase-24-implementation-lock.md).
 
 ## Belum ditetapkan di ringkasan ini
 

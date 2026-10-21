@@ -133,16 +133,16 @@ Rujuk kontrak fase untuk status terbarunya sebelum melanjutkan.
 - `GOCACHE=/tmp/tabungan-siswa-gocache make test-integration` lulus seluruh package setelah migration 12. Tes mencakup perubahan status, pencabutan sesi saat reset/nonaktif, larangan perubahan role, penolakan sesi akun nonaktif, dan PostgreSQL rollback nyata saat pencabutan sesi sengaja gagal.
 - Harness browser diperbarui untuk menolak schema selain v12. Playwright memeriksa alur settlement FASE 23 dan alur Admin ubah username, nonaktifkan/aktifkan, reset password, login dengan password sementara, dan ganti password; hasil 2/2 lulus.
 - Verifikasi FASE 24: `GOCACHE=/tmp/tabungan-siswa-gocache make test-integration` lulus; `GOCACHE=/tmp/tabungan-siswa-gocache GOFLAGS=-race make test-integration` lulus; `go vet ./...`, `go build ./...`, `npm run test:instant-search` (7/7), dan `git diff --check` lulus.
-- Migration 12 tercatat diterapkan pada DB disposable versi 12 bersih. Fixture browser dihapus otomatis; data development/produksi tidak disentuh.
+- Migration 12 diterapkan dan diuji pada DB disposable `tabungan_siswa_fase168_clean_test`, versi 12 bersih. Fixture browser dihapus otomatis.
 - Siklus migration 12 `down 1` lalu `up` berhasil pada database disposable. Tepat sebelum siklus, backup status aktif/nonaktif sementara mencatat 0 akun nonaktif; backup diverifikasi lalu dihapus. Schema akhir versi 12 bersih. Tidak ada data development/produksi yang disentuh.
-- Diff telah ditinjau setelah pemeriksaan. Status FASE 24: implementasi dan verifikasi tersedia, **menunggu penerimaan owner serta commit/lock**. Tidak ada commit/push; roadmap mensyaratkan commit dan lock setelah penerimaan.
+- Owner menerima implementasi FASE 24 pada 2026-10-21. Setelah review dan verifikasi akhir, fase dikunci pada implementation commit `e233883`; catatan lock ada di [fase-24-implementation-lock.md](contracts/fase-24-implementation-lock.md).
 
 ## Perbaikan login Admin lokal — 2026-10-20
 
 - Laporan login Admin menampilkan HTTP 500. Pemeriksaan read-only pada `.env` memastikan aplikasi memakai database `tabungan_siswa_dev`, yang masih di schema versi 11 dan belum memiliki kolom `users.is_active` yang dibaca kode FASE 24.
 - Migration `000012_user_activation` berhasil diterapkan ke database development tersebut; verifikasi sesudahnya menunjukkan versi 12, `dirty=false`, dan kolom `users.is_active` tersedia. Migration menambahkan kolom dengan default `TRUE` serta indeks sesi aktif.
 - GET `/login` pada server lokal merespons HTTP 200. Screenshot berikutnya menunjukkan Admin berhasil login dan telah melewati kewajiban ganti password; database kini mencatat `password_change_required=false` untuk akun `admin`.
-- Database tes disposable dan database produksi tidak disentuh. Perubahan kode FASE 24 tetap belum di-commit dan menunggu penerimaan/lock.
+- Database tes disposable dan database produksi tidak disentuh oleh perbaikan login tersebut. Development database kini berada pada schema versi 12; database produksi tidak disentuh.
 
 ## Laporan akses Pengawasan Tabungan — 2026-10-20
 
@@ -157,3 +157,10 @@ Rujuk kontrak fase untuk status terbarunya sebelum melanjutkan.
 - Penyebab: router hanya mendaftarkan `GET /login`; tidak ada handler untuk path root `/`, sehingga `http.ServeMux` mengembalikan 404.
 - Ditambahkan route exact `GET /` yang mengalihkan ke `/login` dengan status 303, serta tes router yang memverifikasi status dan lokasi redirect.
 - `GOCACHE=/tmp/tabungan-siswa-gocache go test ./internal/http -run 'TestNewRouterPublicLoginRoute$' -count=1` lulus; `git diff --check` lulus.
+
+## FASE 24 implementation lock — 2026-10-21
+
+- Owner menyatakan seluruh alur lokal sudah berfungsi dan menginstruksikan commit serta push.
+- Implementation commit: `e233883` (`feat(fase-24): administer user accounts`). Catatan lock: [fase-24-implementation-lock.md](contracts/fase-24-implementation-lock.md).
+- Verifikasi sebelum lock lulus: integration tests normal dan `-race`, `go vet ./...`, `go build ./...`, frontend (7/7), Playwright E2E (2/2), tes router root redirect, dan `git diff --check`.
+- E2E menggunakan database tes disposable versi 12 dan menghapus fixture otomatis. Browser server dihentikan setelah tes. Database development ada pada schema v12; produksi tidak diubah.

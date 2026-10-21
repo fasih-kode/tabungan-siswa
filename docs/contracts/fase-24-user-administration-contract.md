@@ -1,6 +1,6 @@
 # FASE 24: User & Administration Contract
 
-Status: **APPROVED FOR IMPLEMENTATION; IMPLEMENTATION VERIFIED, OWNER LOCK PENDING**
+Status: **LOCKED**
 Date: 2026-10-20
 Source scope: [official roadmap](../../Roadmap_Resmi_Tabungan_Siswa.pdf)
 Security baseline: [AGENTS.md](../../AGENTS.md)
@@ -41,4 +41,4 @@ Security baseline: [AGENTS.md](../../AGENTS.md)
 
 ## Implementation lock
 
-Implementation and automated verification are recorded in [HANDOVER.md](../HANDOVER.md). Owner acceptance, the roadmap-required commit, and the implementation lock record are still pending. Do not treat this contract as a completed FASE 24 lock.
+Owner accepted the implemented behavior on 2026-10-21. The implementation and verification checkpoint are recorded in [fase-24-implementation-lock.md](fase-24-implementation-lock.md), and the detailed session history is in [HANDOVER.md](../HANDOVER.md).
