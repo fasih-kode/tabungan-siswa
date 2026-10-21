@@ -27,6 +27,7 @@ const (
 
 type ManagedUserRow struct {
 	ID, Username, Role, StudentName string
+	Active                          bool
 }
 
 type UnlinkedStudentOption struct {
@@ -336,18 +337,107 @@ func (h *UserPageHandler) ResetPassword(w http.ResponseWriter, r *http.Request) 
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 		return
 	}
-	passwordChangeRequired := output.User.Role == domain.RoleWaliKelas
+	passwordChangeRequired := true
 	credentialToken, err := h.credentialReveals.Put(actor.UserID, output.User.Username, temporaryPassword, passwordChangeRequired)
 	if err != nil {
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 		return
 	}
-	_, err = h.users.Update(r.Context(), service.UpdateUserInput{Actor: actor, UserID: id, Username: output.User.Username, Role: output.User.Role, PasswordHash: passwordHash, PasswordChangeRequired: output.User.Role == domain.RoleWaliKelas})
+	_, err = h.users.Update(r.Context(), service.UpdateUserInput{Actor: actor, UserID: id, Username: output.User.Username, Role: output.User.Role, PasswordHash: passwordHash, PasswordChangeRequired: true, RevokeSessions: true})
 	if err != nil {
 		httperror.Write(w, err)
 		return
 	}
 	http.Redirect(w, r, "/users?role="+urlQueryEscape(string(output.User.Role))+"&credential="+urlQueryEscape(credentialToken), http.StatusSeeOther)
+}
+
+func (h *UserPageHandler) UpdateManagedUser(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Cache-Control", "no-store")
+	if r.Method != http.MethodPost {
+		methodNotAllowed(w, http.MethodPost)
+		return
+	}
+	actor, ok := service.ActorFromContext(r.Context())
+	if !ok {
+		http.Error(w, http.StatusText(http.StatusUnauthorized), http.StatusUnauthorized)
+		return
+	}
+	if actor.Role != domain.RoleAdmin {
+		http.Error(w, http.StatusText(http.StatusForbidden), http.StatusForbidden)
+		return
+	}
+	id, err := uuid.Parse(r.PathValue("id"))
+	if err != nil || id == uuid.Nil {
+		http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
+		return
+	}
+	r.Body = http.MaxBytesReader(w, r.Body, 16<<10)
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
+		return
+	}
+	username := strings.TrimSpace(r.PostForm.Get("username"))
+	if username == "" || len(username) > 128 {
+		http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
+		return
+	}
+	output, err := h.users.Get(r.Context(), service.GetUserInput{Actor: actor, UserID: id})
+	if err != nil {
+		httperror.Write(w, err)
+		return
+	}
+	if output.User.Role != domain.RoleWaliKelas && output.User.Role != domain.RoleSiswa {
+		http.Error(w, http.StatusText(http.StatusForbidden), http.StatusForbidden)
+		return
+	}
+	_, err = h.users.Update(r.Context(), service.UpdateUserInput{Actor: actor, UserID: id, Username: username, Role: output.User.Role, PasswordHash: output.User.PasswordHash, PasswordChangeRequired: output.User.PasswordChangeRequired})
+	if err != nil {
+		httperror.Write(w, err)
+		return
+	}
+	http.Redirect(w, r, "/users?role="+urlQueryEscape(string(output.User.Role)), http.StatusSeeOther)
+}
+
+func (h *UserPageHandler) SetManagedUserActive(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Cache-Control", "no-store")
+	if r.Method != http.MethodPost {
+		methodNotAllowed(w, http.MethodPost)
+		return
+	}
+	actor, ok := service.ActorFromContext(r.Context())
+	if !ok {
+		http.Error(w, http.StatusText(http.StatusUnauthorized), http.StatusUnauthorized)
+		return
+	}
+	if actor.Role != domain.RoleAdmin {
+		http.Error(w, http.StatusText(http.StatusForbidden), http.StatusForbidden)
+		return
+	}
+	id, err := uuid.Parse(r.PathValue("id"))
+	if err != nil || id == uuid.Nil {
+		http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
+		return
+	}
+	r.Body = http.MaxBytesReader(w, r.Body, 16<<10)
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
+		return
+	}
+	active := r.PostForm.Get("active") == "true"
+	if r.PostForm.Get("active") != "true" && r.PostForm.Get("active") != "false" {
+		http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
+		return
+	}
+	activation, ok := h.users.(service.UserActivationService)
+	if !ok {
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		return
+	}
+	if err := activation.SetActive(r.Context(), service.SetUserActiveInput{Actor: actor, UserID: id, Active: active}); err != nil {
+		httperror.Write(w, err)
+		return
+	}
+	http.Redirect(w, r, "/users?role="+urlQueryEscape(r.URL.Query().Get("role")), http.StatusSeeOther)
 }
 
 func (h *UserPageHandler) ChangePassword(w http.ResponseWriter, r *http.Request) {
@@ -417,7 +507,7 @@ func (h *UserPageHandler) load(r *http.Request, actor service.Actor, role string
 	}
 	for _, user := range users.Users {
 		if user != nil {
-			vm.Users = append(vm.Users, ManagedUserRow{ID: user.ID.String(), Username: user.Username, Role: string(user.Role)})
+			vm.Users = append(vm.Users, ManagedUserRow{ID: user.ID.String(), Username: user.Username, Role: string(user.Role), Active: user.Active})
 		}
 	}
 	vm.HasPrevious = page > 1

@@ -97,7 +97,7 @@ func TestNewAuthenticationMiddlewareRejectsMissingDependencies(t *testing.T) {
 
 func TestAuthenticationMiddlewareInjectsActor(t *testing.T) {
 	userID := uuid.New()
-	user := domain.User{ID: userID, Username: "admin-test", Role: domain.RoleAdmin}
+	user := domain.User{ID: userID, Username: "admin-test", Role: domain.RoleAdmin, Active: true}
 	session := domain.Session{
 		ID:        uuid.New(),
 		UserID:    userID,
@@ -143,7 +143,7 @@ func TestAuthenticationMiddlewareForcesPasswordChange(t *testing.T) {
 		ID: uuid.New(), UserID: userID, TokenHash: security.HashSessionToken("temporary-session"),
 		ExpiresAt: time.Now().Add(time.Hour), CreatedAt: time.Now(),
 	}
-	user := domain.User{ID: userID, Username: "wali-test", Role: domain.RoleWaliKelas, PasswordChangeRequired: true}
+	user := domain.User{ID: userID, Username: "wali-test", Role: domain.RoleWaliKelas, Active: true, PasswordChangeRequired: true}
 	middleware := newAuthenticationMiddlewareForTest(t,
 		&authenticationSessionRepositoryFake{session: session},
 		&authenticationUserRepositoryFake{user: user},
@@ -348,5 +348,20 @@ func TestAuthenticationMiddlewarePropagatesRepositoryFailureAsServerError(t *tes
 
 	if recorder.Code != http.StatusInternalServerError {
 		t.Fatalf("status = %d, want %d", recorder.Code, http.StatusInternalServerError)
+	}
+}
+
+func TestAuthenticationMiddlewareRejectsDeactivatedUser(t *testing.T) {
+	userID := uuid.New()
+	token := "inactive-user-session-token"
+	sessionRepo := &authenticationSessionRepositoryFake{session: domain.Session{ID: uuid.New(), UserID: userID, TokenHash: security.HashSessionToken(token), ExpiresAt: time.Now().Add(time.Hour)}}
+	userRepo := &authenticationUserRepositoryFake{user: domain.User{ID: userID, Role: domain.RoleWaliKelas, Active: false}}
+	middleware := newAuthenticationMiddlewareForTest(t, sessionRepo, userRepo)
+	request := httptest.NewRequest(http.MethodGet, "/", nil)
+	request.AddCookie(&http.Cookie{Name: security.DefaultSessionCookieName, Value: token})
+	response := httptest.NewRecorder()
+	middleware.RequireAuthentication(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { t.Fatal("next handler called for inactive user") })).ServeHTTP(response, request)
+	if response.Code != http.StatusUnauthorized {
+		t.Fatalf("status = %d, want %d", response.Code, http.StatusUnauthorized)
 	}
 }

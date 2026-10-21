@@ -50,6 +50,9 @@ func (s *authenticationService) Authenticate(
 
 		return AuthenticateOutput{}, err
 	}
+	if !user.Active {
+		return AuthenticateOutput{}, ErrInvalidCredentials
+	}
 
 	if err := s.deps.PasswordHasher.Compare(
 		user.PasswordHash,

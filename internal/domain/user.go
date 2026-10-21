@@ -13,6 +13,7 @@ type User struct {
 	PasswordHash           string
 	Role                   UserRole
 	PasswordChangeRequired bool
+	Active                 bool
 	CreatedAt              time.Time
 	UpdatedAt              time.Time
 }
@@ -41,6 +42,7 @@ func NewUser(
 		Username:     username,
 		PasswordHash: passwordHash,
 		Role:         role,
+		Active:       true,
 		CreatedAt:    now,
 		UpdatedAt:    now,
 	}, nil

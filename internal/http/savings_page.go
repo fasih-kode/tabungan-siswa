@@ -182,7 +182,13 @@ func (h *SavingsPageHandler) List(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
-	studentsOut, err := h.students.List(r.Context(), service.ListStudentsInput{Actor: actor, IncludePlacement: includePlacement, AcademicYearID: parsedYearID, ClassID: parsedClassID, Options: service.ListOptions{Limit: limit + 1, Offset: (page - 1) * limit, IncludeTotal: true, Search: vm.Search}})
+	studentListYearID := parsedYearID
+	if actor.Role == domain.RoleAdmin {
+		// Admin sees the global student list; the selected year is used below
+		// only to find each student's savings account for that year.
+		studentListYearID = uuid.Nil
+	}
+	studentsOut, err := h.students.List(r.Context(), service.ListStudentsInput{Actor: actor, IncludePlacement: includePlacement, AcademicYearID: studentListYearID, ClassID: parsedClassID, Options: service.ListOptions{Limit: limit + 1, Offset: (page - 1) * limit, IncludeTotal: true, Search: vm.Search}})
 	if err != nil {
 		httperror.Write(w, err)
 		return

@@ -182,6 +182,7 @@ func TestAuthenticationService_Authenticate(t *testing.T) {
 		Username:     "wali-01",
 		PasswordHash: "stored-password-hash",
 		Role:         domain.RoleWaliKelas,
+		Active:       true,
 	}
 
 	repositoryErr := errors.New("database unavailable")
@@ -352,6 +353,20 @@ func TestAuthenticationService_Authenticate(t *testing.T) {
 				},
 			},
 			wantErr: repositoryErr,
+		},
+		{
+			name: "inactive account returns generic credentials error",
+			input: AuthenticateInput{Username: "wali-01", Password: "correct-password"},
+			userRepo: &authenticationServiceFakeUserRepository{getByUsernameFn: func(context.Context, string) (domain.User, error) {
+				inactive := user
+				inactive.Active = false
+				return inactive, nil
+			}},
+			hasher: &authenticationServiceFakePasswordHasher{compareFn: func(string, string) error {
+				t.Fatal("Compare() called for inactive account")
+				return nil
+			}},
+			wantErr: ErrInvalidCredentials,
 		},
 		{
 			name: "invalid stored user role returns generic credentials error",

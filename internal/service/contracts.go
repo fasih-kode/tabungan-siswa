@@ -68,6 +68,10 @@ type UserService interface {
 	Update(ctx context.Context, input UpdateUserInput) (UpdateUserOutput, error)
 }
 
+type UserActivationService interface {
+	SetActive(ctx context.Context, input SetUserActiveInput) error
+}
+
 type ListUsersByRoleInput struct {
 	Actor   Actor
 	Role    domain.UserRole
@@ -130,10 +134,17 @@ type UpdateUserInput struct {
 	Role                   domain.UserRole
 	CurrentPassword        string
 	PasswordChangeRequired bool
+	RevokeSessions         bool
 }
 
 type UpdateUserOutput struct {
 	User *domain.User
+}
+
+type SetUserActiveInput struct {
+	Actor  Actor
+	UserID uuid.UUID
+	Active bool
 }
 
 // =========================

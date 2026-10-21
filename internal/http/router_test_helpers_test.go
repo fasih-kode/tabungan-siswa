@@ -31,8 +31,9 @@ func (f *routerSessionRepositoryFake) Revoke(context.Context, uuid.UUID, time.Ti
 }
 
 type routerUserRepositoryFake struct {
-	user domain.User
-	err  error
+	user     domain.User
+	err      error
+	inactive bool
 }
 
 func (f *routerUserRepositoryFake) Create(context.Context, domain.User) error {
@@ -40,6 +41,9 @@ func (f *routerUserRepositoryFake) Create(context.Context, domain.User) error {
 }
 
 func (f *routerUserRepositoryFake) GetByID(context.Context, uuid.UUID) (domain.User, error) {
+	if !f.inactive {
+		f.user.Active = true
+	}
 	return f.user, f.err
 }
 

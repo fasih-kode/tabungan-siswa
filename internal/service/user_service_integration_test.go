@@ -3,6 +3,8 @@ package service_test
 import (
 	"context"
 	"errors"
+	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -374,7 +376,7 @@ func TestUserServiceIntegration_Update(t *testing.T) {
 		UserID:       target.ID,
 		Username:     newUsername,
 		PasswordHash: "updated-password-hash",
-		Role:         domain.RoleWaliKelas,
+		Role:         domain.RoleSiswa,
 	})
 	if err != nil {
 		t.Fatalf("Update() error = %v", err)
@@ -388,8 +390,8 @@ func TestUserServiceIntegration_Update(t *testing.T) {
 		t.Fatalf("Username = %q, want %q", got.User.Username, newUsername)
 	}
 
-	if got.User.Role != domain.RoleWaliKelas {
-		t.Fatalf("Role = %q, want %q", got.User.Role, domain.RoleWaliKelas)
+	if got.User.Role != domain.RoleSiswa {
+		t.Fatalf("Role = %q, want %q", got.User.Role, domain.RoleSiswa)
 	}
 
 	if !got.User.UpdatedAt.After(originalUpdatedAt) {
@@ -417,8 +419,8 @@ func TestUserServiceIntegration_Update(t *testing.T) {
 		)
 	}
 
-	if persisted.Role != domain.RoleWaliKelas {
-		t.Fatalf("persisted Role = %q, want %q", persisted.Role, domain.RoleWaliKelas)
+	if persisted.Role != domain.RoleSiswa {
+		t.Fatalf("persisted Role = %q, want %q", persisted.Role, domain.RoleSiswa)
 	}
 
 	if !persisted.UpdatedAt.After(originalUpdatedAt) {
@@ -427,5 +429,129 @@ func TestUserServiceIntegration_Update(t *testing.T) {
 			persisted.UpdatedAt,
 			originalUpdatedAt,
 		)
+	}
+}
+
+func TestUserServiceIntegration_ResetAndDeactivateRevokeSessions(t *testing.T) {
+	db := openServiceScopeTestDatabase(t)
+	ctx := context.Background()
+	cleanupServiceScopeFixtures(t, db)
+	userRepo := postgres.NewUserRepository(db)
+	sessionRepo := postgres.NewSessionRepository(db)
+	admin, target := newServiceScopeUser(t, domain.RoleAdmin), newServiceScopeUser(t, domain.RoleWaliKelas)
+	for _, user := range []domain.User{admin, target} {
+		if err := userRepo.Create(ctx, user); err != nil {
+			t.Fatalf("create user: %v", err)
+		}
+	}
+	repos := repository.RepositorySet{Users: userRepo, Sessions: sessionRepo}
+	svc, err := service.NewUserService(service.Dependencies{Repositories: repos, UOW: postgres.NewUnitOfWorkManager(db)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	createSession := func(token string) domain.Session {
+		s, err := domain.NewSession(target.ID, token, time.Now().Add(time.Hour))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := sessionRepo.Create(ctx, s); err != nil {
+			t.Fatal(err)
+		}
+		return s
+	}
+	first := createSession("reset-" + uuid.NewString())
+	_, err = svc.Update(ctx, service.UpdateUserInput{Actor: service.Actor{UserID: admin.ID, Role: domain.RoleAdmin}, UserID: target.ID, Username: target.Username, Role: target.Role, PasswordHash: "reset-hash", PasswordChangeRequired: true, RevokeSessions: true})
+	if err != nil {
+		t.Fatalf("reset update: %v", err)
+	}
+	got, err := sessionRepo.GetByTokenHash(ctx, first.TokenHash)
+	if err != nil || got.RevokedAt == nil {
+		t.Fatalf("session after reset = %#v, err=%v; want revoked", got, err)
+	}
+	second := createSession("deactivate-" + uuid.NewString())
+	if err := svc.SetActive(ctx, service.SetUserActiveInput{Actor: service.Actor{UserID: admin.ID, Role: domain.RoleAdmin}, UserID: target.ID, Active: false}); err != nil {
+		t.Fatalf("deactivate: %v", err)
+	}
+	updated, err := userRepo.GetByID(ctx, target.ID)
+	if err != nil || updated.Active {
+		t.Fatalf("user active=%v, err=%v; want inactive", updated.Active, err)
+	}
+	got, err = sessionRepo.GetByTokenHash(ctx, second.TokenHash)
+	if err != nil || got.RevokedAt == nil {
+		t.Fatalf("session after deactivation = %#v, err=%v; want revoked", got, err)
+	}
+}
+
+func TestUserServiceIntegration_RollsBackPasswordAndDeactivationWhenSessionRevokeFails(t *testing.T) {
+	db := openServiceScopeTestDatabase(t)
+	ctx := context.Background()
+	cleanupServiceScopeFixtures(t, db)
+	userRepo := postgres.NewUserRepository(db)
+	sessionRepo := postgres.NewSessionRepository(db)
+	admin, target := newServiceScopeUser(t, domain.RoleAdmin), newServiceScopeUser(t, domain.RoleWaliKelas)
+	for _, user := range []domain.User{admin, target} {
+		if err := userRepo.Create(ctx, user); err != nil {
+			t.Fatalf("create user: %v", err)
+		}
+	}
+	session, err := domain.NewSession(target.ID, "rollback-"+uuid.NewString(), time.Now().Add(time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := sessionRepo.Create(ctx, session); err != nil {
+		t.Fatal(err)
+	}
+	identifier := strings.ReplaceAll(target.ID.String(), "-", "")
+	functionName := "codex_f24_fail_revoke_" + identifier
+	triggerName := "codex_f24_fail_revoke_" + identifier
+	_, err = db.ExecContext(ctx, fmt.Sprintf(`CREATE FUNCTION %s() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'forced FASE24 test failure'; END $$`, functionName))
+	if err != nil {
+		t.Fatalf("create failure function: %v", err)
+	}
+	_, err = db.ExecContext(ctx, fmt.Sprintf(`CREATE TRIGGER %s BEFORE UPDATE OF revoked_at ON sessions FOR EACH ROW WHEN (OLD.user_id = '%s'::uuid AND OLD.revoked_at IS NULL) EXECUTE FUNCTION %s()`, triggerName, target.ID, functionName))
+	if err != nil {
+		t.Fatalf("create failure trigger: %v", err)
+	}
+	t.Cleanup(func() {
+		if _, err := db.ExecContext(context.Background(), fmt.Sprintf("DROP TRIGGER IF EXISTS %s ON sessions", triggerName)); err != nil {
+			t.Errorf("drop failure trigger: %v", err)
+		}
+		if _, err := db.ExecContext(context.Background(), fmt.Sprintf("DROP FUNCTION IF EXISTS %s()", functionName)); err != nil {
+			t.Errorf("drop failure function: %v", err)
+		}
+	})
+	svc, err := service.NewUserService(service.Dependencies{Repositories: repository.RepositorySet{Users: userRepo, Sessions: sessionRepo}, UOW: postgres.NewUnitOfWorkManager(db)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	actor := service.Actor{UserID: admin.ID, Role: domain.RoleAdmin}
+	_, err = svc.Update(ctx, service.UpdateUserInput{Actor: actor, UserID: target.ID, Username: target.Username, Role: target.Role, PasswordHash: "must-roll-back", PasswordChangeRequired: true, RevokeSessions: true})
+	if err == nil {
+		t.Fatal("password reset succeeded despite session revocation failure")
+	}
+	gotUser, err := userRepo.GetByID(ctx, target.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if gotUser.PasswordHash != target.PasswordHash || gotUser.PasswordChangeRequired {
+		t.Fatalf("password reset persisted despite rollback: %#v", gotUser)
+	}
+	err = svc.SetActive(ctx, service.SetUserActiveInput{Actor: actor, UserID: target.ID, Active: false})
+	if err == nil {
+		t.Fatal("deactivation succeeded despite session revocation failure")
+	}
+	gotUser, err = userRepo.GetByID(ctx, target.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !gotUser.Active {
+		t.Fatal("deactivation persisted despite rollback")
+	}
+	gotSession, err := sessionRepo.GetByTokenHash(ctx, session.TokenHash)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if gotSession.RevokedAt != nil {
+		t.Fatal("session revocation persisted despite transaction rollback")
 	}
 }

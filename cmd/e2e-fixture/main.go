@@ -1,4 +1,4 @@
-// Command e2e-fixture creates and removes a deterministic FASE 23 browser-test
+// Command e2e-fixture creates and removes a deterministic browser-test
 // fixture. It is restricted to the explicitly named disposable test database.
 package main
 
@@ -96,8 +96,8 @@ func verifySchema(ctx context.Context, db *sql.DB) error {
 	if err != nil {
 		return fmt.Errorf("read migration state: %w", err)
 	}
-	if version != 11 || dirty {
-		return fmt.Errorf("expected schema version 11 clean; got version %d dirty=%t", version, dirty)
+	if version != 12 || dirty {
+		return fmt.Errorf("expected schema version 12 clean; got version %d dirty=%t", version, dirty)
 	}
 	return nil
 }

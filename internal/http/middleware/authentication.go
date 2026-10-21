@@ -42,7 +42,6 @@ func (m *AuthenticationMiddleware) RequireAuthentication(
 			autherror.Write(w, service.ErrInvalidCredentials)
 			return
 		}
-
 		session, err := m.sessions.GetByTokenHash(
 			r.Context(),
 			security.HashSessionToken(token),
@@ -70,6 +69,10 @@ func (m *AuthenticationMiddleware) RequireAuthentication(
 			}
 
 			autherror.Write(w, err)
+			return
+		}
+		if !user.Active {
+			autherror.Write(w, service.ErrInvalidCredentials)
 			return
 		}
 

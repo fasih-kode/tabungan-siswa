@@ -318,6 +318,9 @@ func (s *userService) Update(
 	} else if !isAdmin {
 		return UpdateUserOutput{}, ErrForbidden
 	}
+	if isAdmin && input.Role != existing.Role {
+		return UpdateUserOutput{}, ErrForbidden
+	}
 
 	user := existing
 	user.Username = input.Username
@@ -351,6 +354,15 @@ func (s *userService) Update(
 	if err := repos.Users.Update(ctx, user); err != nil {
 		return UpdateUserOutput{}, err
 	}
+	if input.RevokeSessions {
+		sessions, ok := repos.Sessions.(repository.SessionRevocationRepository)
+		if !ok {
+			return UpdateUserOutput{}, ErrInvalidDependency
+		}
+		if err := sessions.RevokeAllByUserID(ctx, user.ID, time.Now()); err != nil {
+			return UpdateUserOutput{}, err
+		}
+	}
 
 	if err := uow.Commit(); err != nil {
 		return UpdateUserOutput{}, fmt.Errorf("commit update user transaction: %w", err)
@@ -361,6 +373,58 @@ func (s *userService) Update(
 	return UpdateUserOutput{
 		User: &user,
 	}, nil
+}
+
+func (s *userService) SetActive(ctx context.Context, input SetUserActiveInput) error {
+	if err := RequireRole(input.Actor, domain.RoleAdmin); err != nil {
+		return err
+	}
+	if input.UserID == uuid.Nil {
+		return ErrScopeViolation
+	}
+	if input.Actor.UserID == input.UserID && !input.Active {
+		return ErrForbidden
+	}
+
+	uow, err := s.deps.UOW.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("begin set user active transaction: %w", err)
+	}
+	committed := false
+	defer func() {
+		if !committed {
+			_ = uow.Rollback()
+		}
+	}()
+	repos := uow.Repositories()
+	user, err := repos.Users.GetByID(ctx, input.UserID)
+	if err != nil {
+		return err
+	}
+	if user.Role == domain.RoleAdmin {
+		return ErrForbidden
+	}
+	activator, ok := repos.Users.(repository.UserActivationRepository)
+	if !ok {
+		return ErrInvalidDependency
+	}
+	if err := activator.SetActive(ctx, user.ID, input.Active, time.Now()); err != nil {
+		return err
+	}
+	if !input.Active {
+		sessions, ok := repos.Sessions.(repository.SessionRevocationRepository)
+		if !ok {
+			return ErrInvalidDependency
+		}
+		if err := sessions.RevokeAllByUserID(ctx, user.ID, time.Now()); err != nil {
+			return err
+		}
+	}
+	if err := uow.Commit(); err != nil {
+		return fmt.Errorf("commit set user active transaction: %w", err)
+	}
+	committed = true
+	return nil
 }
 
 func validateUserUpdate(user domain.User) error {
@@ -378,6 +442,9 @@ func validateUserUpdate(user domain.User) error {
 
 	if !user.Role.IsValid() {
 		return domain.ErrInvalidValue
+	}
+	if !user.Active && user.Role == domain.RoleAdmin {
+		return ErrForbidden
 	}
 
 	return nil

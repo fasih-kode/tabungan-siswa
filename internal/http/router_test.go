@@ -174,6 +174,13 @@ func TestNewRouterPublicLoginRoute(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/login", nil)
 	recorder := httptest.NewRecorder()
 
+	rootRequest := httptest.NewRequest(http.MethodGet, "/", nil)
+	rootRecorder := httptest.NewRecorder()
+	router.ServeHTTP(rootRecorder, rootRequest)
+	if rootRecorder.Code != http.StatusSeeOther || rootRecorder.Header().Get("Location") != "/login" {
+		t.Fatalf("GET / status/location = %d/%q, want %d and /login", rootRecorder.Code, rootRecorder.Header().Get("Location"), http.StatusSeeOther)
+	}
+
 	router.ServeHTTP(recorder, req)
 
 	if recorder.Code != http.StatusOK {
@@ -708,8 +715,9 @@ func TestNewRouterProtectedRouteAllowsAuthenticatedRequest(t *testing.T) {
 	}
 
 	user := domain.User{
-		ID:   userID,
-		Role: domain.RoleAdmin,
+		ID:     userID,
+		Role:   domain.RoleAdmin,
+		Active: true,
 	}
 
 	authMiddleware, err := middleware.NewAuthenticationMiddleware(
@@ -767,8 +775,9 @@ func TestNewRouterProtectedPostRequiresCSRFAfterAuthentication(t *testing.T) {
 	}
 
 	user := domain.User{
-		ID:   userID,
-		Role: domain.RoleAdmin,
+		ID:     userID,
+		Role:   domain.RoleAdmin,
+		Active: true,
 	}
 
 	authMiddleware, err := middleware.NewAuthenticationMiddleware(

@@ -22,6 +22,30 @@ type userServiceFakeUserRepository struct {
 	existsByUsernameFn func(context.Context, string) (bool, error)
 }
 
+type userServiceFakeActivationRepository struct {
+	repository.UserRepository
+	setActiveFn func(context.Context, uuid.UUID, bool, time.Time) error
+}
+
+func (f *userServiceFakeActivationRepository) SetActive(ctx context.Context, id uuid.UUID, active bool, at time.Time) error {
+	if f.setActiveFn != nil {
+		return f.setActiveFn(ctx, id, active, at)
+	}
+	return nil
+}
+
+type userServiceFakeSessionRevoker struct {
+	repository.SessionRepository
+	revokeAllFn func(context.Context, uuid.UUID, time.Time) error
+}
+
+func (f *userServiceFakeSessionRevoker) RevokeAllByUserID(ctx context.Context, id uuid.UUID, at time.Time) error {
+	if f.revokeAllFn != nil {
+		return f.revokeAllFn(ctx, id, at)
+	}
+	return nil
+}
+
 func (f *userServiceFakeUserRepository) GetByID(
 	ctx context.Context,
 	id uuid.UUID,
@@ -232,6 +256,7 @@ func newTestDomainUser(
 		Username:     username,
 		PasswordHash: "password-hash",
 		Role:         role,
+		Active:       true,
 		CreatedAt:    now,
 		UpdatedAt:    now,
 	}
@@ -1038,7 +1063,7 @@ func TestUserService_Update(t *testing.T) {
 		domain.RoleSiswa,
 	)
 
-	t.Run("admin updates user and changes updated at", func(t *testing.T) {
+	t.Run("admin updates username without changing role", func(t *testing.T) {
 		var updated domain.User
 
 		userRepo := &userServiceFakeUserRepository{
@@ -1080,7 +1105,7 @@ func TestUserService_Update(t *testing.T) {
 			UserID:                 userID,
 			Username:               "updated-user",
 			PasswordHash:           "updated-password",
-			Role:                   domain.RoleAdmin,
+			Role:                   domain.RoleSiswa,
 			PasswordChangeRequired: true,
 		})
 

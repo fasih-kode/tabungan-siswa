@@ -149,6 +149,7 @@ func newIntegrationRouter(t *testing.T) *http.ServeMux {
 			ID:       userID,
 			Username: "admin",
 			Role:     domain.RoleAdmin,
+			Active:   true,
 		},
 	}
 

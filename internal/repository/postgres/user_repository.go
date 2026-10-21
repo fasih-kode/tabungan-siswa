@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/fasih/tabungan-siswa/internal/domain"
 	"github.com/fasih/tabungan-siswa/internal/platform/database"
@@ -36,6 +37,7 @@ func (r *UserRepository) Create(
 			password_hash,
 			role,
 			password_change_required,
+			is_active,
 			created_at,
 			updated_at
 		)
@@ -46,7 +48,8 @@ func (r *UserRepository) Create(
 			$4,
 			$5,
 			$6,
-			$7
+			$7,
+			$8
 		)
 	`
 
@@ -58,6 +61,7 @@ func (r *UserRepository) Create(
 		user.PasswordHash,
 		user.Role,
 		user.PasswordChangeRequired,
+		user.Active,
 		user.CreatedAt,
 		user.UpdatedAt,
 	)
@@ -79,6 +83,7 @@ func (r *UserRepository) GetByID(
 			password_hash,
 			role,
 			password_change_required,
+			is_active,
 			created_at,
 			updated_at
 		FROM users
@@ -99,6 +104,7 @@ func (r *UserRepository) GetByUsername(
 			password_hash,
 			role,
 			password_change_required,
+			is_active,
 			created_at,
 			updated_at
 		FROM users
@@ -118,6 +124,7 @@ func (r *UserRepository) ListByRole(
 			id,
 			username,
 			role,
+			is_active,
 			created_at,
 			updated_at
 		FROM users
@@ -140,6 +147,7 @@ func (r *UserRepository) ListByRole(
 			&user.ID,
 			&user.Username,
 			&user.Role,
+			&user.Active,
 			&user.CreatedAt,
 			&user.UpdatedAt,
 		); err != nil {
@@ -165,8 +173,9 @@ func (r *UserRepository) Update(
 			password_hash = $2,
 			role = $3,
 			password_change_required = $4,
-			updated_at = $5
-		WHERE id = $6
+			is_active = $5,
+			updated_at = $6
+		WHERE id = $7
 	`
 
 	result, err := r.db.ExecContext(
@@ -176,6 +185,7 @@ func (r *UserRepository) Update(
 		user.PasswordHash,
 		user.Role,
 		user.PasswordChangeRequired,
+		user.Active,
 		user.UpdatedAt,
 		user.ID,
 	)
@@ -192,6 +202,31 @@ func (r *UserRepository) Update(
 		return repository.ErrNotFound
 	}
 
+	return nil
+}
+
+func (r *UserRepository) SetActive(
+	ctx context.Context,
+	userID uuid.UUID,
+	active bool,
+	updatedAt time.Time,
+) error {
+	const query = `
+		UPDATE users
+		SET is_active = $1, updated_at = $2
+		WHERE id = $3
+	`
+	result, err := r.db.ExecContext(ctx, query, active, updatedAt, userID)
+	if err != nil {
+		return translateError("set user active", err)
+	}
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("get user active rows affected: %w", err)
+	}
+	if rows == 0 {
+		return repository.ErrNotFound
+	}
 	return nil
 }
 
@@ -241,6 +276,7 @@ func (r *UserRepository) getOne(
 		&user.PasswordHash,
 		&user.Role,
 		&user.PasswordChangeRequired,
+		&user.Active,
 		&user.CreatedAt,
 		&user.UpdatedAt,
 	)

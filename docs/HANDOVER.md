@@ -124,3 +124,36 @@ Rujuk kontrak fase untuk status terbarunya sebelum melanjutkan.
 - Jalur pengguna: `npm install`, `npm run test:e2e:install`, lalu `npm run test:e2e`. Petunjuk target database dan pembersihan ada di [TESTING.md](TESTING.md).
 - Verifikasi: `GOCACHE=/tmp/tabungan-siswa-gocache PLAYWRIGHT_BROWSERS_PATH=/tmp/tabungan-siswa-playwright-browsers npm run test:e2e` lulus (1/1). Fixture dibersihkan otomatis dari `tabungan_siswa_fase168_clean_test`; development/produksi tidak disentuh.
 - `git diff --check` lulus. Harness ini berjalan serial dan tidak boleh dijalankan paralel dengan Go integration suite pada database tes yang sama.
+
+## FASE 24 — implementasi administrasi akun berjalan — 2026-10-20
+
+- Owner menyetujui rancangan kebijakan dalam [kontrak FASE 24](contracts/fase-24-user-administration-contract.md). Kontrak menjelaskan pengelolaan akun, role tetap, bootstrap Admin, larangan nonaktifkan diri/Admin, dan pencabutan sesi saat nonaktif/reset.
+- Implementasi menambahkan status akun aktif, pemeriksaan status saat autentikasi dan setiap request, perubahan username, aktivasi/nonaktif, serta reset sementara yang mewajibkan ganti password.
+- Migration `000012` diterapkan pada database disposable `tabungan_siswa_fase168_clean_test`; status schema yang diverifikasi setelahnya versi 12, bersih. Database development/produksi tidak disentuh.
+- `GOCACHE=/tmp/tabungan-siswa-gocache make test-integration` lulus seluruh package setelah migration 12. Tes mencakup perubahan status, pencabutan sesi saat reset/nonaktif, larangan perubahan role, penolakan sesi akun nonaktif, dan PostgreSQL rollback nyata saat pencabutan sesi sengaja gagal.
+- Harness browser diperbarui untuk menolak schema selain v12. Playwright memeriksa alur settlement FASE 23 dan alur Admin ubah username, nonaktifkan/aktifkan, reset password, login dengan password sementara, dan ganti password; hasil 2/2 lulus.
+- Verifikasi FASE 24: `GOCACHE=/tmp/tabungan-siswa-gocache make test-integration` lulus; `GOCACHE=/tmp/tabungan-siswa-gocache GOFLAGS=-race make test-integration` lulus; `go vet ./...`, `go build ./...`, `npm run test:instant-search` (7/7), dan `git diff --check` lulus.
+- Migration 12 tercatat diterapkan pada DB disposable versi 12 bersih. Fixture browser dihapus otomatis; data development/produksi tidak disentuh.
+- Siklus migration 12 `down 1` lalu `up` berhasil pada database disposable. Tepat sebelum siklus, backup status aktif/nonaktif sementara mencatat 0 akun nonaktif; backup diverifikasi lalu dihapus. Schema akhir versi 12 bersih. Tidak ada data development/produksi yang disentuh.
+- Diff telah ditinjau setelah pemeriksaan. Status FASE 24: implementasi dan verifikasi tersedia, **menunggu penerimaan owner serta commit/lock**. Tidak ada commit/push; roadmap mensyaratkan commit dan lock setelah penerimaan.
+
+## Perbaikan login Admin lokal — 2026-10-20
+
+- Laporan login Admin menampilkan HTTP 500. Pemeriksaan read-only pada `.env` memastikan aplikasi memakai database `tabungan_siswa_dev`, yang masih di schema versi 11 dan belum memiliki kolom `users.is_active` yang dibaca kode FASE 24.
+- Migration `000012_user_activation` berhasil diterapkan ke database development tersebut; verifikasi sesudahnya menunjukkan versi 12, `dirty=false`, dan kolom `users.is_active` tersedia. Migration menambahkan kolom dengan default `TRUE` serta indeks sesi aktif.
+- GET `/login` pada server lokal merespons HTTP 200. Screenshot berikutnya menunjukkan Admin berhasil login dan telah melewati kewajiban ganti password; database kini mencatat `password_change_required=false` untuk akun `admin`.
+- Database tes disposable dan database produksi tidak disentuh. Perubahan kode FASE 24 tetap belum di-commit dan menunggu penerimaan/lock.
+
+## Laporan akses Pengawasan Tabungan — 2026-10-20
+
+- Screenshot menunjukkan GET `/savings` membalas 403 `Forbidden` untuk Admin. Kode handler saat ini mengizinkan `ADMIN`; query read-only juga mengonfirmasi akun `admin` ber-role `ADMIN` dan tahun ajaran `2026/2027` berstatus `OPEN`.
+- Akar masalah ditemukan: halaman mengirim ID tahun aktif tetapi tanpa ID kelas ke `StudentService.List` untuk Admin. Layanan menganggap kombinasi filter itu sebagai `ErrScopeViolation`, yang tampil sebagai 403.
+- Handler kini meminta roster global untuk Admin (tanpa filter tahun/kelas); tahun yang dipilih tetap digunakan untuk membaca akun tabungan. Wali tetap memakai roster dengan scope tahun/penugasan.
+- Tes unit memastikan Admin meminta roster global. E2E memverifikasi Admin membuka `/savings` ketika tahun ajaran uji masih terbuka; pemeriksaan ditempatkan sebelum Admin menutup tahun. E2E `GOCACHE=/tmp/tabungan-siswa-gocache PLAYWRIGHT_BROWSERS_PATH=/tmp/tabungan-siswa-playwright-browsers npm run test:e2e` lulus (2/2), fixture dibersihkan otomatis dari DB disposable.
+- Percobaan E2E awal yang dilakukan setelah tahun uji tertutup tidak menguji jalur tahun aktif; assertion tersebut kini dipindahkan ke skenario sebelum tahun ditutup.
+
+## Root URL mengarah ke halaman login — 2026-10-21
+
+- Penyebab: router hanya mendaftarkan `GET /login`; tidak ada handler untuk path root `/`, sehingga `http.ServeMux` mengembalikan 404.
+- Ditambahkan route exact `GET /` yang mengalihkan ke `/login` dengan status 303, serta tes router yang memverifikasi status dan lokasi redirect.
+- `GOCACHE=/tmp/tabungan-siswa-gocache go test ./internal/http -run 'TestNewRouterPublicLoginRoute$' -count=1` lulus; `git diff --check` lulus.

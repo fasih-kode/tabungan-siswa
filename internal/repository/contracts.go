@@ -34,6 +34,14 @@ type SessionRepository interface {
 	Revoke(ctx context.Context, sessionID uuid.UUID, revokedAt time.Time) error
 }
 
+type UserActivationRepository interface {
+	SetActive(ctx context.Context, userID uuid.UUID, active bool, updatedAt time.Time) error
+}
+
+type SessionRevocationRepository interface {
+	RevokeAllByUserID(ctx context.Context, userID uuid.UUID, revokedAt time.Time) error
+}
+
 type AcademicYearRepository interface {
 	Create(ctx context.Context, academicYear domain.AcademicYear) error
 	GetByID(ctx context.Context, id uuid.UUID) (domain.AcademicYear, error)

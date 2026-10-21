@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"html/template"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -57,6 +58,31 @@ func TestUsersPageLoadsUnlinkedStudentsWhileWaliKelasTabIsSelected(t *testing.T)
 	body := response.Body.String()
 	if !strings.Contains(body, "2026/2027") || !strings.Contains(body, "VII A") {
 		t.Fatalf("open-year class filter is missing from the account form: %s", body)
+	}
+}
+
+func TestUserAdministrationMutationsRejectNonAdminBeforeServiceCalls(t *testing.T) {
+	handler := &UserPageHandler{}
+	for _, route := range []struct {
+		name string
+		call func(http.ResponseWriter, *http.Request)
+		path string
+		body string
+	}{
+		{name: "username update", call: handler.UpdateManagedUser, path: "/users/" + uuid.NewString(), body: "username=changed"},
+		{name: "activation", call: handler.SetManagedUserActive, path: "/users/" + uuid.NewString() + "/active", body: "active=false"},
+	} {
+		t.Run(route.name, func(t *testing.T) {
+			request := requestWithActor(http.MethodPost, route.path, service.Actor{UserID: uuid.New(), Role: domain.RoleWaliKelas})
+			request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+			request.Body = io.NopCloser(strings.NewReader(route.body))
+			request.ContentLength = int64(len(route.body))
+			response := httptest.NewRecorder()
+			route.call(response, request)
+			if response.Code != http.StatusForbidden {
+				t.Fatalf("status = %d, want %d", response.Code, http.StatusForbidden)
+			}
+		})
 	}
 }
 

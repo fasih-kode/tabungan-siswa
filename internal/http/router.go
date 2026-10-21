@@ -164,6 +164,9 @@ func registerPublicRoutes(
 	loginPage *LoginPageHandler,
 	csrf *middleware.CSRFMiddleware,
 ) {
+	mux.HandleFunc("GET /{$}", func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, "/login", http.StatusSeeOther)
+	})
 	mux.HandleFunc("GET /login", csrf.Protect(http.HandlerFunc(
 		loginPage.Get,
 	)).ServeHTTP)
@@ -208,6 +211,8 @@ func registerUserRoutes(mux *http.ServeMux, handler *UserPageHandler, authentica
 	mux.Handle("GET /users", authentication.RequireAuthentication(csrf.Protect(http.HandlerFunc(handler.List))))
 	mux.Handle("POST /users", authentication.RequireAuthentication(limitAcademicYearRequestBody(csrf.Protect(http.HandlerFunc(handler.Create)))))
 	mux.Handle("POST /users/{id}/reset-password", authentication.RequireAuthentication(limitAcademicYearRequestBody(csrf.Protect(http.HandlerFunc(handler.ResetPassword)))))
+	mux.Handle("POST /users/{id}", authentication.RequireAuthentication(limitAcademicYearRequestBody(csrf.Protect(http.HandlerFunc(handler.UpdateManagedUser)))))
+	mux.Handle("POST /users/{id}/active", authentication.RequireAuthentication(limitAcademicYearRequestBody(csrf.Protect(http.HandlerFunc(handler.SetManagedUserActive)))))
 	mux.Handle("GET /account/password", authentication.RequireAuthentication(csrf.Protect(http.HandlerFunc(handler.ChangePassword))))
 	mux.Handle("POST /account/password", authentication.RequireAuthentication(limitAcademicYearRequestBody(csrf.Protect(http.HandlerFunc(handler.ChangePassword)))))
 }

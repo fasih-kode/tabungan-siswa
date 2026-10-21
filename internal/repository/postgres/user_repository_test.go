@@ -244,6 +244,9 @@ func assertUserEqual(
 	if got.PasswordChangeRequired != want.PasswordChangeRequired {
 		t.Errorf("PasswordChangeRequired = %v, want %v", got.PasswordChangeRequired, want.PasswordChangeRequired)
 	}
+	if got.Active != want.Active {
+		t.Errorf("Active = %v, want %v", got.Active, want.Active)
+	}
 
 	if !got.CreatedAt.Equal(want.CreatedAt) {
 		if !got.CreatedAt.Truncate(time.Microsecond).Equal(

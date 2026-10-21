@@ -29,6 +29,15 @@ Sumber: [FASE 21](contracts/fase-21-transaction-http-contract.md), [FASE 22](con
 
 Jangan gunakan ringkasan ini untuk mengganti pengecekan service atau matriks akses kontrak.
 
+## Administrasi akun
+
+- Hanya Admin yang dapat mengelola akun Wali Kelas dan Siswa.
+- Akun Admin hanya diprovisikan melalui bootstrap; UI tidak membuat Admin.
+- Role akun tidak dapat diubah melalui administrasi. Akun Admin dan akun pengguna sendiri tidak dapat dinonaktifkan.
+- Penonaktifan dan reset password mencabut seluruh sesi. Reset membuat password sementara yang ditampilkan satu kali dan mewajibkan pergantian password saat login berikutnya.
+
+Sumber: [kontrak FASE 24](contracts/fase-24-user-administration-contract.md).
+
 ## Settlement akhir tahun
 
 FASE 23 menetapkan pratinjau dari ledger aktif penuh, settlement per akun, konfirmasi penyerahan terpisah untuk nominal positif, pemeriksaan readiness, dan workflow reopen/correction terkontrol. Rekening tahun baru mulai dari nol; saldo tidak dibawa otomatis. Rincian persis, termasuk pengecualian dan konkurensi, ada di [kontrak FASE 23](contracts/fase-23-year-end-settlement-contract.md).

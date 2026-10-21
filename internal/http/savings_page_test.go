@@ -120,6 +120,27 @@ func TestSavingsPageListScopesRosterAndShowsAccountOrCreateAction(t *testing.T) 
 	}
 }
 
+func TestSavingsPageListAllowsAdmin(t *testing.T) {
+	yearID := uuid.New()
+	year := &domain.AcademicYear{ID: yearID, Name: "2026/2027", Status: domain.AcademicYearOpen}
+	students := &savingsPageStudentsFake{}
+	h := newSavingsPageHandlerForTest(
+		t,
+		&savingsPageAccountsFake{},
+		students,
+		&savingsPageYearsFake{years: []*domain.AcademicYear{year}, get: year},
+	)
+	req := requestWithActor(http.MethodGet, "/savings", service.Actor{UserID: uuid.New(), Role: domain.RoleAdmin})
+	recorder := httptest.NewRecorder()
+	withCSRFForTest(http.HandlerFunc(h.List)).ServeHTTP(recorder, req)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("Admin savings page status=%d body=%s", recorder.Code, recorder.Body.String())
+	}
+	if students.listInput.Actor.Role != domain.RoleAdmin || students.listInput.IncludePlacement || students.listInput.AcademicYearID != uuid.Nil {
+		t.Fatalf("Admin student query was not made without teacher placement scope: %+v", students.listInput)
+	}
+}
+
 func TestSavingsPageCreateAndDetail(t *testing.T) {
 	studentID, yearID := uuid.New(), uuid.New()
 	year := &domain.AcademicYear{ID: yearID, Name: "2026/2027", Status: domain.AcademicYearOpen}

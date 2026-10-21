@@ -18,6 +18,7 @@ Register ini menunjuk keputusan yang telah tercatat di sumber proyek. Jika keput
 - Otorisasi finansial dan pengecualian reopen: [kebijakan akses keuangan](contracts/financial-supervision-access.md).
 - Transaksi, koreksi, dan audit: [kontrak FASE 21](contracts/fase-21-transaction-http-contract.md) dan [kontrak FASE 22](contracts/fase-22-transaction-correction-audit-contract.md).
 - Settlement akhir tahun, readiness, penyerahan, dan reopen: [kontrak FASE 23](contracts/fase-23-year-end-settlement-contract.md).
+- Administrasi akun, aktivasi, reset password, dan pencabutan sesi: [kontrak FASE 24](contracts/fase-24-user-administration-contract.md) (keputusan owner 2026-10-20).
 - Alur operasional siswa/kelas: kontrak FASE 18–20 dan dokumen workflow terkait dalam [`contracts/`](contracts/).
 
 Keputusan-keputusan tersebut tidak ditulis ulang di sini. Kontrak bersangkutan menjadi sumber otoritatif untuk rincian dan tanggal amandemen.

@@ -449,6 +449,7 @@ func cleanupServiceScopeFixtures(t *testing.T, db *sql.DB) {
 		"DELETE FROM students",
 		"DELETE FROM classes",
 		"DELETE FROM academic_years",
+		"DELETE FROM sessions",
 		"DELETE FROM users",
 	}
 

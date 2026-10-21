@@ -126,6 +126,23 @@ func (r *SessionRepository) Revoke(
 	return nil
 }
 
+func (r *SessionRepository) RevokeAllByUserID(
+	ctx context.Context,
+	userID uuid.UUID,
+	revokedAt time.Time,
+) error {
+	const query = `
+		UPDATE sessions
+		SET revoked_at = $1
+		WHERE user_id = $2 AND revoked_at IS NULL
+	`
+	_, err := r.db.ExecContext(ctx, query, revokedAt, userID)
+	if err != nil {
+		return translateSessionError("revoke all user sessions", err)
+	}
+	return nil
+}
+
 func translateSessionError(operation string, err error) error {
 	var pgErr *pgconn.PgError
 	if errors.As(err, &pgErr) && pgErr.Code == "23505" {
