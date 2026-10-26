@@ -162,3 +162,106 @@ func (s *settlementService) DecideReopen(ctx context.Context, input DecideSettle
 	}
 	return DecideSettlementReopenOutput{Request: &request}, nil
 }
+
+func (s *settlementService) Reopen(ctx context.Context, input ReopenSettlementInput) (ReopenSettlementOutput, error) {
+	if err := RequireRole(input.Actor, domain.RoleWaliKelas); err != nil {
+		return ReopenSettlementOutput{}, err
+	}
+	if input.SettlementID == uuid.Nil {
+		return ReopenSettlementOutput{}, domain.ErrInvalidID
+	}
+	uow, repos, ctx, owns, err := beginTransaction(ctx, s.deps.UOW)
+	if err != nil {
+		return ReopenSettlementOutput{}, err
+	}
+	committed := false
+	defer func() {
+		if owns && !committed {
+			_ = uow.Rollback()
+		}
+	}()
+	settlement, err := repos.Settlements.GetByID(ctx, input.SettlementID)
+	if err != nil {
+		return ReopenSettlementOutput{}, err
+	}
+	unlocked, err := repos.SavingsAccounts.GetByID(ctx, settlement.SavingsAccountID)
+	if err != nil {
+		return ReopenSettlementOutput{}, err
+	}
+	year, err := repos.AcademicYears.GetByIDForUpdate(ctx, unlocked.AcademicYearID)
+	if err != nil {
+		return ReopenSettlementOutput{}, err
+	}
+	successor, err := repos.AcademicYears.HasSuccessor(ctx, year.ID)
+	if err != nil {
+		return ReopenSettlementOutput{}, err
+	}
+	if successor {
+		return ReopenSettlementOutput{}, domain.ErrInvalidTransition
+	}
+	account, err := repos.SavingsAccounts.GetByIDForUpdate(ctx, unlocked.ID)
+	if err != nil {
+		return ReopenSettlementOutput{}, err
+	}
+	request, err := repos.Settlements.GetActiveReopenRequest(ctx, settlement.ID)
+	if err != nil {
+		return ReopenSettlementOutput{}, err
+	}
+	request, err = repos.Settlements.GetReopenRequestForUpdate(ctx, request.ID)
+	if err != nil {
+		return ReopenSettlementOutput{}, err
+	}
+	if request.Status != domain.SettlementReopenApproved || !year.IsClosed() || !account.IsSettled() || !settlement.IsCompleted() {
+		return ReopenSettlementOutput{}, domain.ErrInvalidTransition
+	}
+	if err := authorizeResponsibleWali(ctx, repos, input.Actor, account, year); err != nil {
+		return ReopenSettlementOutput{}, err
+	}
+	current, err := repos.Settlements.GetCompletedBySavingsAccount(ctx, account.ID)
+	if err != nil {
+		return ReopenSettlementOutput{}, err
+	}
+	if current.ID != settlement.ID {
+		return ReopenSettlementOutput{}, repository.ErrConflict
+	}
+	beforeYear := year
+	beforeSettlement := settlement
+	beforeAccount := account
+	if err := year.ReopenForCorrection(); err != nil {
+		return ReopenSettlementOutput{}, err
+	}
+	if err := settlement.Supersede(); err != nil {
+		return ReopenSettlementOutput{}, err
+	}
+	if err := account.Reopen(); err != nil {
+		return ReopenSettlementOutput{}, err
+	}
+	if err := repos.AcademicYears.Update(ctx, year); err != nil {
+		return ReopenSettlementOutput{}, err
+	}
+	if err := repos.Settlements.Update(ctx, settlement); err != nil {
+		return ReopenSettlementOutput{}, err
+	}
+	if err := repos.SavingsAccounts.Update(ctx, account); err != nil {
+		return ReopenSettlementOutput{}, err
+	}
+	if err := s.createSettlementAudit(ctx, repos, input.Actor, "REOPEN", settlement, &beforeSettlement); err != nil {
+		return ReopenSettlementOutput{}, err
+	}
+	if err := s.createSavingsAccountAudit(ctx, repos, input.Actor, "REOPEN", account, &beforeAccount); err != nil {
+		return ReopenSettlementOutput{}, err
+	}
+	if err := s.createAcademicYearAudit(ctx, repos, input.Actor, "REOPEN_FOR_CORRECTION", year, &beforeYear); err != nil {
+		return ReopenSettlementOutput{}, err
+	}
+	if err := s.createReopenRequestAudit(ctx, repos, input.Actor, "EXECUTE", request, nil); err != nil {
+		return ReopenSettlementOutput{}, err
+	}
+	if owns {
+		if err := uow.Commit(); err != nil {
+			return ReopenSettlementOutput{}, err
+		}
+		committed = true
+	}
+	return ReopenSettlementOutput{PreviousSettlement: &settlement, Account: &account}, nil
+}
