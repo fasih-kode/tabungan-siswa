@@ -433,3 +433,11 @@ Audit read-only selesai pada baseline `cb7add40796c81a508770c85b595fbfacecff8c2`
 - Diff source hanya mengubah kedua blok komentar. Perbandingan source setelah semua baris komentar dikeluarkan identik dengan HEAD awal; tidak ada statement Go yang berubah.
 - Lulus: `gofmt -l internal/service/settlement_service_settle.go` (tanpa keluaran), `GOCACHE=/tmp/tabungan-siswa-gocache go build ./...`, `go vet ./...`, tes domain/security/HTTP enam package, dan `git diff --check`.
 - Integration test PostgreSQL **NOT RUN** karena perubahan hanya komentar. Tidak ada koneksi database.
+
+### MQ-06-BUG-01 — readback LateRequestID — 2026-10-26
+
+- Penyebab terkonfirmasi: `Create` menyimpan `late_request_id`, tetapi `GetByID`, `ListBySavingsAccount`, `ListActiveBySavingsAccount`, dan `ListAllBySavingsAccount` tidak memilih kolom tersebut; `scanTransaction` juga belum memetakannya ke domain.
+- Perbaikan lokal menambahkan kolom itu pada empat SELECT dan memindainya melalui `uuid.NullUUID`; SQL NULL tetap menjadi pointer `nil`, UUID valid menjadi `*uuid.UUID`. Regression test memakai permintaan sah lewat repository (PENDING → APPROVED → COMPLETED), memeriksa keempat jalur pembacaan, nilai NULL/non-NULL, field transaksi, filter status, dan urutan.
+- Tes regression terbukti gagal sebelum perubahan produksi pada keempat jalur karena `LateRequestID` terbaca nil; lulus setelah perubahan. `gofmt`, build, vet, tes domain/security/HTTP enam package, dan `git diff --check` lulus.
+- `make test-integration` pada snapshot task terbaru lulus: 11 package PASS, 3 tanpa test, 0 FAIL. Database PostgreSQL 18 disposable diverifikasi pada loopback `127.0.0.1`, port khusus `47593`, role `mq06_bug01`, database `tabungan_siswa_fase168_clean_test`, data directory task-owned, schema v13 bersih. Sebelum tes semua tabel kosong selain satu row `schema_migrations`; sesudah suite tersisa dua `users` dan satu `sessions`, sedangkan tabel bisnis lainnya kosong.
+- Cluster dihentikan, PID file tidak ada, dan listener tertutup. Pemilik menghapus direktori sementara secara manual; verifikasi read-only setelahnya memastikan direktori tidak ada dan port `47593` tidak aktif. Database development/production tidak diakses. Perubahan source, regression test, dan handover siap di-commit setelah cleanup tersebut terkonfirmasi.

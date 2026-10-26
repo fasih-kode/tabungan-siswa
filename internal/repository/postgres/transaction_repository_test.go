@@ -46,6 +46,148 @@ func TestTransactionRepository_CreateAndGetByID(t *testing.T) {
 	assertTransactionEqual(t, got, transaction)
 }
 
+func TestTransactionRepository_PreservesLateRequestIDAcrossReadMethods(t *testing.T) {
+	db := openTestDatabase(t)
+	ctx := context.Background()
+	fixture := newTransactionFixture(t, db)
+	transactionRepo := postgres.NewTransactionRepository(db)
+	requestRepo := postgres.NewLeavingTransactionRequestRepository(db)
+
+	request, err := domain.NewLeavingTransactionRequest(
+		fixture.account.ID,
+		fixture.year.ID,
+		domain.TransactionDeposit,
+		12_000,
+		fixture.year.StartDate.AddDate(0, 0, 10),
+		"Permintaan uji readback",
+		"BUKTI-"+uuid.NewString(),
+		fixture.user.ID,
+	)
+	if err != nil {
+		t.Fatalf("NewLeavingTransactionRequest() error = %v", err)
+	}
+	if err := requestRepo.CreateLeavingTransactionRequest(ctx, request); err != nil {
+		t.Fatalf("CreateLeavingTransactionRequest() error = %v", err)
+	}
+	t.Cleanup(func() {
+		if _, err := db.ExecContext(ctx, "DELETE FROM leaving_transaction_requests WHERE id = $1", request.ID); err != nil {
+			t.Errorf("delete test leaving transaction request: %v", err)
+		}
+	})
+
+	if err := request.Decide(fixture.user.ID, true, "Disetujui untuk pengujian"); err != nil {
+		t.Fatalf("Decide() error = %v", err)
+	}
+	if err := requestRepo.UpdateLeavingTransactionRequest(ctx, request); err != nil {
+		t.Fatalf("UpdateLeavingTransactionRequest(approved) error = %v", err)
+	}
+	if err := request.Complete(); err != nil {
+		t.Fatalf("Complete() error = %v", err)
+	}
+	if err := requestRepo.UpdateLeavingTransactionRequest(ctx, request); err != nil {
+		t.Fatalf("UpdateLeavingTransactionRequest(completed) error = %v", err)
+	}
+
+	regular, err := domain.NewDeposit(
+		fixture.account.ID,
+		100_000,
+		time.Date(2026, 9, 20, 0, 0, 0, 0, time.UTC),
+		fixture.user.ID,
+	)
+	if err != nil {
+		t.Fatalf("NewDeposit(regular) error = %v", err)
+	}
+
+	linked, err := domain.NewDeposit(
+		fixture.account.ID,
+		12_000,
+		time.Date(2026, 9, 25, 0, 0, 0, 0, time.UTC),
+		fixture.user.ID,
+	)
+	if err != nil {
+		t.Fatalf("NewDeposit(linked) error = %v", err)
+	}
+	linked.LateRequestID = &request.ID
+
+	cancelled, err := domain.NewWithdrawal(
+		fixture.account.ID,
+		3_000,
+		time.Date(2026, 9, 27, 0, 0, 0, 0, time.UTC),
+		fixture.user.ID,
+	)
+	if err != nil {
+		t.Fatalf("NewWithdrawal(cancelled) error = %v", err)
+	}
+	if err := cancelled.Cancel(); err != nil {
+		t.Fatalf("Cancel() error = %v", err)
+	}
+
+	for _, transaction := range []domain.Transaction{regular, linked, cancelled} {
+		if err := transactionRepo.Create(ctx, transaction); err != nil {
+			t.Fatalf("Create() transaction %s error = %v", transaction.ID, err)
+		}
+		t.Cleanup(func() {
+			deleteTestTransaction(t, db, transaction.ID)
+		})
+	}
+
+	t.Run("GetByID preserves valid UUID and NULL", func(t *testing.T) {
+		gotLinked, err := transactionRepo.GetByID(ctx, linked.ID)
+		if err != nil {
+			t.Fatalf("GetByID(linked) error = %v", err)
+		}
+		assertTransactionEqual(t, gotLinked, linked)
+
+		gotRegular, err := transactionRepo.GetByID(ctx, regular.ID)
+		if err != nil {
+			t.Fatalf("GetByID(regular) error = %v", err)
+		}
+		assertTransactionEqual(t, gotRegular, regular)
+	})
+
+	t.Run("ListBySavingsAccount preserves values and order", func(t *testing.T) {
+		got, err := transactionRepo.ListBySavingsAccount(ctx, fixture.account.ID, repository.ListOptions{Limit: 10})
+		if err != nil {
+			t.Fatalf("ListBySavingsAccount() error = %v", err)
+		}
+		want := []domain.Transaction{cancelled, linked, regular}
+		if len(got) != len(want) {
+			t.Fatalf("len(got) = %d, want %d", len(got), len(want))
+		}
+		for i := range want {
+			assertTransactionEqual(t, got[i], want[i])
+		}
+	})
+
+	t.Run("ListActiveBySavingsAccount preserves values and order", func(t *testing.T) {
+		got, err := transactionRepo.ListActiveBySavingsAccount(ctx, fixture.account.ID)
+		if err != nil {
+			t.Fatalf("ListActiveBySavingsAccount() error = %v", err)
+		}
+		want := []domain.Transaction{regular, linked}
+		if len(got) != len(want) {
+			t.Fatalf("len(got) = %d, want %d", len(got), len(want))
+		}
+		for i := range want {
+			assertTransactionEqual(t, got[i], want[i])
+		}
+	})
+
+	t.Run("ListAllBySavingsAccount preserves values and order", func(t *testing.T) {
+		got, err := transactionRepo.ListAllBySavingsAccount(ctx, fixture.account.ID)
+		if err != nil {
+			t.Fatalf("ListAllBySavingsAccount() error = %v", err)
+		}
+		want := []domain.Transaction{regular, linked, cancelled}
+		if len(got) != len(want) {
+			t.Fatalf("len(got) = %d, want %d", len(got), len(want))
+		}
+		for i := range want {
+			assertTransactionEqual(t, got[i], want[i])
+		}
+	})
+}
+
 func TestTransactionRepository_RejectsCancellationForSettledAccount(t *testing.T) {
 	db := openTestDatabase(t)
 	ctx := context.Background()
@@ -687,6 +829,12 @@ func assertTransactionEqual(
 			got.UpdatedAt,
 			want.UpdatedAt,
 		)
+	}
+
+	if (got.LateRequestID == nil) != (want.LateRequestID == nil) {
+		t.Errorf("LateRequestID = %v, want %v", got.LateRequestID, want.LateRequestID)
+	} else if got.LateRequestID != nil && *got.LateRequestID != *want.LateRequestID {
+		t.Errorf("LateRequestID = %v, want %v", *got.LateRequestID, *want.LateRequestID)
 	}
 }
 
