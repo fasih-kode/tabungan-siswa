@@ -300,6 +300,12 @@ Rujuk kontrak fase untuk status terbarunya sebelum melanjutkan.
 
 - Dibuat [roadmap maintainability](reviews/MAINTAINABILITY_ROADMAP.md) berdasarkan audit MQ-AUDIT-00, kode pada baseline `2475fe524c817a713657059d84454d9b4e9f0112`, serta hasil MQ-TEST-02-FIX02. Roadmap memuat MQ-01 sampai MQ-04 dengan tujuan, file sasaran, risiko, prasyarat, tes, dan kriteria PASS; empat MQ belum dimulai.
 - Backlog dicatat terpisah sebagai BUG-01 (`LateRequestID` tidak dibaca kembali), BUG-02 (constraint integer migration 000013), SEC-01 (evaluasi timing autentikasi), dan TEST-BACKLOG (E2E, race detector, cleanup resource FIX01). Backlog tidak otomatis menghalangi maintenance berisiko rendah.
+
+### MQ-07-REVIEW-01 — audit BUG-02 dan rancangan migration aman — 2026-10-26
+
+- Audit read-only pada baseline `ab7ffdf0` mengonfirmasi `leaving_transaction_requests.amount` hanya dibatasi `> 0`, sementara transaksi dan settlement memiliki CHECK bilangan bulat dari migration 000002. Domain menerima `Money` integer; parser request menolak pecahan nonnol saat readback. Ini membuktikan celah schema dan risiko operasional bila nilai pecahan masuk, bukan bukti ada data produksi yang melanggar.
+- Rancangan kandidat 000014, alternatif validasi langsung vs `NOT VALID`/`VALIDATE`, pemeriksaan row lama, matriks test, dirty-state, rollback, serta keputusan yang perlu disetujui tercatat di [MQ-07 BUG-02 migration review](reviews/MQ-07_BUG-02_MIGRATION_REVIEW.md).
+- Tidak ada akses database, migration, test, atau perubahan source. Sebelum implementasi, supervisor perlu menetapkan strategi berdasarkan data/ukuran aktual dan perilaku runner migration yang belum diketahui.
 - Pemeriksaan kode hanya-baca mengonfirmasi target gofmt, repository transaksi terlambat yang padat, field relasi yang tidak dipilih/di-scan, constraint migration, jalur autentikasi, dan tanggung jawab service settlement. Tidak ada kode atau migration yang diubah, tes tidak dijalankan, dan database tidak diakses.
 - Hasil MQ-TEST-02-FIX02 tetap menjadi bukti tes terbaru: tes terfokus, build, vet, dan integration test pada PostgreSQL disposable lulus; E2E dan race detector belum diverifikasi pada baseline ini. Cluster FIX01 telah dihentikan, tetapi direktori sementara masih tertinggal; lihat catatan FIX02 di atas.
 - Tidak ada perubahan selain dokumen roadmap dan catatan handover. MQ-01 belum dimulai; tunggu review supervisor.
