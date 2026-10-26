@@ -352,3 +352,11 @@ Audit read-only selesai pada baseline `cb7add40796c81a508770c85b595fbfacecff8c2`
 - Lulus: `gofmt -l` (tanpa keluaran), `go build ./...`, `go vet ./...`, `go test ./internal/domain ./internal/security ./internal/http/... -count=1`, dan `git diff --check`.
 - Integration test **SKIPPED** berdasarkan pengecualian supervisor untuk perpindahan identik; tidak ada database yang diakses.
 - Tidak ada perubahan API, Unit of Work, locking, audit, atau hak akses. Sebelum melanjutkan pemisahan fungsi mutasi, tahap 01A, 01B, dan 01C perlu verifikasi regresi gabungan. Tahap mutasi tetap menunggu review terpisah.
+
+### MQ-04-REG-01 — regresi gabungan ekstraksi A/B/C
+
+- Verifikasi gabungan pada baseline `23bcd427a4aa41536e01d9c3e6a5078e689b2b45` lulus. Enam fungsi hasil ekstraksi dibandingkan per blok dengan source monolitik `cb7add4`; signature/body identik, tiap fungsi satu deklarasi, dan inventaris dua file tetap 21.
+- `gofmt -l`, `go build ./...`, `go vet ./...`, tes domain/security/HTTP (6 package), dan `git diff --check` lulus. `make test-integration` dari snapshot source baseline lulus: 11 package PASS, 3 tanpa test, 0 FAIL. Package service dan repository PostgreSQL lulus.
+- Integration dijalankan pada cluster PostgreSQL 18 disposable baru, migration versi 13 bersih. Seluruh tabel aplikasi kosong sebelum tes; sesudahnya tersisa 2 row users dan 1 session. Cluster dihentikan, port tes ditutup, direktori sementara task-owned dihapus; cluster sistem port 5432 tetap berjalan.
+- Detail identitas/isolasi, test suite, dan cleanup tanpa kredensial ada di [laporan MQ-04-REG-01](reviews/MQ-04_REGRESSION_01.md). Tidak ada source, migration, konfigurasi aplikasi, atau test yang diubah. E2E/race detector dan race Reactivate vs SettleStudentLeaving tetap belum diverifikasi.
+- Rangkaian ekstraksi baca A/B/C sudah memperoleh regresi gabungan; jangan mulai ekstraksi method mutasi sebelum instruksi/review tahap berikutnya.
