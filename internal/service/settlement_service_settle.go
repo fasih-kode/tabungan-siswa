@@ -36,9 +36,9 @@ func (s *settlementService) SettleYearEnd(
 		}
 	}()
 
-	// FASE 21 lock order: immutable year ID discovery, academic-year FOR SHARE,
-	// then the account FOR UPDATE. This serializes settlement with close and
-	// with transaction writes without an account-then-year cycle.
+	// FASE 21: temukan lebih dahulu ID tahun ajaran yang tetap, lalu lock tahun
+	// dengan FOR SHARE dan rekening dengan FOR UPDATE. Urutan ini membantu
+	// serialisasi settlement dengan penutupan/transaksi tanpa siklus lock rekening-lalu-tahun.
 	unlockedAccount, err := repos.SavingsAccounts.GetByID(ctx, input.SavingsAccountID)
 	if err != nil {
 		return SettleYearEndOutput{}, err
@@ -180,8 +180,9 @@ func (s *settlementService) SettleStudentLeaving(
 		}
 	}()
 
-	// Student-leaving settlement is also a financial write. Serialize it with
-	// year lifecycle transitions using the same year-before-account order.
+	// Settlement siswa pindah juga menulis data keuangan. Temukan ID tahun
+	// ajaran dari rekening sebelum lock; gunakan FOR SHARE pada tahun dan
+	// FOR UPDATE pada rekening agar terserialisasi dengan transisi tahun tanpa siklus lock rekening-lalu-tahun.
 	unlocked, err := repos.SavingsAccounts.GetByID(ctx, input.SavingsAccountID)
 	if err != nil {
 		return SettleStudentLeavingOutput{}, err

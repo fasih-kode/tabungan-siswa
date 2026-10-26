@@ -426,3 +426,10 @@ Audit read-only selesai pada baseline `cb7add40796c81a508770c85b595fbfacecff8c2`
 - Pemeriksaan audit lulus: gofmt untuk lima file, `go build ./...`, `go vet ./...`, enam package domain/security/HTTP, dan `git diff --check`. Integration test tidak dijalankan ulang; lihat bukti historis tiap tahap dan [laporan final MQ-04](reviews/MQ-04_FINAL_STRUCTURE_REVIEW.md).
 - Risiko yang tetap terbuka: race `Reactivate` vs `SettleStudentLeaving`, dua `ConfirmHandover` bersamaan, E2E/race detector settlement belum dijalankan pada rangkaian MQ-04. Catatan integration suite menunjukkan row users/sessions tersisa setelah suite pada database disposable; tes fokus berikutnya mengosongkan tabel aplikasi dan cluster task-owned dibuang. Ini bukan bukti bug transaksi, tetapi fixture suite perlu tetap diawasi.
 - Tidak ada source, test, migration, atau konfigurasi yang diubah. Rekomendasi MQ-04: PASS/layak ditutup untuk refactoring struktur saja; concurrency dan test gap tetap pekerjaan terpisah.
+
+### MQ-05-IMPL-01 — lokalisasi komentar urutan lock settlement — 2026-10-26
+
+- Dua blok komentar di `internal/service/settlement_service_settle.go` (`SettleYearEnd` dan `SettleStudentLeaving`) diterjemahkan ke Bahasa Indonesia. Makna urutan tetap: temukan ID tahun ajaran sebelum lock, `FOR SHARE` pada tahun, lalu `FOR UPDATE` pada rekening; komentar menyebut tujuan serialisasi dan penghindaran siklus lock tanpa mengklaim seluruh race aman.
+- Diff source hanya mengubah kedua blok komentar. Perbandingan source setelah semua baris komentar dikeluarkan identik dengan HEAD awal; tidak ada statement Go yang berubah.
+- Lulus: `gofmt -l internal/service/settlement_service_settle.go` (tanpa keluaran), `GOCACHE=/tmp/tabungan-siswa-gocache go build ./...`, `go vet ./...`, tes domain/security/HTTP enam package, dan `git diff --check`.
+- Integration test PostgreSQL **NOT RUN** karena perubahan hanya komentar. Tidak ada koneksi database.
