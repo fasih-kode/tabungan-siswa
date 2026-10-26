@@ -328,3 +328,11 @@ Rujuk kontrak fase untuk status terbarunya sebelum melanjutkan.
 ### MQ-04 — evaluasi settlement service
 
 Audit read-only selesai pada baseline `cb7add40796c81a508770c85b595fbfacecff8c2`. Rekomendasi review: pertahankan satu `SettlementService` dan pecah file dalam package yang sama; tahap awal hanya kelompok baca/preview. Audit mencatat risiko concurrency Reactivate vs settlement siswa pindah sebagai kandidat uji terpisah, belum bug terkonfirmasi. Detail bukti, inventaris method/lock, cakupan test, dan kriteria implementasi ada di [MQ-04 review](reviews/MQ-04_SETTLEMENT_SERVICE_REVIEW.md). Tidak ada source, test, migration, database, atau konfigurasi yang diubah. Belum menjalankan test aplikasi; hanya pemeriksaan dokumentasi sesuai scope. Implementasi menunggu review supervisor.
+
+### MQ-04-IMPL-01A — pemisahan fungsi baca settlement
+
+- Pada branch `review`, tiga fungsi dipindahkan secara mekanis dari `settlement_service.go` ke `settlement_service_read.go`: `(*settlementService).Get`, `(*settlementService).List`, dan `settlementPointers`.
+- Verifikasi berbasis perbandingan source terhadap HEAD sebelum perubahan memastikan signature dan seluruh isi ketiga fungsi identik serta masing-masing hanya dideklarasikan sekali. Source yang tersisa pada file lama sama setelah ketiga blok dibuang; hanya separator baris kosong dirapikan. Tidak ada SQL, repository call, cabang error, mapping/return, tipe service, atau interface yang berubah.
+- `gofmt -l` lulus (tidak mencetak file); `go build ./...`, `go vet ./...`, `go test ./internal/domain ./internal/security ./internal/http/... -count=1`, dan `git diff --check` lulus.
+- Integration test dilewati berdasarkan pengecualian supervisor untuk pemindahan yang terbukti identik. Tidak ada PostgreSQL yang dibuka atau digunakan.
+- Interface, aturan bisnis, transaksi, lock, audit, dan otorisasi tidak berubah. Risiko perubahan perilaku rendah; tes service/PostgreSQL tidak dijalankan pada tahap ini. Tahap lain dan isu race reaktivasi siswa tetap di luar scope dan menunggu review terpisah.
