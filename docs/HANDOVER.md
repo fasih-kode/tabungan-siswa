@@ -303,3 +303,10 @@ Rujuk kontrak fase untuk status terbarunya sebelum melanjutkan.
 - Pemeriksaan kode hanya-baca mengonfirmasi target gofmt, repository transaksi terlambat yang padat, field relasi yang tidak dipilih/di-scan, constraint migration, jalur autentikasi, dan tanggung jawab service settlement. Tidak ada kode atau migration yang diubah, tes tidak dijalankan, dan database tidak diakses.
 - Hasil MQ-TEST-02-FIX02 tetap menjadi bukti tes terbaru: tes terfokus, build, vet, dan integration test pada PostgreSQL disposable lulus; E2E dan race detector belum diverifikasi pada baseline ini. Cluster FIX01 telah dihentikan, tetapi direktori sementara masih tertinggal; lihat catatan FIX02 di atas.
 - Tidak ada perubahan selain dokumen roadmap dan catatan handover. MQ-01 belum dimulai; tunggu review supervisor.
+
+## MQ-01 — format tes service autentikasi — 2026-10-26
+
+- `gofmt -w` memformat hanya `internal/service/authentication_service_unit_test.go`. Diff satu baris menyelaraskan spasi field `name`; `git diff -w` kosong, `gofmt -l` tidak lagi mencantumkan target, dan tidak ada perubahan assertion, fixture, atau perilaku.
+- Lulus: `go build ./...`, `go vet ./...`, `go test ./internal/domain ./internal/security ./internal/http/... -count=1`, dan `git diff --check`.
+- Integration test PostgreSQL tidak diulang atas pengecualian eksplisit supervisor: perubahan terverifikasi whitespace-only dan `make test-integration` pada PostgreSQL disposable lulus di MQ-TEST-02-FIX02 sebelumnya. `internal/service` tidak dites langsung tanpa database. Tidak ada perubahan perilaku aplikasi.
+- Perubahan MQ-01 terbatas pada file tes dan catatan ini; menunggu review supervisor sebelum MQ-02.
