@@ -58,14 +58,14 @@ func TestWriteAuthenticationError(t *testing.T) {
 			name:          "invalid credentials",
 			err:           service.ErrInvalidCredentials,
 			wantStatus:    stdhttp.StatusUnauthorized,
-			wantBody:      "Unauthorized\n",
+			wantBody:      "Silakan masuk kembali untuk melanjutkan.\n",
 			wantCacheCtrl: "no-store",
 		},
 		{
 			name:          "internal error does not leak detail",
 			err:           errors.New("database password leaked"),
 			wantStatus:    stdhttp.StatusInternalServerError,
-			wantBody:      "Internal Server Error\n",
+			wantBody:      "Terjadi kesalahan pada server. Silakan coba lagi.\n",
 			wantCacheCtrl: "no-store",
 		},
 	}

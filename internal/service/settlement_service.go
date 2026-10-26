@@ -69,6 +69,11 @@ func (s *settlementService) SettleYearEnd(
 	if !academicYear.IsClosing() {
 		return SettleYearEndOutput{}, domain.ErrInvalidTransition
 	}
+	if pending, e := hasPendingLateRequest(ctx, repos, account.ID); e != nil {
+		return SettleYearEndOutput{}, e
+	} else if pending {
+		return SettleYearEndOutput{}, domain.ErrInvalidTransition
+	}
 
 	transactions, err := repos.Transactions.ListActiveBySavingsAccount(ctx, account.ID)
 	if err != nil {
@@ -184,8 +189,12 @@ func (s *settlementService) SettleStudentLeaving(
 	if err != nil {
 		return SettleStudentLeavingOutput{}, err
 	}
-	if _, err := repos.AcademicYears.GetByIDForShare(ctx, unlocked.AcademicYearID); err != nil {
+	year, err := repos.AcademicYears.GetByIDForShare(ctx, unlocked.AcademicYearID)
+	if err != nil {
 		return SettleStudentLeavingOutput{}, err
+	}
+	if year.IsClosed() {
+		return SettleStudentLeavingOutput{}, domain.ErrInvalidTransition
 	}
 	account, err := repos.SavingsAccounts.GetByIDForUpdate(ctx, input.SavingsAccountID)
 	if err != nil {
@@ -199,13 +208,18 @@ func (s *settlementService) SettleStudentLeaving(
 	if !account.IsOpen() {
 		return SettleStudentLeavingOutput{}, domain.ErrInvalidTransition
 	}
+	if pending, e := hasPendingLateRequest(ctx, repos, account.ID); e != nil {
+		return SettleStudentLeavingOutput{}, e
+	} else if pending {
+		return SettleStudentLeavingOutput{}, domain.ErrInvalidTransition
+	}
 
 	student, err := repos.Students.GetByID(ctx, account.StudentID)
 	if err != nil {
 		return SettleStudentLeavingOutput{}, err
 	}
 
-	if !student.IsLeft() && !student.IsGraduated() {
+	if !student.IsLeft() {
 		return SettleStudentLeavingOutput{}, domain.ErrInvalidTransition
 	}
 
@@ -217,6 +231,9 @@ func (s *settlementService) SettleStudentLeaving(
 	balance, err := domain.CalculateBalance(transactions)
 	if err != nil {
 		return SettleStudentLeavingOutput{}, err
+	}
+	if balance.Amount != input.ExpectedBalance {
+		return SettleStudentLeavingOutput{}, repository.ErrConflict
 	}
 
 	now := time.Now()
@@ -266,6 +283,53 @@ func (s *settlementService) SettleStudentLeaving(
 		Account:    &account,
 		Student:    &student,
 	}, nil
+}
+
+func (s *settlementService) PreviewStudentLeaving(ctx context.Context, input PreviewStudentLeavingInput) (PreviewYearEndOutput, error) {
+	if err := RequireRole(input.Actor, domain.RoleWaliKelas); err != nil {
+		return PreviewYearEndOutput{}, err
+	}
+	if input.SavingsAccountID == uuid.Nil {
+		return PreviewYearEndOutput{}, domain.ErrInvalidID
+	}
+	account, err := s.deps.Repositories.SavingsAccounts.GetByID(ctx, input.SavingsAccountID)
+	if err != nil {
+		return PreviewYearEndOutput{}, err
+	}
+	year, err := s.deps.Repositories.AcademicYears.GetByID(ctx, account.AcademicYearID)
+	if err != nil {
+		return PreviewYearEndOutput{}, err
+	}
+	if year.IsClosed() {
+		return PreviewYearEndOutput{}, domain.ErrInvalidTransition
+	}
+	if !account.IsOpen() {
+		return PreviewYearEndOutput{}, domain.ErrInvalidTransition
+	}
+	if err := s.authorizeAccount(ctx, s.deps.Repositories, input.Actor, account); err != nil {
+		return PreviewYearEndOutput{}, err
+	}
+	student, err := s.deps.Repositories.Students.GetByID(ctx, account.StudentID)
+	if err != nil {
+		return PreviewYearEndOutput{}, err
+	}
+	if !student.IsLeft() {
+		return PreviewYearEndOutput{}, domain.ErrInvalidTransition
+	}
+	if pending, e := hasPendingLateRequest(ctx, s.deps.Repositories, account.ID); e != nil {
+		return PreviewYearEndOutput{}, e
+	} else if pending {
+		return PreviewYearEndOutput{}, domain.ErrInvalidTransition
+	}
+	transactions, err := s.deps.Repositories.Transactions.ListActiveBySavingsAccount(ctx, account.ID)
+	if err != nil {
+		return PreviewYearEndOutput{}, err
+	}
+	balance, err := domain.CalculateBalance(transactions)
+	if err != nil {
+		return PreviewYearEndOutput{}, err
+	}
+	return PreviewYearEndOutput{Account: &account, Student: &student, Balance: balance.Amount, PreviewedAt: time.Now().UTC()}, nil
 }
 
 func (s *settlementService) Get(
@@ -790,6 +854,11 @@ func (s *settlementService) PreviewYearEnd(ctx context.Context, input PreviewYea
 	if !year.IsClosing() || !account.IsOpen() {
 		return PreviewYearEndOutput{}, domain.ErrInvalidTransition
 	}
+	if pending, e := hasPendingLateRequest(ctx, s.deps.Repositories, account.ID); e != nil {
+		return PreviewYearEndOutput{}, e
+	} else if pending {
+		return PreviewYearEndOutput{}, domain.ErrInvalidTransition
+	}
 	if input.Actor.Role == domain.RoleWaliKelas {
 		if err := authorizeResponsibleWali(ctx, s.deps.Repositories, input.Actor, account, year); err != nil {
 			return PreviewYearEndOutput{}, err
@@ -847,7 +916,7 @@ func (s *settlementService) ConfirmHandover(ctx context.Context, input ConfirmSe
 	if err != nil {
 		return ConfirmSettlementHandoverOutput{}, err
 	}
-	if !year.IsClosing() || !account.IsSettled() || !settlement.IsCompleted() {
+	if year.IsClosed() || (!year.IsClosing() && settlement.Type != domain.SettlementStudentLeaving) || !account.IsSettled() || !settlement.IsCompleted() {
 		return ConfirmSettlementHandoverOutput{}, domain.ErrInvalidTransition
 	}
 	if err := authorizeResponsibleWali(ctx, repos, input.Actor, account, year); err != nil {
@@ -915,6 +984,12 @@ func (s *settlementService) YearReadiness(ctx context.Context, input YearSettlem
 		return YearSettlementReadinessOutput{}, err
 	}
 	out := YearSettlementReadinessOutput{AcademicYear: &year}
+	if s.deps.Repositories.LeavingTransactionRequests != nil {
+		out.PendingLateTransactions, err = s.deps.Repositories.LeavingTransactionRequests.HasPendingLeavingTransactionRequests(ctx, year.ID)
+		if err != nil {
+			return YearSettlementReadinessOutput{}, err
+		}
+	}
 	for _, row := range rows {
 		if input.Actor.Role == domain.RoleWaliKelas && (row.WaliID == nil || *row.WaliID != input.Actor.UserID) {
 			continue
@@ -946,7 +1021,7 @@ func (s *settlementService) YearReadiness(ctx context.Context, input YearSettlem
 			return YearSettlementReadinessOutput{}, err
 		}
 	}
-	out.Ready = year.IsClosing() && out.Outstanding == 0 && out.AwaitingHandover == 0 && out.Unattributed == 0 && out.PendingTransfers == 0
+	out.Ready = year.IsClosing() && out.Outstanding == 0 && out.AwaitingHandover == 0 && out.Unattributed == 0 && out.PendingTransfers == 0 && !out.PendingLateTransactions
 	if input.Actor.Role == domain.RoleAdmin {
 		if hasCash, e := s.deps.Repositories.Settlements.HasUnreconciledPositiveSettlements(ctx, year.ID); e != nil {
 			return YearSettlementReadinessOutput{}, e
@@ -960,6 +1035,13 @@ func (s *settlementService) YearReadiness(ctx context.Context, input YearSettlem
 		}
 	}
 	return out, nil
+}
+
+func hasPendingLateRequest(ctx context.Context, repos repository.RepositorySet, accountID uuid.UUID) (bool, error) {
+	if repos.LeavingTransactionRequests == nil {
+		return false, nil
+	}
+	return repos.LeavingTransactionRequests.HasPendingForSavingsAccount(ctx, accountID)
 }
 
 func authorizeResponsibleWali(ctx context.Context, repos repository.RepositorySet, actor Actor, account domain.SavingsAccount, year domain.AcademicYear) error {

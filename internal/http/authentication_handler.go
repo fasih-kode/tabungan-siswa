@@ -37,7 +37,7 @@ func NewAuthenticationHandler(
 func (h *AuthenticationHandler) Login(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		w.Header().Set("Allow", http.MethodPost)
-		http.Error(w, http.StatusText(http.StatusMethodNotAllowed), http.StatusMethodNotAllowed)
+		http.Error(w, localizedStatusMessage(http.StatusMethodNotAllowed), http.StatusMethodNotAllowed)
 		return
 	}
 
@@ -47,7 +47,7 @@ func (h *AuthenticationHandler) Login(w http.ResponseWriter, r *http.Request) {
 	if err != nil || mediaType != "application/x-www-form-urlencoded" {
 		http.Error(
 			w,
-			http.StatusText(http.StatusBadRequest),
+			localizedStatusMessage(http.StatusBadRequest),
 			http.StatusBadRequest,
 		)
 		return
@@ -61,7 +61,7 @@ func (h *AuthenticationHandler) Login(w http.ResponseWriter, r *http.Request) {
 			status = http.StatusRequestEntityTooLarge
 		}
 
-		http.Error(w, http.StatusText(status), status)
+		http.Error(w, localizedStatusMessage(status), status)
 		return
 	}
 
@@ -107,7 +107,7 @@ func (h *AuthenticationHandler) Login(w http.ResponseWriter, r *http.Request) {
 func (h *AuthenticationHandler) Logout(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		w.Header().Set("Allow", http.MethodPost)
-		http.Error(w, http.StatusText(http.StatusMethodNotAllowed), http.StatusMethodNotAllowed)
+		http.Error(w, localizedStatusMessage(http.StatusMethodNotAllowed), http.StatusMethodNotAllowed)
 		return
 	}
 

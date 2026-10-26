@@ -120,12 +120,19 @@ func TestYearEndSettlementHandoverReopenCorrectionAndSuccessorGuard(t *testing.T
 		cleanup(`DELETE FROM academic_years WHERE id=$1`, year.ID)
 		cleanup(`DELETE FROM users WHERE id IN ($1,$2)`, wali.ID, admin.ID)
 	})
-	if _, err := yearSvc.StartClosing(ctx, service.StartClosingAcademicYearInput{Actor: adminActor, AcademicYearID: year.ID}); err != nil {
-		t.Fatal(err)
+	leavingPreview, err := settlementSvc.PreviewStudentLeaving(ctx, service.PreviewStudentLeavingInput{Actor: waliActor, SavingsAccountID: leavingAccount.ID})
+	if err != nil || leavingPreview.Balance != 50 {
+		t.Fatalf("student-leaving preview=%v err=%v, want 50", leavingPreview.Balance, err)
 	}
-	leavingSettlement, err := settlementSvc.SettleStudentLeaving(ctx, service.SettleStudentLeavingInput{Actor: waliActor, SavingsAccountID: leavingAccount.ID})
+	leavingSettlement, err := settlementSvc.SettleStudentLeaving(ctx, service.SettleStudentLeavingInput{Actor: waliActor, SavingsAccountID: leavingAccount.ID, ExpectedBalance: leavingPreview.Balance})
 	if err != nil || leavingSettlement.Settlement.Amount != 50 {
 		t.Fatalf("student-leaving settlement=%+v err=%v, want positive settlement 50", leavingSettlement.Settlement, err)
+	}
+	if _, err := settlementSvc.ConfirmHandover(ctx, service.ConfirmSettlementHandoverInput{Actor: waliActor, SettlementID: leavingSettlement.Settlement.ID, Confirm: true}); err != nil {
+		t.Fatalf("confirm student-leaving handover while year is OPEN: %v", err)
+	}
+	if _, err := yearSvc.StartClosing(ctx, service.StartClosingAcademicYearInput{Actor: adminActor, AcademicYearID: year.ID}); err != nil {
+		t.Fatal(err)
 	}
 	preview, err := settlementSvc.PreviewYearEnd(ctx, service.PreviewYearEndInput{Actor: waliActor, SavingsAccountID: account.ID})
 	if err != nil || preview.Balance != 100 {
@@ -217,9 +224,6 @@ func TestYearEndSettlementHandoverReopenCorrectionAndSuccessorGuard(t *testing.T
 		}
 	}
 	if closeRaceErr != nil {
-		if _, err := settlementSvc.ConfirmHandover(ctx, service.ConfirmSettlementHandoverInput{Actor: waliActor, SettlementID: leavingSettlement.Settlement.ID, Confirm: true}); err != nil {
-			t.Fatalf("confirm student-leaving handover: %v", err)
-		}
 		if _, err := yearSvc.Close(ctx, service.CloseAcademicYearInput{Actor: adminActor, AcademicYearID: year.ID}); err != nil {
 			t.Fatal(err)
 		}

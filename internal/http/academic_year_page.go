@@ -77,12 +77,12 @@ func (h *AcademicYearPageHandler) List(w http.ResponseWriter, r *http.Request) {
 	}
 	actor, ok := service.ActorFromContext(r.Context())
 	if !ok {
-		http.Error(w, http.StatusText(http.StatusUnauthorized), http.StatusUnauthorized)
+		http.Error(w, localizedStatusMessage(http.StatusUnauthorized), http.StatusUnauthorized)
 		return
 	}
 	page, limit, err := parsePageOptions(r)
 	if err != nil {
-		http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
+		http.Error(w, localizedStatusMessage(http.StatusBadRequest), http.StatusBadRequest)
 		return
 	}
 	output, err := h.academicYears.List(r.Context(), service.ListAcademicYearsInput{
@@ -94,7 +94,7 @@ func (h *AcademicYearPageHandler) List(w http.ResponseWriter, r *http.Request) {
 	}
 	csrfToken, ok := middleware.CSRFToken(r)
 	if !ok {
-		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		http.Error(w, localizedStatusMessage(http.StatusInternalServerError), http.StatusInternalServerError)
 		return
 	}
 	rows := make([]AcademicYearRowViewModel, 0, len(output.AcademicYears))
@@ -119,7 +119,7 @@ func (h *AcademicYearPageHandler) List(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := h.templates.ExecuteTemplate(w, "academic-years", vm); err != nil {
-		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		http.Error(w, localizedStatusMessage(http.StatusInternalServerError), http.StatusInternalServerError)
 	}
 }
 
@@ -131,11 +131,11 @@ func (h *AcademicYearPageHandler) Create(w http.ResponseWriter, r *http.Request)
 	w.Header().Set("Cache-Control", "no-store")
 	actor, ok := service.ActorFromContext(r.Context())
 	if !ok {
-		http.Error(w, http.StatusText(http.StatusUnauthorized), http.StatusUnauthorized)
+		http.Error(w, localizedStatusMessage(http.StatusUnauthorized), http.StatusUnauthorized)
 		return
 	}
 	if err := parseAcademicYearForm(w, r); err != nil {
-		http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
+		http.Error(w, localizedStatusMessage(http.StatusBadRequest), http.StatusBadRequest)
 		return
 	}
 	startDate, startErr := time.Parse("2006-01-02", r.PostForm.Get("start_date"))
@@ -166,12 +166,12 @@ func (h *AcademicYearPageHandler) Detail(w http.ResponseWriter, r *http.Request)
 	}
 	actor, ok := service.ActorFromContext(r.Context())
 	if !ok {
-		http.Error(w, http.StatusText(http.StatusUnauthorized), http.StatusUnauthorized)
+		http.Error(w, localizedStatusMessage(http.StatusUnauthorized), http.StatusUnauthorized)
 		return
 	}
 	id, err := uuid.Parse(r.PathValue("id"))
 	if err != nil || id == uuid.Nil {
-		http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
+		http.Error(w, localizedStatusMessage(http.StatusBadRequest), http.StatusBadRequest)
 		return
 	}
 	output, err := h.academicYears.Get(r.Context(), service.GetAcademicYearInput{Actor: actor, AcademicYearID: id})
@@ -181,13 +181,13 @@ func (h *AcademicYearPageHandler) Detail(w http.ResponseWriter, r *http.Request)
 	}
 	csrfToken, ok := middleware.CSRFToken(r)
 	if !ok {
-		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		http.Error(w, localizedStatusMessage(http.StatusInternalServerError), http.StatusInternalServerError)
 		return
 	}
 	row := academicYearRow(*output.AcademicYear)
-	vm := AcademicYearPageViewModel{Title: "Detail Tahun Ajaran", Heading: row.Name, Description: "Detail dan lifecycle tahun ajaran.", CSRFToken: csrfToken, Role: string(actor.Role), Username: actor.Username, ActiveNav: "academic-years", AcademicYear: &row}
+	vm := AcademicYearPageViewModel{Title: "Detail Tahun Ajaran", Heading: row.Name, Description: "Informasi dan proses tahun ajaran.", CSRFToken: csrfToken, Role: string(actor.Role), Username: actor.Username, ActiveNav: "academic-years", AcademicYear: &row}
 	if err := h.templates.ExecuteTemplate(w, "academic-years", vm); err != nil {
-		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		http.Error(w, localizedStatusMessage(http.StatusInternalServerError), http.StatusInternalServerError)
 	}
 }
 
@@ -199,16 +199,16 @@ func (h *AcademicYearPageHandler) Transition(w http.ResponseWriter, r *http.Requ
 	w.Header().Set("Cache-Control", "no-store")
 	actor, ok := service.ActorFromContext(r.Context())
 	if !ok {
-		http.Error(w, http.StatusText(http.StatusUnauthorized), http.StatusUnauthorized)
+		http.Error(w, localizedStatusMessage(http.StatusUnauthorized), http.StatusUnauthorized)
 		return
 	}
 	id, err := uuid.Parse(r.PathValue("id"))
 	if err != nil || id == uuid.Nil {
-		http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
+		http.Error(w, localizedStatusMessage(http.StatusBadRequest), http.StatusBadRequest)
 		return
 	}
 	if err := parseAcademicYearForm(w, r); err != nil {
-		http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
+		http.Error(w, localizedStatusMessage(http.StatusBadRequest), http.StatusBadRequest)
 		return
 	}
 	var transitionErr error
@@ -242,7 +242,7 @@ func (h *AcademicYearPageHandler) renderTransitionError(w http.ResponseWriter, r
 	}
 	row := academicYearRow(*output.AcademicYear)
 	vm := AcademicYearPageViewModel{
-		Title: "Detail Tahun Ajaran", Heading: row.Name, Description: "Detail dan lifecycle tahun ajaran.",
+		Title: "Detail Tahun Ajaran", Heading: row.Name, Description: "Informasi dan proses tahun ajaran.",
 		CSRFToken: csrfToken, Role: string(actor.Role), Username: actor.Username,
 		ActiveNav: "academic-years", AcademicYear: &row,
 		Error: safeAcademicYearTransitionError(action, transitionErr),
@@ -256,13 +256,13 @@ func (h *AcademicYearPageHandler) renderTransitionError(w http.ResponseWriter, r
 func safeAcademicYearTransitionError(action string, err error) string {
 	switch {
 	case errors.Is(err, service.ErrAcademicYearHasUnsettledAccounts):
-		return "Tahun ajaran belum dapat ditutup karena masih ada rekening tabungan yang belum diselesaikan. Selesaikan settlement semua rekening lalu coba lagi."
+		return "Tahun ajaran belum dapat ditutup karena masih ada rekening tabungan yang belum diselesaikan. Selesaikan penutupan semua rekening tabungan lalu coba lagi."
 	case errors.Is(err, service.ErrAcademicYearHasPendingTransfers):
-		return "Tahun ajaran belum dapat diproses karena masih ada permintaan transfer kelas yang menunggu keputusan."
+		return "Tahun ajaran belum dapat diproses karena masih ada permintaan pindah kelas yang menunggu keputusan."
 	case errors.Is(err, service.ErrAcademicYearHasUnconfirmedHandover):
-		return "Tahun ajaran belum dapat ditutup karena masih ada penyerahan uang settlement yang belum dikonfirmasi atau direkonsiliasi. Periksa Pengawasan Tabungan."
+		return "Tahun ajaran belum dapat ditutup karena masih ada penyerahan uang yang belum dikonfirmasi atau dicocokkan. Periksa Pengawasan Tabungan."
 	case errors.Is(err, service.ErrAcademicYearHasActiveSettlementWorkflow):
-		return "Tahun ajaran belum dapat ditutup karena masih ada permintaan buka kembali atau koreksi settlement yang aktif."
+		return "Tahun ajaran belum dapat ditutup karena masih ada permintaan buka kembali atau koreksi penyelesaian tabungan yang masih berlangsung."
 	case errors.Is(err, domain.ErrInvalidTransition) && action == "close":
 		return "Tahun ajaran belum dapat ditutup. Pastikan statusnya sedang proses penutupan dan semua syarat penutupan terpenuhi."
 	case errors.Is(err, domain.ErrInvalidTransition):
@@ -319,7 +319,7 @@ func academicYearRow(year domain.AcademicYear) AcademicYearRowViewModel {
 	return AcademicYearRowViewModel{
 		ID: year.ID.String(), Name: year.Name,
 		StartDate: year.StartDate.Format("2006-01-02"), EndDate: year.EndDate.Format("2006-01-02"),
-		Status: string(year.Status), CanClose: year.Status == domain.AcademicYearClosing,
+		Status: interfaceStatusLabel(string(year.Status)), CanClose: year.Status == domain.AcademicYearClosing,
 		CanReopen: year.Status == domain.AcademicYearClosed,
 	}
 }
@@ -374,7 +374,7 @@ func safeAcademicYearError(err error) string {
 	case errors.Is(err, domain.ErrInvalidTransition):
 		return "Tahun ajaran baru hanya dapat dibuat setelah semua tahun sebelumnya ditutup dan rekeningnya diselesaikan."
 	case errors.Is(err, repository.ErrConflict):
-		return "Perubahan tidak dapat dilakukan karena bertentangan dengan status atau data yang ada."
+		return "Perubahan tidak dapat dilakukan karena tidak sesuai dengan status atau data yang tersedia."
 	case errors.Is(err, service.ErrForbidden):
 		return "Akses ditolak untuk tindakan ini."
 	default:
@@ -386,7 +386,7 @@ func methodNotAllowed(w http.ResponseWriter, allowedMethods string) {
 	w.Header().Set("Allow", allowedMethods)
 	http.Error(
 		w,
-		http.StatusText(http.StatusMethodNotAllowed),
+		localizedStatusMessage(http.StatusMethodNotAllowed),
 		http.StatusMethodNotAllowed,
 	)
 }

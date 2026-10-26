@@ -59,7 +59,7 @@ func (h *StudentPromotionPageHandler) Get(w http.ResponseWriter, r *http.Request
 	}
 	actor, ok := service.ActorFromContext(r.Context())
 	if !ok {
-		http.Error(w, http.StatusText(401), 401)
+		http.Error(w, localizedStatusMessage(401), 401)
 		return
 	}
 	if actor.Role != domain.RoleAdmin {
@@ -73,7 +73,7 @@ func (h *StudentPromotionPageHandler) Get(w http.ResponseWriter, r *http.Request
 	if out, err := h.years.List(r.Context(), service.ListAcademicYearsInput{Actor: actor, Options: service.ListOptions{Limit: 250}}); err == nil {
 		for _, y := range out.AcademicYears {
 			if y != nil {
-				vm.Years = append(vm.Years, PromotionYearOption{ID: y.ID.String(), Name: y.Name, Status: string(y.Status)})
+				vm.Years = append(vm.Years, PromotionYearOption{ID: y.ID.String(), Name: y.Name, Status: interfaceStatusLabel(string(y.Status))})
 			}
 		}
 	} else {
@@ -88,7 +88,7 @@ func (h *StudentPromotionPageHandler) Get(w http.ResponseWriter, r *http.Request
 		from, e1 := uuid.Parse(vm.FromYearID)
 		to, e2 := uuid.Parse(vm.ToYearID)
 		if e1 != nil || e2 != nil {
-			http.Error(w, http.StatusText(400), 400)
+			http.Error(w, localizedStatusMessage(400), 400)
 			return
 		}
 		out, err := h.promotions.Preview(r.Context(), service.PreviewStudentPromotionInput{Actor: actor, FromAcademicYearID: from, ToAcademicYearID: to})
@@ -109,7 +109,7 @@ func (h *StudentPromotionPageHandler) Get(w http.ResponseWriter, r *http.Request
 		}
 	}
 	if err := h.templates.ExecuteTemplate(w, "student-promotions", vm); err != nil {
-		http.Error(w, http.StatusText(500), 500)
+		http.Error(w, localizedStatusMessage(500), 500)
 	}
 }
 
@@ -120,7 +120,7 @@ func (h *StudentPromotionPageHandler) Process(w http.ResponseWriter, r *http.Req
 	}
 	actor, ok := service.ActorFromContext(r.Context())
 	if !ok {
-		http.Error(w, http.StatusText(401), 401)
+		http.Error(w, localizedStatusMessage(401), 401)
 		return
 	}
 	if actor.Role != domain.RoleAdmin {
@@ -128,14 +128,14 @@ func (h *StudentPromotionPageHandler) Process(w http.ResponseWriter, r *http.Req
 		return
 	}
 	if err := r.ParseForm(); err != nil {
-		http.Error(w, http.StatusText(400), 400)
+		http.Error(w, localizedStatusMessage(400), 400)
 		return
 	}
 	from, e1 := uuid.Parse(strings.TrimSpace(r.PostForm.Get("from_academic_year_id")))
 	to, e2 := uuid.Parse(strings.TrimSpace(r.PostForm.Get("to_academic_year_id")))
 	students, fromClasses, choices := r.PostForm["student_id"], r.PostForm["from_class_id"], r.PostForm["decision"]
 	if e1 != nil || e2 != nil || len(students) == 0 || len(students) != len(fromClasses) || len(students) != len(choices) || len(students) > 5000 {
-		http.Error(w, http.StatusText(400), 400)
+		http.Error(w, localizedStatusMessage(400), 400)
 		return
 	}
 	decisions := make([]service.StudentPromotionDecision, 0, len(students))
@@ -143,7 +143,7 @@ func (h *StudentPromotionPageHandler) Process(w http.ResponseWriter, r *http.Req
 		sid, se := uuid.Parse(students[i])
 		fid, fe := uuid.Parse(fromClasses[i])
 		if se != nil || fe != nil {
-			http.Error(w, http.StatusText(400), 400)
+			http.Error(w, localizedStatusMessage(400), 400)
 			return
 		}
 		d := service.StudentPromotionDecision{StudentID: sid, FromClassID: fid}
@@ -152,7 +152,7 @@ func (h *StudentPromotionPageHandler) Process(w http.ResponseWriter, r *http.Req
 		} else {
 			d.TargetClassID, e1 = uuid.Parse(choices[i])
 			if e1 != nil {
-				http.Error(w, http.StatusText(400), 400)
+				http.Error(w, localizedStatusMessage(400), 400)
 				return
 			}
 		}

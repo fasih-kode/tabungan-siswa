@@ -38,6 +38,8 @@ Roadmap menetapkan syarat produksi sebagai akumulasi integritas finansial, otori
 - Kontrak FASE 22 menyatakan implementasi terverifikasi, dengan owner review dan catatan lock masih tertunda; lihat [fase-22-transaction-correction-audit-contract.md](contracts/fase-22-transaction-correction-audit-contract.md).
 - FASE 23 mempunyai kontrak dan implementation lock; lihat [kontrak FASE 23](contracts/fase-23-year-end-settlement-contract.md) dan [catatan implementation lock](contracts/fase-23-implementation-lock.md).
 - FASE 24 sudah diimplementasikan, diterima owner, dan dikunci; lihat [kontrak FASE 24](contracts/fase-24-user-administration-contract.md) dan [implementation lock](contracts/fase-24-implementation-lock.md).
+- Kontrak FASE 25 telah disetujui owner; implementasi dashboard/laporan dan pemeriksaan otomatis sudah dilakukan, tetapi owner review/implementation lock belum dicatat. Lihat [kontrak FASE 25](contracts/fase-25-dashboard-reporting-contract.md) dan bukti terbaru di [HANDOVER.md](HANDOVER.md).
+- Klarifikasi UX FASE 25 yang disetujui owner memisahkan navigasi Admin menjadi Penutupan Tahun (hambatan per Wali/Kelas), Histori Tabungan (filter tahun dan kelas, termasuk hanya pemilik rekening), dan indeks Laporan. Rincian berada di addendum [kontrak FASE 25](contracts/fase-25-dashboard-reporting-contract.md).
 
 ## Belum ditetapkan di ringkasan ini
 

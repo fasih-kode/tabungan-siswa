@@ -20,11 +20,14 @@ import (
 
 type settlementPageServiceFake struct {
 	service.SettlementService
-	settlement   service.GetSettlementOutput
-	preview      service.PreviewYearEndOutput
-	settleErr    error
-	readiness    service.YearSettlementReadinessOutput
-	readinessErr error
+	settlement        service.GetSettlementOutput
+	preview           service.PreviewYearEndOutput
+	leavingPreview    service.PreviewYearEndOutput
+	leavingSettlement service.SettleStudentLeavingOutput
+	settleErr         error
+	leavingSettleErr  error
+	readiness         service.YearSettlementReadinessOutput
+	readinessErr      error
 }
 
 func (f settlementPageServiceFake) Get(context.Context, service.GetSettlementInput) (service.GetSettlementOutput, error) {
@@ -33,6 +36,14 @@ func (f settlementPageServiceFake) Get(context.Context, service.GetSettlementInp
 
 func (f settlementPageServiceFake) PreviewYearEnd(context.Context, service.PreviewYearEndInput) (service.PreviewYearEndOutput, error) {
 	return f.preview, nil
+}
+
+func (f settlementPageServiceFake) PreviewStudentLeaving(context.Context, service.PreviewStudentLeavingInput) (service.PreviewYearEndOutput, error) {
+	return f.leavingPreview, nil
+}
+
+func (f settlementPageServiceFake) SettleStudentLeaving(_ context.Context, input service.SettleStudentLeavingInput) (service.SettleStudentLeavingOutput, error) {
+	return f.leavingSettlement, f.leavingSettleErr
 }
 
 func (f settlementPageServiceFake) SettleYearEnd(context.Context, service.SettleYearEndInput) (service.SettleYearEndOutput, error) {
@@ -86,7 +97,7 @@ func TestSettlementDetailRendersHistoryAndActorNames(t *testing.T) {
 	if recorder.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200; body=%s", recorder.Code, recorder.Body.String())
 	}
-	for _, want := range []string{"Siswa Uji", "admin-uji", "COMPLETED", "wali-uji"} {
+	for _, want := range []string{"Siswa Uji", "admin-uji", "Selesai", "wali-uji"} {
 		if !strings.Contains(recorder.Body.String(), want) {
 			t.Errorf("response %q does not contain %q", recorder.Body.String(), want)
 		}
@@ -124,10 +135,51 @@ func TestSettlementCreateRendersFreshPreviewWhenBalanceChanged(t *testing.T) {
 	if recorder.Code != http.StatusConflict {
 		t.Fatalf("status = %d, want 409; body=%s", recorder.Code, recorder.Body.String())
 	}
-	for _, want := range []string{"Saldo berubah", "Rp 23.000", "23000", previewAt.Format(time.RFC3339), "csrf-fixture"} {
+	for _, want := range []string{"Saldo berubah", "Rp. 23.000", "23000", previewAt.Format(time.RFC3339), "csrf-fixture"} {
 		if !strings.Contains(recorder.Body.String(), want) {
 			t.Errorf("response %q does not contain %q", recorder.Body.String(), want)
 		}
+	}
+}
+
+func TestStudentLeavingSettlementPreviewAndConfirmation(t *testing.T) {
+	accountID := uuid.New()
+	settlementID := uuid.New()
+	previewAt := time.Date(2026, 10, 21, 4, 0, 0, 0, time.UTC)
+	fake := settlementPageServiceFake{
+		leavingPreview:    service.PreviewYearEndOutput{Balance: 25000, PreviewedAt: previewAt, Student: &domain.Student{Name: "Siswa Pindah"}},
+		leavingSettlement: service.SettleStudentLeavingOutput{Settlement: &domain.SavingsSettlement{ID: settlementID}},
+	}
+	tmpl := template.Must(template.New("settlement").Parse(`{{define "settlement-page"}}{{.Heading}}|{{.SettlementType}}|{{.Amount}}|{{.ExpectedBalance}}|{{.CSRFToken}}{{end}}`))
+	handler, err := NewSettlementPageHandler(fake, settlementPageAcademicYearFake{}, tmpl)
+	if err != nil {
+		t.Fatal(err)
+	}
+	actor := service.Actor{UserID: uuid.New(), Role: domain.RoleWaliKelas}
+	cookie := security.NewDefaultCSRFCookie()
+	cookieWriter := httptest.NewRecorder()
+	if err := cookie.Set(cookieWriter, "csrf-fixture"); err != nil {
+		t.Fatal(err)
+	}
+	get := requestWithActor(http.MethodGet, "/savings/"+accountID.String()+"/leaving-settlement-preview", actor)
+	get.SetPathValue("account_id", accountID.String())
+	get.AddCookie(cookieWriter.Result().Cookies()[0])
+	getRecorder := httptest.NewRecorder()
+	middleware.NewCSRFMiddleware(cookie).Protect(http.HandlerFunc(handler.PreviewStudentLeaving)).ServeHTTP(getRecorder, get)
+	if getRecorder.Code != http.StatusOK || !strings.Contains(getRecorder.Body.String(), "STUDENT_LEAVING|Rp. 25.000|25000") {
+		t.Fatalf("preview status/body = %d/%q", getRecorder.Code, getRecorder.Body.String())
+	}
+
+	form := url.Values{"csrf_token": {"csrf-fixture"}, "expected_balance": {"25000"}}
+	post := httptest.NewRequest(http.MethodPost, "/savings/"+accountID.String()+"/leaving-settlements", strings.NewReader(form.Encode()))
+	post.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	post.AddCookie(cookieWriter.Result().Cookies()[0])
+	post = post.WithContext(service.WithActor(post.Context(), actor))
+	post.SetPathValue("account_id", accountID.String())
+	postRecorder := httptest.NewRecorder()
+	middleware.NewCSRFMiddleware(cookie).Protect(http.HandlerFunc(handler.SettleStudentLeaving)).ServeHTTP(postRecorder, post)
+	if postRecorder.Code != http.StatusSeeOther || postRecorder.Header().Get("Location") != "/settlements/"+settlementID.String()+"?notice=settled" {
+		t.Fatalf("confirmation status/location = %d/%q; body=%s", postRecorder.Code, postRecorder.Header().Get("Location"), postRecorder.Body.String())
 	}
 }
 
@@ -141,15 +193,15 @@ func TestSettlementOverviewRendersRoleScopedDataAndUnattributedGroup(t *testing.
 		{Account: domain.SavingsAccount{ID: uuid.New(), Status: domain.SavingsAccountOpen}, Student: domain.Student{Name: "Tanpa atribusi"}, AttributionIssue: true},
 		{Account: domain.SavingsAccount{ID: uuid.New(), Status: domain.SavingsAccountOpen}, Student: domain.Student{Name: "Siswa lain"}, ClassID: &classID, ClassName: "VII A", WaliID: &otherWaliID, WaliName: "Wali B"},
 	}
-	tmpl := template.Must(template.New("settlement").Parse(`{{define "settlement-page"}}{{.YearName}}|{{.Total}}|{{.ReadinessLabel}}|{{range .Rows}}{{.StudentName}}/{{.Class}}/{{.Wali}}/{{.PreviewURL}};{{end}}|{{range .Groups}}{{.Wali}}/{{.Class}};{{end}}|{{.TransferURL}}{{end}}`))
+	tmpl := template.Must(template.New("settlement").Parse(`{{define "settlement-page"}}{{.YearName}}|{{.Total}}|{{.ReadinessLabel}}|{{range .Rows}}{{.StudentName}}/{{.Class}}/{{.Wali}}/{{.PreviewURL}};{{end}}|{{range .Groups}}{{.Wali}}/{{.Class}}/{{.Status}};{{end}}|{{.TransferURL}}{{end}}`))
 	for _, tc := range []struct {
 		name string
 		role domain.UserRole
 		rows []repository.SettlementReadinessAccount
 		want []string
 	}{
-		{name: "admin sees unresolved groups", role: domain.RoleAdmin, rows: rows, want: []string{"Tanpa atribusi", "Data penanggung jawab ambigu", "/settlement-preview", "Kesiapan tahun ajaran", "Siswa lain"}},
-		{name: "wali receives scoped rows", role: domain.RoleWaliKelas, rows: rows[:1], want: []string{"Kesiapan cakupan Anda", "Siswa Wali", "Wali A", "Siswa Wali"}},
+		{name: "admin sees unresolved groups", role: domain.RoleAdmin, rows: rows, want: []string{"Tanpa atribusi", "Data penanggung jawab ambigu", "/settlement-preview", "Kesiapan tahun ajaran", "Siswa lain", "Wali A/VII A/Menghambat penutupan"}},
+		{name: "wali receives scoped rows", role: domain.RoleWaliKelas, rows: rows[:1], want: []string{"Kesiapan cakupan Anda", "Siswa Wali", "Wali A", "Wali A/VII A/Menghambat penutupan"}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			fake := settlementPageServiceFake{readiness: service.YearSettlementReadinessOutput{AcademicYear: year, Rows: tc.rows, Total: len(tc.rows)}}

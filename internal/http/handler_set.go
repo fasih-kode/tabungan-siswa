@@ -12,19 +12,21 @@ import (
 // HandlerSet hanya menjadi container hasil construction.
 // Ia tidak menjalankan routing, middleware, atau business logic.
 type HandlerSet struct {
-	Authentication    *AuthenticationHandler
-	LoginPage         *LoginPageHandler
-	Dashboard         *DashboardPageHandler
-	AcademicYear      *AcademicYearPageHandler
-	Class             *ClassPageHandler
-	Student           *StudentPageHandler
-	StudentPromotion  *StudentPromotionPageHandler
-	ClassTransfer     *ClassTransferPageHandler
-	Savings           *SavingsPageHandler
-	Settlement        *SettlementPageHandler
-	Transactions      *TransactionPageHandler
-	TeacherAssignment *TeacherAssignmentPageHandler
-	Users             *UserPageHandler
+	Authentication             *AuthenticationHandler
+	LoginPage                  *LoginPageHandler
+	Dashboard                  *DashboardPageHandler
+	AcademicYear               *AcademicYearPageHandler
+	Class                      *ClassPageHandler
+	Student                    *StudentPageHandler
+	StudentPromotion           *StudentPromotionPageHandler
+	ClassTransfer              *ClassTransferPageHandler
+	Savings                    *SavingsPageHandler
+	Settlement                 *SettlementPageHandler
+	Transactions               *TransactionPageHandler
+	TeacherAssignment          *TeacherAssignmentPageHandler
+	Users                      *UserPageHandler
+	Reports                    *ReportingPageHandler
+	LeavingTransactionRequests *LeavingTransactionRequestPageHandler
 }
 
 // NewHandlerSet membangun seluruh HTTP handler dari dependency yang
@@ -48,9 +50,22 @@ func NewHandlerSet(
 		return HandlerSet{}, err
 	}
 
-	dashboard, err := NewDashboardPageHandler(templates)
-	if err != nil {
-		return HandlerSet{}, err
+	var dashboard *DashboardPageHandler
+	var reports *ReportingPageHandler
+	if services.Reporting != nil {
+		dashboard, err = NewDashboardPageHandlerWithService(templates, services.Reporting)
+		if err != nil {
+			return HandlerSet{}, err
+		}
+		reports, err = NewReportingPageHandler(services.Reporting, templates)
+		if err != nil {
+			return HandlerSet{}, err
+		}
+	} else {
+		dashboard, err = NewDashboardPageHandler(templates)
+		if err != nil {
+			return HandlerSet{}, err
+		}
 	}
 
 	academicYear, err := NewAcademicYearPageHandler(services.AcademicYear, templates)
@@ -119,20 +134,29 @@ func NewHandlerSet(
 			return HandlerSet{}, err
 		}
 	}
+	var lateRequests *LeavingTransactionRequestPageHandler
+	if services.LeavingTransactionRequests != nil {
+		lateRequests, err = NewLeavingTransactionRequestPageHandler(services.LeavingTransactionRequests, templates)
+		if err != nil {
+			return HandlerSet{}, err
+		}
+	}
 
 	return HandlerSet{
-		Authentication:    authentication,
-		LoginPage:         loginPage,
-		Dashboard:         dashboard,
-		AcademicYear:      academicYear,
-		Class:             classHandler,
-		Student:           studentHandler,
-		StudentPromotion:  studentPromotion,
-		ClassTransfer:     classTransfer,
-		Savings:           savings,
-		Settlement:        settlement,
-		Transactions:      transactions,
-		TeacherAssignment: teacherAssignment,
-		Users:             userPage,
+		Authentication:             authentication,
+		LoginPage:                  loginPage,
+		Dashboard:                  dashboard,
+		AcademicYear:               academicYear,
+		Class:                      classHandler,
+		Student:                    studentHandler,
+		StudentPromotion:           studentPromotion,
+		ClassTransfer:              classTransfer,
+		Savings:                    savings,
+		Settlement:                 settlement,
+		Transactions:               transactions,
+		TeacherAssignment:          teacherAssignment,
+		Users:                      userPage,
+		Reports:                    reports,
+		LeavingTransactionRequests: lateRequests,
 	}, nil
 }

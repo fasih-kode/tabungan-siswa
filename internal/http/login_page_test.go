@@ -27,7 +27,7 @@ func TestLoginPageHandlerRendersViewModel(t *testing.T) {
 		t.Fatalf("status = %d, want %d", recorder.Code, http.StatusOK)
 	}
 
-	if got := recorder.Body.String(); got != "<html><body>Login</body></html>" {
+	if got := recorder.Body.String(); got != "<html><body>Masuk</body></html>" {
 		t.Fatalf("body = %q, want rendered view model", got)
 	}
 }

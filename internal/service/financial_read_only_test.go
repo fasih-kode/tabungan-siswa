@@ -48,9 +48,6 @@ func TestAdminFinancialMutationPolicy(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			err := call()
 			want := ErrForbidden
-			if name == "deposit" || name == "withdraw" {
-				want = ErrScopeViolation // The ADMIN role passes the write role gate; the empty account ID is rejected next.
-			}
 			if !errors.Is(err, want) {
 				t.Fatalf("got %v, want %v", err, want)
 			}

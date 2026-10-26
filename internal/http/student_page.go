@@ -65,7 +65,7 @@ func (h *StudentPageHandler) List(w http.ResponseWriter, r *http.Request) {
 	}
 	actor, ok := service.ActorFromContext(r.Context())
 	if !ok {
-		http.Error(w, http.StatusText(401), 401)
+		http.Error(w, localizedStatusMessage(401), 401)
 		return
 	}
 	if actor.Role == domain.RoleSiswa {
@@ -79,7 +79,7 @@ func (h *StudentPageHandler) List(w http.ResponseWriter, r *http.Request) {
 	}
 	page, limit, err := parsePageOptions(r)
 	if err != nil {
-		http.Error(w, http.StatusText(400), 400)
+		http.Error(w, localizedStatusMessage(400), 400)
 		return
 	}
 	yearID, classID := strings.TrimSpace(r.URL.Query().Get("academic_year_id")), strings.TrimSpace(r.URL.Query().Get("class_id"))
@@ -95,7 +95,7 @@ func (h *StudentPageHandler) List(w http.ResponseWriter, r *http.Request) {
 	vm.AcademicYearID, vm.ClassID, vm.Search, vm.StatusFilter, vm.ViewFilter = yearID, classID, search, status, view
 	if actor.Role == domain.RoleWaliKelas && r.URL.Query().Get("transfer") == "1" {
 		vm.ActiveNav = "class-transfers"
-		vm.Notice = "Pilih siswa, lalu pilih Ajukan transfer untuk mengajukan perpindahan kelas."
+		vm.Notice = "Pilih siswa, lalu pilih Ajukan pindah kelas untuk mengajukan perpindahan kelas."
 	}
 	if actor.Role == domain.RoleAdmin && r.URL.Query().Get("notice") == "imported" {
 		count, parseErr := strconv.Atoi(r.URL.Query().Get("count"))
@@ -114,11 +114,11 @@ func (h *StudentPageHandler) List(w http.ResponseWriter, r *http.Request) {
 		yearID = vm.AcademicYearID
 	}
 	if view != "all" && view != "unplaced" && view != "class" {
-		http.Error(w, http.StatusText(400), 400)
+		http.Error(w, localizedStatusMessage(400), 400)
 		return
 	}
 	if (yearID != "" && parseOptionalUUID(yearID) == uuid.Nil) || (classID != "" && parseOptionalUUID(classID) == uuid.Nil) {
-		http.Error(w, http.StatusText(400), 400)
+		http.Error(w, localizedStatusMessage(400), 400)
 		return
 	}
 	if classID != "" && yearID == "" {
@@ -154,7 +154,7 @@ func (h *StudentPageHandler) List(w http.ResponseWriter, r *http.Request) {
 func appendStudentRows(vm *StudentPageViewModel, students []*domain.Student) {
 	for _, student := range students {
 		if student != nil {
-			vm.Rows = append(vm.Rows, StudentRow{ID: student.ID.String(), Name: student.Name, NIS: stringValue(student.NIS), NISN: stringValue(student.NISN), Status: string(student.Status)})
+			vm.Rows = append(vm.Rows, StudentRow{ID: student.ID.String(), Name: student.Name, NIS: stringValue(student.NIS), NISN: stringValue(student.NISN), Status: interfaceStatusLabel(string(student.Status))})
 		}
 	}
 	vm.HasNext = len(vm.Rows) > vm.Limit
@@ -171,7 +171,7 @@ func (h *StudentPageHandler) Create(w http.ResponseWriter, r *http.Request) {
 	}
 	actor, ok := service.ActorFromContext(r.Context())
 	if !ok {
-		http.Error(w, http.StatusText(401), 401)
+		http.Error(w, localizedStatusMessage(401), 401)
 		return
 	}
 	if actor.Role != domain.RoleAdmin {
@@ -179,7 +179,7 @@ func (h *StudentPageHandler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := parseStudentForm(w, r); err != nil {
-		http.Error(w, http.StatusText(400), 400)
+		http.Error(w, localizedStatusMessage(400), 400)
 		return
 	}
 	input, err := parseStudentMasterForm(r)
@@ -212,7 +212,7 @@ func (h *StudentPageHandler) Import(w http.ResponseWriter, r *http.Request) {
 	}
 	actor, ok := service.ActorFromContext(r.Context())
 	if !ok {
-		http.Error(w, http.StatusText(http.StatusUnauthorized), http.StatusUnauthorized)
+		http.Error(w, localizedStatusMessage(http.StatusUnauthorized), http.StatusUnauthorized)
 		return
 	}
 	if actor.Role != domain.RoleAdmin {
@@ -262,7 +262,7 @@ func (h *StudentPageHandler) ImportTemplate(w http.ResponseWriter, r *http.Reque
 	}
 	actor, ok := service.ActorFromContext(r.Context())
 	if !ok {
-		http.Error(w, http.StatusText(http.StatusUnauthorized), http.StatusUnauthorized)
+		http.Error(w, localizedStatusMessage(http.StatusUnauthorized), http.StatusUnauthorized)
 		return
 	}
 	if actor.Role != domain.RoleAdmin {
@@ -273,23 +273,23 @@ func (h *StudentPageHandler) ImportTemplate(w http.ResponseWriter, r *http.Reque
 	defer workbook.Close()
 	textStyle, err := workbook.NewStyle(&excelize.Style{NumFmt: 49})
 	if err != nil {
-		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		http.Error(w, localizedStatusMessage(http.StatusInternalServerError), http.StatusInternalServerError)
 		return
 	}
 	if err := workbook.SetColStyle("Sheet1", "A:E", textStyle); err != nil {
-		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		http.Error(w, localizedStatusMessage(http.StatusInternalServerError), http.StatusInternalServerError)
 		return
 	}
 	for column, heading := range []string{"name", "nis", "nisn", "academic_year", "class"} {
 		cell, _ := excelize.CoordinatesToCellName(column+1, 1)
 		if err := workbook.SetCellValue("Sheet1", cell, heading); err != nil {
-			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+			http.Error(w, localizedStatusMessage(http.StatusInternalServerError), http.StatusInternalServerError)
 			return
 		}
 	}
 	buffer, err := workbook.WriteToBuffer()
 	if err != nil {
-		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		http.Error(w, localizedStatusMessage(http.StatusInternalServerError), http.StatusInternalServerError)
 		return
 	}
 	w.Header().Set("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
@@ -366,7 +366,7 @@ func (h *StudentPageHandler) renderImportIssues(w http.ResponseWriter, r *http.R
 	vm.ImportErrors = issues
 	vm.Error = "Impor dibatalkan. Perbaiki seluruh kesalahan lalu unggah ulang berkas."
 	if err := h.loadOptions(r, actor, &vm, "", false); err != nil {
-		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		http.Error(w, localizedStatusMessage(http.StatusInternalServerError), http.StatusInternalServerError)
 		return
 	}
 	w.WriteHeader(http.StatusUnprocessableEntity)
@@ -380,24 +380,24 @@ func (h *StudentPageHandler) Detail(w http.ResponseWriter, r *http.Request) {
 	}
 	actor, ok := service.ActorFromContext(r.Context())
 	if !ok {
-		http.Error(w, http.StatusText(401), 401)
+		http.Error(w, localizedStatusMessage(401), 401)
 		return
 	}
 	id, err := uuid.Parse(r.PathValue("id"))
 	if err != nil || id == uuid.Nil {
-		http.Error(w, http.StatusText(400), 400)
+		http.Error(w, localizedStatusMessage(400), 400)
 		return
 	}
 	page, limit, pageErr := parsePageOptions(r)
 	if pageErr != nil {
-		http.Error(w, http.StatusText(400), 400)
+		http.Error(w, localizedStatusMessage(400), 400)
 		return
 	}
 	yearID := strings.TrimSpace(r.URL.Query().Get("academic_year_id"))
 	if yearID != "" {
 		parsedYearID, parseErr := uuid.Parse(yearID)
 		if parseErr != nil || parsedYearID == uuid.Nil {
-			http.Error(w, http.StatusText(400), 400)
+			http.Error(w, localizedStatusMessage(400), 400)
 			return
 		}
 	}
@@ -413,7 +413,10 @@ func (h *StudentPageHandler) Detail(w http.ResponseWriter, r *http.Request) {
 	vm.Name = out.Student.Name
 	vm.NIS = stringValue(out.Student.NIS)
 	vm.NISN = stringValue(out.Student.NISN)
-	vm.StudentStatus = string(out.Student.Status)
+	vm.StudentStatus = interfaceStatusLabel(string(out.Student.Status))
+	if r.URL.Query().Get("notice") == "left" {
+		vm.Notice = "Status pindah sekolah dicatat. Tabungan belum diselesaikan; Wali Kelas perlu menyelesaikan tabungan dari menu Tabungan."
+	}
 	if out.Student.UserID != nil {
 		vm.UserID = out.Student.UserID.String()
 	}
@@ -427,7 +430,7 @@ func (h *StudentPageHandler) Detail(w http.ResponseWriter, r *http.Request) {
 	if yearID != "" {
 		yid, parseErr := uuid.Parse(yearID)
 		if parseErr != nil || yid == uuid.Nil {
-			http.Error(w, http.StatusText(400), 400)
+			http.Error(w, localizedStatusMessage(400), 400)
 			return
 		}
 		hist, historyErr := h.students.ListClassHistory(r.Context(), service.ListStudentClassHistoryInput{Actor: actor, StudentID: id, AcademicYearID: yid, Options: service.ListOptions{Limit: limit + 1, Offset: (page - 1) * limit, IncludeTotal: true}})
@@ -472,7 +475,7 @@ func (h *StudentPageHandler) Edit(w http.ResponseWriter, r *http.Request) {
 	}
 	actor, ok := service.ActorFromContext(r.Context())
 	if !ok {
-		http.Error(w, http.StatusText(401), 401)
+		http.Error(w, localizedStatusMessage(401), 401)
 		return
 	}
 	if actor.Role != domain.RoleAdmin {
@@ -481,7 +484,7 @@ func (h *StudentPageHandler) Edit(w http.ResponseWriter, r *http.Request) {
 	}
 	id, err := uuid.Parse(r.PathValue("id"))
 	if err != nil || id == uuid.Nil {
-		http.Error(w, http.StatusText(400), 400)
+		http.Error(w, localizedStatusMessage(400), 400)
 		return
 	}
 	out, err := h.students.Get(r.Context(), service.GetStudentInput{Actor: actor, StudentID: id})
@@ -512,7 +515,7 @@ func (h *StudentPageHandler) Update(w http.ResponseWriter, r *http.Request) {
 	}
 	actor, ok := service.ActorFromContext(r.Context())
 	if !ok {
-		http.Error(w, http.StatusText(401), 401)
+		http.Error(w, localizedStatusMessage(401), 401)
 		return
 	}
 	if actor.Role != domain.RoleAdmin {
@@ -520,12 +523,12 @@ func (h *StudentPageHandler) Update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := parseStudentForm(w, r); err != nil {
-		http.Error(w, http.StatusText(400), 400)
+		http.Error(w, localizedStatusMessage(400), 400)
 		return
 	}
 	id, err := uuid.Parse(r.PathValue("id"))
 	if err != nil || id == uuid.Nil {
-		http.Error(w, http.StatusText(400), 400)
+		http.Error(w, localizedStatusMessage(400), 400)
 		return
 	}
 	input, err := parseStudentMasterForm(r)
@@ -553,7 +556,7 @@ func (h *StudentPageHandler) AssignClass(w http.ResponseWriter, r *http.Request)
 	}
 	actor, ok := service.ActorFromContext(r.Context())
 	if !ok {
-		http.Error(w, http.StatusText(401), 401)
+		http.Error(w, localizedStatusMessage(401), 401)
 		return
 	}
 	if actor.Role != domain.RoleAdmin {
@@ -561,14 +564,14 @@ func (h *StudentPageHandler) AssignClass(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	if err := parseStudentForm(w, r); err != nil {
-		http.Error(w, http.StatusText(400), 400)
+		http.Error(w, localizedStatusMessage(400), 400)
 		return
 	}
 	id, err := uuid.Parse(r.PathValue("id"))
 	yearID, yerr := uuid.Parse(r.FormValue("academic_year_id"))
 	classID, cerr := uuid.Parse(r.FormValue("class_id"))
 	if err != nil || yerr != nil || cerr != nil || id == uuid.Nil || yearID == uuid.Nil || classID == uuid.Nil {
-		http.Error(w, http.StatusText(400), 400)
+		http.Error(w, localizedStatusMessage(400), 400)
 		return
 	}
 	_, err = h.students.AssignClass(r.Context(), service.AssignStudentClassInput{Actor: actor, StudentID: id, AcademicYearID: yearID, ClassID: classID})
@@ -576,7 +579,7 @@ func (h *StudentPageHandler) AssignClass(w http.ResponseWriter, r *http.Request)
 		httperror.Write(w, err)
 		return
 	}
-	http.Redirect(w, r, "/students/"+id.String()+"?academic_year_id="+yearID.String(), http.StatusSeeOther)
+	http.Redirect(w, r, "/students/"+id.String()+"?academic_year_id="+yearID.String()+"&notice=left", http.StatusSeeOther)
 }
 
 func (h *StudentPageHandler) Leave(w http.ResponseWriter, r *http.Request) {
@@ -586,7 +589,7 @@ func (h *StudentPageHandler) Leave(w http.ResponseWriter, r *http.Request) {
 	}
 	actor, ok := service.ActorFromContext(r.Context())
 	if !ok {
-		http.Error(w, http.StatusText(401), 401)
+		http.Error(w, localizedStatusMessage(401), 401)
 		return
 	}
 	if actor.Role != domain.RoleAdmin {
@@ -594,14 +597,14 @@ func (h *StudentPageHandler) Leave(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := parseStudentForm(w, r); err != nil {
-		http.Error(w, http.StatusText(400), 400)
+		http.Error(w, localizedStatusMessage(400), 400)
 		return
 	}
 	id, err := uuid.Parse(r.PathValue("id"))
 	yearID, yerr := uuid.Parse(r.FormValue("academic_year_id"))
 	date, derr := time.Parse("2006-01-02", strings.TrimSpace(r.FormValue("leaving_date")))
 	if err != nil || yerr != nil || derr != nil || id == uuid.Nil || yearID == uuid.Nil {
-		http.Error(w, http.StatusText(400), 400)
+		http.Error(w, localizedStatusMessage(400), 400)
 		return
 	}
 	_, err = h.students.Leave(r.Context(), service.LeaveStudentInput{Actor: actor, StudentID: id, AcademicYearID: yearID, LeavingDate: date})
@@ -619,7 +622,7 @@ func (h *StudentPageHandler) Reactivate(w http.ResponseWriter, r *http.Request) 
 	}
 	actor, ok := service.ActorFromContext(r.Context())
 	if !ok {
-		http.Error(w, http.StatusText(http.StatusUnauthorized), http.StatusUnauthorized)
+		http.Error(w, localizedStatusMessage(http.StatusUnauthorized), http.StatusUnauthorized)
 		return
 	}
 	if actor.Role != domain.RoleAdmin {
@@ -627,7 +630,7 @@ func (h *StudentPageHandler) Reactivate(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	if err := parseStudentForm(w, r); err != nil {
-		http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
+		http.Error(w, localizedStatusMessage(http.StatusBadRequest), http.StatusBadRequest)
 		return
 	}
 	id, err := uuid.Parse(r.PathValue("id"))
@@ -635,7 +638,7 @@ func (h *StudentPageHandler) Reactivate(w http.ResponseWriter, r *http.Request) 
 	classID, classErr := uuid.Parse(r.FormValue("class_id"))
 	effectiveDate, dateErr := time.Parse("2006-01-02", strings.TrimSpace(r.FormValue("effective_date")))
 	if err != nil || yearErr != nil || classErr != nil || dateErr != nil || id == uuid.Nil || yearID == uuid.Nil || classID == uuid.Nil {
-		http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
+		http.Error(w, localizedStatusMessage(http.StatusBadRequest), http.StatusBadRequest)
 		return
 	}
 	_, err = h.students.Reactivate(r.Context(), service.ReactivateStudentInput{
@@ -765,7 +768,7 @@ func (h *StudentPageHandler) formError(w http.ResponseWriter, r *http.Request, a
 	vm.IsEdit = id != ""
 	vm.PlacementYearID, vm.PlacementClassID = r.PostForm.Get("academic_year_id"), r.PostForm.Get("class_id")
 	if err := h.loadOptions(r, actor, &vm, "", id != ""); err != nil {
-		http.Error(w, http.StatusText(500), 500)
+		http.Error(w, localizedStatusMessage(500), 500)
 		return
 	}
 	w.WriteHeader(status)
@@ -773,7 +776,7 @@ func (h *StudentPageHandler) formError(w http.ResponseWriter, r *http.Request, a
 }
 func (h *StudentPageHandler) renderStudent(w http.ResponseWriter, vm StudentPageViewModel) {
 	if err := h.templates.ExecuteTemplate(w, "students", vm); err != nil {
-		http.Error(w, http.StatusText(500), 500)
+		http.Error(w, localizedStatusMessage(500), 500)
 	}
 }
 
@@ -840,7 +843,7 @@ func (h *StudentPageHandler) ClassOptions(w http.ResponseWriter, r *http.Request
 	}
 	actor, ok := service.ActorFromContext(r.Context())
 	if !ok {
-		http.Error(w, http.StatusText(401), 401)
+		http.Error(w, localizedStatusMessage(401), 401)
 		return
 	}
 	if actor.Role != domain.RoleAdmin {
@@ -849,7 +852,7 @@ func (h *StudentPageHandler) ClassOptions(w http.ResponseWriter, r *http.Request
 	}
 	yearID := parseOptionalUUID(r.URL.Query().Get("academic_year_id"))
 	if yearID == uuid.Nil {
-		http.Error(w, http.StatusText(400), 400)
+		http.Error(w, localizedStatusMessage(400), 400)
 		return
 	}
 	out, err := h.classOptions(r, actor, yearID)

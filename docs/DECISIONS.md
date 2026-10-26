@@ -19,6 +19,11 @@ Register ini menunjuk keputusan yang telah tercatat di sumber proyek. Jika keput
 - Transaksi, koreksi, dan audit: [kontrak FASE 21](contracts/fase-21-transaction-http-contract.md) dan [kontrak FASE 22](contracts/fase-22-transaction-correction-audit-contract.md).
 - Settlement akhir tahun, readiness, penyerahan, dan reopen: [kontrak FASE 23](contracts/fase-23-year-end-settlement-contract.md).
 - Administrasi akun, aktivasi, reset password, dan pencabutan sesi: [kontrak FASE 24](contracts/fase-24-user-administration-contract.md) (keputusan owner 2026-10-20).
+- Dashboard dan reporting FASE 25: satu tahun belum `CLOSED`, setor/tarik berdasarkan nominal transaksi aktif, tabel web tanpa ekspor; lihat [kontrak FASE 25](contracts/fase-25-dashboard-reporting-contract.md) (keputusan owner 2026-10-21).
+- Klarifikasi UX FASE 25: Admin memiliki jalur terpisah untuk kesiapan penutupan per Wali/Kelas, histori rekening dengan filter tahun/kelas, dan indeks laporan; rincian serta batas scope ada di addendum [kontrak FASE 25](contracts/fase-25-dashboard-reporting-contract.md) (disetujui owner 2026-10-21).
+- Notasi nominal uang di seluruh halaman menjadi format Indonesia `Rp. 10.000`, melalui formatter bersama; input angka dan nilai form tetap integer tanpa pemisah (permintaan owner 2026-10-21).
+- Penyelarasan akses transaksi: Admin tetap read-only; setoran/penarikan hanya untuk Wali pada siswa `ACTIVE`; koreksi ledger lama tetap mengikuti FASE 22 sebelum settlement. Settlement jalur pindah hanya untuk `LEFT`; siswa `GRADUATED` mengikuti penutupan tahun reguler. Rincian implementasi di [amendment settlement siswa pindah sekolah](contracts/student-leaving-settlement-ui-amendment.md), disetujui owner 2026-10-21.
+- Transaksi yang sungguh terjadi sebelum siswa pindah tetapi terlewat dicatat memakai permintaan Wali → keputusan Admin → pencatatan satu kali oleh Wali. Batas tahap pertama: rekening belum settlement, tahun belum CLOSED, tanggal kejadian sebelum tanggal pindah yang tersimpan. Pending/approved memblokir settlement rekening dan tutup tahun. Tahun CLOSED/rekening selesai tidak direopen untuk kasus ini. Lihat [amendment permintaan transaksi terlewat](contracts/late-transaction-request-amendment.md), disetujui owner 2026-10-21.
 - Alur operasional siswa/kelas: kontrak FASE 18–20 dan dokumen workflow terkait dalam [`contracts/`](contracts/).
 
 Keputusan-keputusan tersebut tidak ditulis ulang di sini. Kontrak bersangkutan menjadi sumber otoritatif untuk rincian dan tanggal amandemen.
@@ -29,7 +34,6 @@ Keputusan-keputusan tersebut tidak ditulis ulang di sini. Kontrak bersangkutan m
 - Menyediakan indeks migrasi dan prosedur setup database yang konsisten untuk lingkungan baru.
 - Meninjau apakah setup `TestMain` dapat membuat tes non-integrasi Go berjalan tanpa database, tanpa melemahkan guard keamanan.
 
-Butir di atas hanya rekomendasi audit, bukan keputusan atau otorisasi implementasi.
 
 ## Review checkpoint FASE 23 — 2026-10-20
 
@@ -48,3 +52,9 @@ Status: **terkunci setelah review teknis, verifikasi acceptance, dan persetujuan
 Bukti teknis dan acceptance checks yang ditinjau telah lulus. Owner menginstruksikan penutupan setelah status dan prasyarat commit/lock dijelaskan. Implementation commit dan catatan lock telah dibuat.
 
 Keputusan produk pada §14 tidak berubah. E2E browser manual dan harness otomatis yang dibuat kemudian dicatat di [HANDOVER.md](HANDOVER.md) dan [TESTING.md](TESTING.md).
+
+
+## Settlement siswa pindah sekolah melalui web — 2026-10-21
+
+- Owner menyetujui Admin mencatat siswa pindah dan Wali menyelesaikan rekening melalui jalur terpisah dari penutupan tahun. Menu masuk berada di Tabungan; Wali meninjau buku, melihat pratinjau saldo, mengonfirmasi settlement, dan mencatat penyerahan bila saldo positif.
+- Detail route, saldo stale, masa berlaku tahun, kewenangan, dan tautan ke kontrak sumber ada di [amendment FASE 19/23](contracts/student-leaving-settlement-ui-amendment.md).

@@ -855,7 +855,7 @@ func (s *studentService) Leave(
 		return LeaveStudentOutput{}, domain.ErrInvalidTransition
 	}
 
-	if err := student.Leave(); err != nil {
+	if err := student.LeaveOn(input.LeavingDate); err != nil {
 		return LeaveStudentOutput{}, err
 	}
 	if _, err := repos.StudentClassHistories.CloseCurrentByStudentAndAcademicYear(

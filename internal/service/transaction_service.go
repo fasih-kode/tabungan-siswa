@@ -62,7 +62,7 @@ func (s *transactionService) Deposit(
 	ctx context.Context,
 	input DepositInput,
 ) (DepositOutput, error) {
-	if err := RequireRole(input.Actor, domain.RoleAdmin, domain.RoleWaliKelas); err != nil {
+	if err := RequireRole(input.Actor, domain.RoleWaliKelas); err != nil {
 		return DepositOutput{}, err
 	}
 
@@ -89,6 +89,9 @@ func (s *transactionService) Deposit(
 	}
 
 	if err := s.authorizeAccount(ctx, repos, input.Actor, account); err != nil {
+		return DepositOutput{}, err
+	}
+	if err := requireActiveSavingsStudent(ctx, repos, account.StudentID); err != nil {
 		return DepositOutput{}, err
 	}
 
@@ -142,7 +145,7 @@ func (s *transactionService) Withdrawal(
 	ctx context.Context,
 	input WithdrawalInput,
 ) (WithdrawalOutput, error) {
-	if err := RequireRole(input.Actor, domain.RoleAdmin, domain.RoleWaliKelas); err != nil {
+	if err := RequireRole(input.Actor, domain.RoleWaliKelas); err != nil {
 		return WithdrawalOutput{}, err
 	}
 
@@ -169,6 +172,9 @@ func (s *transactionService) Withdrawal(
 	}
 
 	if err := s.authorizeAccount(ctx, repos, input.Actor, account); err != nil {
+		return WithdrawalOutput{}, err
+	}
+	if err := requireActiveSavingsStudent(ctx, repos, account.StudentID); err != nil {
 		return WithdrawalOutput{}, err
 	}
 
@@ -764,6 +770,22 @@ func lockOpenTransactionAccount(
 		return domain.SavingsAccount{}, domain.ErrInvalidTransition
 	}
 	return account, nil
+}
+
+func requireActiveSavingsStudent(ctx context.Context, repos repository.RepositorySet, studentID uuid.UUID) error {
+	if studentID == uuid.Nil || repos.Students == nil {
+		return ErrInvalidDependency
+	}
+	// StudentService.Leave takes this row lock before changing ACTIVE to LEFT.
+	// Reading under the same lock makes a stale transaction form harmless.
+	student, err := repos.Students.GetByIDForUpdate(ctx, studentID)
+	if err != nil {
+		return err
+	}
+	if !student.IsActive() {
+		return domain.ErrInvalidTransition
+	}
+	return nil
 }
 
 func calendarDate(value time.Time) time.Time {

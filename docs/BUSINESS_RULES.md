@@ -47,3 +47,14 @@ FASE 23 menetapkan pratinjau dari ledger aktif penuh, settlement per akun, konfi
 ## Aturan yang belum dikonfirmasi
 
 Kebutuhan yang tidak ditemukan di kontrak atau implementasi yang dapat diverifikasi tidak ditambahkan di sini. Minta keputusan pemilik produk sebelum menerapkannya.
+
+## Ringkasan dan laporan FASE 25
+
+Keputusan FASE 25 yang disetujui owner: dashboard/laporan mengikuti satu tahun yang belum `CLOSED` (`OPEN` atau `CLOSING`); setor/tarik menjumlah nominal transaksi `ACTIVE`; laporan tersedia sebagai tabel web. Lihat [kontrak FASE 25](contracts/fase-25-dashboard-reporting-contract.md) untuk scope role, konteks penempatan, dan definisi report. Angka saldo tetap mengikuti ledger dan otorisasi finansial yang telah dikunci.
+
+- Pindah sekolah tidak otomatis menyelesaikan rekening. Admin mencatat siswa `LEFT`; Wali yang berwenang meninjau dan menyelesaikan rekening melalui settlement `STUDENT_LEAVING`, lalu mengonfirmasi penyerahan bila nominalnya positif. Detail alur web ada pada [amendment settlement siswa pindah sekolah](contracts/student-leaving-settlement-ui-amendment.md).
+- Hanya Wali Kelas yang dapat mencatat setoran/penarikan. Transaksi baru mensyaratkan siswa `ACTIVE`; siswa `LEFT` atau `GRADUATED` tidak dapat menerima transaksi baru. Koreksi transaksi yang sudah ada tetap mengikuti scope, alasan, status rekening/tahun, dan audit FASE 22.
+- Jalur settlement pindah sekolah berlaku untuk `LEFT`. Rekening siswa `GRADUATED` yang masih terbuka diselesaikan pada proses tutup tahun ajaran reguler. Admin tetap hanya membaca data keuangan dan menggunakan kewenangan approval yang tercatat di kontrak pengawasan.
+- Untuk uang yang benar-benar terjadi sebelum siswa pindah tetapi terlewat dicatat, Wali harus mengajukan permintaan dengan alasan dan referensi bukti. Admin memutuskan dengan alasan; hanya Wali yang dapat mencatat rincian yang disetujui, satu kali. Transaksi harus bertanggal sebelum tanggal efektif pindah. Permintaan yang masih menunggu atau disetujui menghambat settlement rekening dan penutupan tahun. Tahun `CLOSED` dan rekening yang telah diselesaikan berada di luar tahap ini.
+
+Sumber keputusan: [amendment permintaan transaksi terlewat](contracts/late-transaction-request-amendment.md).

@@ -139,7 +139,8 @@ func (f *transactionServiceFakeTransactionRepository) Update(
 
 type transactionServiceFakeStudentRepository struct {
 	repository.StudentRepository
-	getByIDFn func(context.Context, uuid.UUID) (domain.Student, error)
+	getByIDFn          func(context.Context, uuid.UUID) (domain.Student, error)
+	getByIDForUpdateFn func(context.Context, uuid.UUID) (domain.Student, error)
 }
 
 func (f *transactionServiceFakeStudentRepository) GetByID(
@@ -150,6 +151,13 @@ func (f *transactionServiceFakeStudentRepository) GetByID(
 		return f.getByIDFn(ctx, id)
 	}
 	return domain.Student{}, repository.ErrNotFound
+}
+
+func (f *transactionServiceFakeStudentRepository) GetByIDForUpdate(ctx context.Context, id uuid.UUID) (domain.Student, error) {
+	if f.getByIDForUpdateFn != nil {
+		return f.getByIDForUpdateFn(ctx, id)
+	}
+	return f.GetByID(ctx, id)
 }
 
 type transactionServiceFakeStudentClassHistoryRepository struct {
@@ -296,6 +304,11 @@ func newTransactionTestRepositories(
 	assignmentRepo repository.TeacherClassAssignmentRepository,
 	auditRepo repository.AuditRepository,
 ) repository.RepositorySet {
+	if studentRepo == nil {
+		studentRepo = &transactionServiceFakeStudentRepository{getByIDForUpdateFn: func(_ context.Context, id uuid.UUID) (domain.Student, error) {
+			return domain.Student{ID: id, Status: domain.StudentActive}, nil
+		}}
+	}
 	return repository.RepositorySet{
 		AcademicYears:           &transactionServiceFakeAcademicYearRepository{},
 		SavingsAccounts:         accountRepo,
@@ -348,6 +361,36 @@ func TestTransactionServiceDepositWaliKelas(t *testing.T) {
 	yearRepo := uow.repos.AcademicYears.(*transactionServiceFakeAcademicYearRepository)
 	if yearRepo.getByIDForShareCalls != 1 {
 		t.Fatalf("year shared locks = %d, want 1", yearRepo.getByIDForShareCalls)
+	}
+}
+
+func TestTransactionServiceRejectsNewTransactionsForNonActiveStudents(t *testing.T) {
+	for _, status := range []domain.StudentStatus{domain.StudentLeft, domain.StudentGraduated} {
+		for _, operation := range []string{"deposit", "withdrawal"} {
+			t.Run(string(status)+"/"+operation, func(t *testing.T) {
+				account := newTransactionTestAccount(t)
+				transactionRepo := &transactionServiceFakeTransactionRepository{}
+				studentRepo := &transactionServiceFakeStudentRepository{getByIDForUpdateFn: func(_ context.Context, id uuid.UUID) (domain.Student, error) {
+					return domain.Student{ID: id, Status: status}, nil
+				}}
+				accountRepo := &transactionServiceFakeSavingsAccountRepository{getByIDForUpdateFn: func(context.Context, uuid.UUID) (domain.SavingsAccount, error) { return account, nil }}
+				uow := &transactionServiceFakeUnitOfWork{repos: newTransactionTestRepositories(accountRepo, transactionRepo, studentRepo, nil, nil, &transactionServiceFakeAuditRepository{})}
+				svc := newScopedTransactionServiceForTest(t, uow.repos, &transactionServiceFakeUnitOfWorkManager{uow: uow})
+				actor := Actor{UserID: financialTestTeacherID, Role: domain.RoleWaliKelas}
+				var err error
+				if operation == "deposit" {
+					_, err = svc.Deposit(context.Background(), DepositInput{Actor: actor, SavingsAccountID: account.ID, Amount: 100, TransactionDate: time.Date(2026, 10, 1, 0, 0, 0, 0, time.UTC)})
+				} else {
+					_, err = svc.Withdrawal(context.Background(), WithdrawalInput{Actor: actor, SavingsAccountID: account.ID, Amount: 100, TransactionDate: time.Date(2026, 10, 1, 0, 0, 0, 0, time.UTC)})
+				}
+				if !errors.Is(err, domain.ErrInvalidTransition) {
+					t.Fatalf("%s error = %v, want invalid student lifecycle", operation, err)
+				}
+				if transactionRepo.createCalls != 0 || transactionRepo.listActiveCalls != 0 || uow.commitCalls != 0 || uow.rollbackCalls != 1 {
+					t.Fatalf("writes/list/commit/rollback = %d/%d/%d/%d, want 0/0/0/1", transactionRepo.createCalls, transactionRepo.listActiveCalls, uow.commitCalls, uow.rollbackCalls)
+				}
+			})
+		}
 	}
 }
 

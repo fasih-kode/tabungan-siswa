@@ -324,8 +324,8 @@ func TestAuthenticationHandlerLoginRejectsOversizedRequestBody(t *testing.T) {
 		)
 	}
 
-	if got := recorder.Body.String(); got != "Request Entity Too Large\n" {
-		t.Fatalf("body = %q, want %q", got, "Request Entity Too Large\n")
+	if got := recorder.Body.String(); got != "Permintaan terlalu besar. Kurangi ukuran data lalu coba lagi.\n" {
+		t.Fatalf("body = %q, want localized oversized request message", got)
 	}
 
 	if authentication.authenticateCalls != 0 {
@@ -414,7 +414,7 @@ func TestAuthenticationHandlerLoginPropagatesSessionCreateError(t *testing.T) {
 	if recorder.Code != http.StatusInternalServerError {
 		t.Fatalf("status = %d, want %d", recorder.Code, http.StatusInternalServerError)
 	}
-	if !strings.Contains(recorder.Body.String(), "Internal Server Error") {
+	if !strings.Contains(recorder.Body.String(), "Terjadi kesalahan pada server") {
 		t.Fatalf("body = %q, want generic internal error", recorder.Body.String())
 	}
 }

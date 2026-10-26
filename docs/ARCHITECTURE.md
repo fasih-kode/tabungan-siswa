@@ -18,6 +18,8 @@ Dokumen ini merangkum struktur yang terlihat pada source. Periksa ulang source s
 | `cmd/bootstrap-users` | Membuat akun awal melalui use case bootstrap. |
 | `internal/domain` | Entitas, tipe nilai, validasi, dan transisi domain. |
 | `internal/service` | Use case, otorisasi, validasi aplikasi, batas transaksi, dan audit. |
+| `internal/repository/postgres/reporting_repository.go` | Query agregasi reporting khusus dashboard dan laporan; scope role diterapkan di query. |
+| `internal/service/leaving_transaction_service.go` | Permintaan transaksi terlambat pascapindah: validasi tanggal/scope, keputusan Admin, pencatatan satu kali, dan audit. |
 | `internal/repository` | Kontrak persistence dan Unit of Work. |
 | `internal/repository/postgres` | Query PostgreSQL dan penyusunan repository berbasis `database/sql`. |
 | `internal/platform/database` | Koneksi PostgreSQL dan guard konfigurasi database tes. |
@@ -37,6 +39,11 @@ Alur umum: `cmd/web` → composition root `internal/app` → router dan handler 
 ## HTTP dan antarmuka
 
 - Handler mengambil aktor terautentikasi dari context, memvalidasi input transport, memanggil service, lalu merender template atau melakukan redirect.
+- Dashboard dan laporan memakai `ReportingService` serta query reporting khusus; `/reports` menjadi indeks dan tiap route laporan membaca tahun aktif.
+- Histori Tabungan Admin memakai route savings dengan penempatan pada tahun terpilih, filter kelas, dan filter rekening-pemilik; detail buku tetap memakai service akun yang sama dan tetap read-only untuk Admin.
+- Penutupan Tahun memakai `SettlementService.YearReadiness`; overview mengelompokkan hambatan rekening dan penyerahan berdasarkan Wali/Kelas. Settlement siswa pindah memiliki pratinjau dan konfirmasi terpisah dari settlement tutup tahun, tetapi menggunakan service audit settlement yang sama.
+- Permintaan transaksi sebelum pindah dikelola melalui service terpisah dan repository `leaving_transaction_requests`; route `/leaving-transaction-requests` menyajikan inbox keputusan/pencatatan. Settlement menolak rekening dengan permintaan `PENDING`/`APPROVED`, dan readiness/penutupan tahun menolak bila masih ada workflow aktif.
+- Semua nominal yang ditampilkan halaman HTTP memakai notasi Indonesia (`Rp. 10.000`). Input transaksi menambahkan titik pemisah ribuan saat JavaScript aktif dan mengirim nilai integer tanpa pemisah melalui input tersembunyi; tanpa JavaScript, input angka native tetap dapat digunakan.
 - Middleware authentication dan CSRF dipasang pada route; otorisasi juga ditegakkan di service.
 - Template utama berada di `internal/app/templates/`. HTMX bukan lapisan business logic dan halaman dasar dirender di server.
 

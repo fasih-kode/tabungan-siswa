@@ -438,6 +438,7 @@ func cleanupServiceScopeFixtures(t *testing.T, db *sql.DB) {
 	statements := []string{
 		"DELETE FROM audit_logs",
 		"DELETE FROM transactions",
+		"DELETE FROM leaving_transaction_requests",
 		"DELETE FROM settlement_cash_movements",
 		"DELETE FROM settlement_reopen_requests",
 		"DELETE FROM savings_settlements",

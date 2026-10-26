@@ -158,12 +158,12 @@ func TestTransactionPageListUsesScopedServiceAndRunningBalance(t *testing.T) {
 		Transactions: []*domain.Transaction{&tx}, RunningBalances: map[uuid.UUID]domain.Money{tx.ID: 42_000}, Balance: 42_000, Total: 1,
 	}}
 	h := newTransactionPageHandlerForTest(t, fake, account)
-	actor := service.Actor{UserID: uuid.New(), Role: domain.RoleAdmin}
+	actor := service.Actor{UserID: uuid.New(), Role: domain.RoleWaliKelas}
 	req := requestWithActor(http.MethodGet, "/savings/"+account.ID.String()+"/transactions?page=1", actor)
 	req.SetPathValue("account_id", account.ID.String())
 	rec := httptest.NewRecorder()
 	withCSRFForTest(http.HandlerFunc(h.List)).ServeHTTP(rec, req)
-	if rec.Code != http.StatusOK || fake.listInput.SavingsAccountID != account.ID || !strings.Contains(rec.Body.String(), "Rp 42.000") || !strings.Contains(rec.Body.String(), tx.ID.String()) {
+	if rec.Code != http.StatusOK || fake.listInput.SavingsAccountID != account.ID || !strings.Contains(rec.Body.String(), "Rp. 42.000") || !strings.Contains(rec.Body.String(), tx.ID.String()) {
 		t.Fatalf("List status/body/input=%d/%s/%+v", rec.Code, rec.Body.String(), fake.listInput)
 	}
 }
@@ -172,7 +172,7 @@ func TestTransactionPageDepositParsesFormAndRedirects(t *testing.T) {
 	account := domain.SavingsAccount{ID: uuid.New(), StudentID: uuid.New(), AcademicYearID: uuid.New(), Status: domain.SavingsAccountOpen}
 	fake := &transactionPageServiceFake{}
 	h := newTransactionPageHandlerForTest(t, fake, account)
-	actor := service.Actor{UserID: uuid.New(), Role: domain.RoleAdmin}
+	actor := service.Actor{UserID: uuid.New(), Role: domain.RoleWaliKelas}
 	form := url.Values{"amount": {"25000"}, "transaction_date": {"2026-10-20"}}
 	req := httptest.NewRequest(http.MethodPost, "/savings/"+account.ID.String()+"/transactions/deposits", strings.NewReader(form.Encode()))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded; charset=UTF-8")
@@ -182,6 +182,22 @@ func TestTransactionPageDepositParsesFormAndRedirects(t *testing.T) {
 	h.Deposit(rec, req)
 	if rec.Code != http.StatusSeeOther || rec.Header().Get("Location") != "/savings/"+account.ID.String()+"?notice=deposit_created" || fake.depositCalls != 1 || fake.depositInput.Actor != actor || fake.depositInput.Amount != 25_000 || fake.depositInput.TransactionDate.Format("2006-01-02") != "2026-10-20" {
 		t.Fatalf("Deposit status/location/input/calls=%d/%q/%+v/%d", rec.Code, rec.Header().Get("Location"), fake.depositInput, fake.depositCalls)
+	}
+}
+
+func TestTransactionPageRejectsAdminFinancialWrite(t *testing.T) {
+	account := domain.SavingsAccount{ID: uuid.New(), StudentID: uuid.New(), AcademicYearID: uuid.New(), Status: domain.SavingsAccountOpen}
+	fake := &transactionPageServiceFake{}
+	h := newTransactionPageHandlerForTest(t, fake, account)
+	form := url.Values{"amount": {"1000"}, "transaction_date": {"2026-10-20"}}
+	req := httptest.NewRequest(http.MethodPost, "/savings/"+account.ID.String()+"/transactions/deposits", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.SetPathValue("account_id", account.ID.String())
+	req = req.WithContext(service.WithActor(req.Context(), service.Actor{UserID: uuid.New(), Role: domain.RoleAdmin}))
+	rec := httptest.NewRecorder()
+	h.Deposit(rec, req)
+	if rec.Code != http.StatusForbidden || fake.depositCalls != 0 {
+		t.Fatalf("Admin deposit status/calls=%d/%d, want 403/0", rec.Code, fake.depositCalls)
 	}
 }
 
@@ -197,6 +213,18 @@ func TestTransactionFormValidationRejectsStudentBeforeParsing(t *testing.T) {
 	}
 }
 
+func TestTransactionFormValidationRejectsAdminBeforeParsing(t *testing.T) {
+	called := false
+	h := validateTransactionRequestForm(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { called = true }))
+	req := httptest.NewRequest(http.MethodPost, "/transactions", strings.NewReader("malformed"))
+	req = req.WithContext(service.WithActor(req.Context(), service.Actor{UserID: uuid.New(), Role: domain.RoleAdmin}))
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	if rec.Code != http.StatusForbidden || called {
+		t.Fatalf("middleware status/called=%d/%v, want forbidden/false", rec.Code, called)
+	}
+}
+
 func TestTransactionRoutesRequireAuthenticationCSRFAndUseScopedPaths(t *testing.T) {
 	account := domain.SavingsAccount{ID: uuid.New(), StudentID: uuid.New(), AcademicYearID: uuid.New(), Status: domain.SavingsAccountOpen}
 	tx := &transactionPageServiceFake{}
@@ -204,7 +232,7 @@ func TestTransactionRoutesRequireAuthenticationCSRFAndUseScopedPaths(t *testing.
 	userID := uuid.New()
 	sessionToken := "transaction-session-" + uuid.NewString()
 	session := domain.Session{ID: uuid.New(), UserID: userID, TokenHash: security.HashSessionToken(sessionToken), ExpiresAt: time.Now().Add(time.Hour), CreatedAt: time.Now()}
-	user := domain.User{ID: userID, Username: "transaction-test", Role: domain.RoleAdmin}
+	user := domain.User{ID: userID, Username: "transaction-test", Role: domain.RoleWaliKelas}
 	auth, err := middleware.NewAuthenticationMiddleware(security.NewDefaultSessionCookie(), &routerSessionRepositoryFake{session: session}, &routerUserRepositoryFake{user: user})
 	if err != nil {
 		t.Fatal(err)
@@ -250,14 +278,14 @@ func TestTransactionRoutesRequireAuthenticationCSRFAndUseScopedPaths(t *testing.
 	post.AddCookie(&http.Cookie{Name: security.DefaultCSRFCookieName, Value: csrfToken})
 	postRecorder := httptest.NewRecorder()
 	router.ServeHTTP(postRecorder, post)
-	if postRecorder.Code != http.StatusSeeOther || tx.depositCalls != 1 || tx.depositInput.Actor.Role != domain.RoleAdmin {
+	if postRecorder.Code != http.StatusSeeOther || tx.depositCalls != 1 || tx.depositInput.Actor.Role != domain.RoleWaliKelas {
 		t.Fatalf("authenticated POST status/calls/role=%d/%d/%s body=%s", postRecorder.Code, tx.depositCalls, tx.depositInput.Actor.Role, postRecorder.Body.String())
 	}
 }
 
 func TestTransactionPostRejectsMalformedAndOversizedForms(t *testing.T) {
 	account := domain.SavingsAccount{ID: uuid.New(), StudentID: uuid.New(), AcademicYearID: uuid.New(), Status: domain.SavingsAccountOpen}
-	actor := service.Actor{UserID: uuid.New(), Role: domain.RoleAdmin}
+	actor := service.Actor{UserID: uuid.New(), Role: domain.RoleWaliKelas}
 	for _, tc := range []struct {
 		name, contentType, body string
 	}{

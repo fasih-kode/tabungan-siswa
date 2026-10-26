@@ -35,9 +35,10 @@ func (r *StudentRepository) Create(
 			name,
 			status,
 			created_at,
-			updated_at
+			updated_at,
+			leaving_date
 		)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
 	`
 
 	_, err := r.db.ExecContext(
@@ -51,6 +52,7 @@ func (r *StudentRepository) Create(
 		student.Status,
 		student.CreatedAt,
 		student.UpdatedAt,
+		student.LeavingDate,
 	)
 	if err != nil {
 		return translateError("create student", err)
@@ -72,7 +74,8 @@ func (r *StudentRepository) GetByID(
 			name,
 			status,
 			created_at,
-			updated_at
+			updated_at,
+			leaving_date
 		FROM students
 		WHERE id = $1
 	`
@@ -93,7 +96,8 @@ func (r *StudentRepository) GetByIDForUpdate(
 			name,
 			status,
 			created_at,
-			updated_at
+			updated_at,
+			leaving_date
 		FROM students
 		WHERE id = $1
 		FOR UPDATE
@@ -114,7 +118,8 @@ func (r *StudentRepository) GetByNIS(
 			name,
 			status,
 			created_at,
-			updated_at
+			updated_at,
+			leaving_date
 		FROM students
 		WHERE nis = $1
 	`
@@ -135,7 +140,8 @@ func (r *StudentRepository) GetByNISN(
 			name,
 			status,
 			created_at,
-			updated_at
+			updated_at,
+			leaving_date
 		FROM students
 		WHERE nisn = $1
 	`
@@ -156,7 +162,8 @@ func (r *StudentRepository) GetByUserID(
 			name,
 			status,
 			created_at,
-			updated_at
+			updated_at,
+			leaving_date
 		FROM students
 		WHERE user_id = $1
 	`
@@ -177,7 +184,8 @@ func (r *StudentRepository) List(
 			name,
 			status,
 			created_at,
-			updated_at
+			updated_at,
+			leaving_date
 		FROM students
 		WHERE (
 			$1 = '' OR
@@ -243,7 +251,8 @@ func (r *StudentRepository) ListByClassAndAcademicYear(
 			s.name,
 			s.status,
 			s.created_at,
-			s.updated_at
+			s.updated_at,
+			s.leaving_date
 		FROM students s
 		INNER JOIN student_class_histories h
 			ON h.student_id = s.id
@@ -313,8 +322,9 @@ func (r *StudentRepository) Update(
 			nisn = $3,
 			name = $4,
 			status = $5,
-			updated_at = $6
-		WHERE id = $7
+			updated_at = $6,
+			leaving_date = $7
+		WHERE id = $8
 	`
 
 	result, err := r.db.ExecContext(
@@ -326,6 +336,7 @@ func (r *StudentRepository) Update(
 		student.Name,
 		student.Status,
 		student.UpdatedAt,
+		student.LeavingDate,
 		student.ID,
 	)
 	if err != nil {
@@ -364,6 +375,7 @@ func (r *StudentRepository) getOne(
 		&student.Status,
 		&student.CreatedAt,
 		&student.UpdatedAt,
+		&student.LeavingDate,
 	)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -388,6 +400,7 @@ func scanStudent(rows *sql.Rows) (domain.Student, error) {
 		&student.Status,
 		&student.CreatedAt,
 		&student.UpdatedAt,
+		&student.LeavingDate,
 	)
 	if err != nil {
 		return domain.Student{}, err
@@ -399,7 +412,7 @@ func scanStudent(rows *sql.Rows) (domain.Student, error) {
 // ListDirectory selects one placement per student: the latest history in the
 // selected year, or the latest year/history when no year filter is supplied.
 func (r *StudentRepository) ListDirectory(ctx context.Context, opts repository.ListOptions) ([]repository.StudentDirectoryEntry, error) {
-	const query = `SELECT s.id, s.user_id, s.nis, s.nisn, s.name, s.status, s.created_at, s.updated_at,
+	const query = `SELECT s.id, s.user_id, s.nis, s.nisn, s.name, s.status, s.created_at, s.updated_at, s.leaving_date,
   p.academic_year_id, p.class_id, COALESCE(p.year_name,''), COALESCE(p.class_name,'')` + studentDirectoryFromWhere + `
  ORDER BY s.name, s.id LIMIT $7 OFFSET $8`
 	rows, err := r.db.QueryContext(ctx, query, opts.AcademicYearID, opts.ClassID, opts.Search, opts.StudentStatus, opts.UnassignedOnly, opts.TeacherID, opts.Limit, opts.Offset)
@@ -412,7 +425,7 @@ func (r *StudentRepository) ListDirectory(ctx context.Context, opts repository.L
 		var entry repository.StudentDirectoryEntry
 		var year, class uuid.NullUUID
 		s := &entry.Student
-		if err := rows.Scan(&s.ID, &s.UserID, &s.NIS, &s.NISN, &s.Name, &s.Status, &s.CreatedAt, &s.UpdatedAt, &year, &class, &entry.AcademicYear, &entry.Class); err != nil {
+		if err := rows.Scan(&s.ID, &s.UserID, &s.NIS, &s.NISN, &s.Name, &s.Status, &s.CreatedAt, &s.UpdatedAt, &s.LeavingDate, &year, &class, &entry.AcademicYear, &entry.Class); err != nil {
 			return nil, fmt.Errorf("scan student directory: %w", err)
 		}
 		if year.Valid {

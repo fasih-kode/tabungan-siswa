@@ -252,6 +252,17 @@ type TransactionRepository interface {
 	) error
 }
 
+type LeavingTransactionRequestRepository interface {
+	CreateLeavingTransactionRequest(context.Context, domain.LeavingTransactionRequest) error
+	GetLeavingTransactionRequest(context.Context, uuid.UUID) (domain.LeavingTransactionRequest, error)
+	GetLeavingTransactionRequestForUpdate(context.Context, uuid.UUID) (domain.LeavingTransactionRequest, error)
+	ListLeavingTransactionRequests(context.Context, uuid.UUID, domain.LeavingTransactionRequestStatus) ([]domain.LeavingTransactionRequest, error)
+	UpdateLeavingTransactionRequest(context.Context, domain.LeavingTransactionRequest) error
+	HasPendingLeavingTransactionRequests(context.Context, uuid.UUID) (bool, error)
+	HasPendingForSavingsAccount(context.Context, uuid.UUID) (bool, error)
+	HasEvidenceReference(context.Context, uuid.UUID, string) (bool, error)
+}
+
 type SettlementRepository interface {
 	Create(
 		ctx context.Context,
@@ -341,20 +352,58 @@ type ListTotalsRepository interface {
 	Transfers(ctx context.Context, studentID, yearID uuid.UUID, pendingOnly bool) (int, error)
 }
 
+// ReportingRepository menyediakan agregasi khusus reporting dalam satu
+// academic year. Actor scope wajib diterapkan pada query, bukan oleh pemanggil.
+type ReportingRepository interface {
+	Dashboard(ctx context.Context, yearID, userID uuid.UUID, role domain.UserRole) (DashboardMetrics, error)
+	StudentReport(ctx context.Context, yearID, userID uuid.UUID, role domain.UserRole) ([]StudentReportRow, error)
+	ClassReport(ctx context.Context, yearID, userID uuid.UUID, role domain.UserRole) ([]ClassReportRow, error)
+	SettlementReport(ctx context.Context, yearID, userID uuid.UUID, role domain.UserRole) ([]SettlementReportRow, error)
+}
+
+type DashboardMetrics struct {
+	Students, Classes, Accounts, SettledAccounts int
+	Balance, Deposits, Withdrawals               domain.Money
+}
+
+type StudentReportRow struct {
+	StudentID, ClassID, AccountID  uuid.UUID
+	StudentName, NIS, ClassName    string
+	AccountStatus                  domain.SavingsAccountStatus
+	Balance, Deposits, Withdrawals domain.Money
+}
+
+type ClassReportRow struct {
+	ClassID                        uuid.UUID
+	ClassName                      string
+	Students, Accounts, Settled    int
+	Balance, Deposits, Withdrawals domain.Money
+}
+
+type SettlementReportRow struct {
+	StudentID, ClassID, AccountID         uuid.UUID
+	StudentName, NIS, ClassName           string
+	AccountStatus                         domain.SavingsAccountStatus
+	SettlementState                       string
+	Balance, SettlementAmount, HandedOver domain.Money
+}
+
 type RepositorySet struct {
-	ListTotals              ListTotalsRepository
-	Users                   UserRepository
-	Sessions                SessionRepository
-	AcademicYears           AcademicYearRepository
-	Classes                 ClassRepository
-	Students                StudentRepository
-	StudentClassHistories   StudentClassHistoryRepository
-	TeacherClassAssignments TeacherClassAssignmentRepository
-	ClassTransferRequests   ClassTransferRequestRepository
-	SavingsAccounts         SavingsAccountRepository
-	Transactions            TransactionRepository
-	Settlements             SettlementRepository
-	AuditLogs               AuditRepository
+	ListTotals                 ListTotalsRepository
+	Reporting                  ReportingRepository
+	Users                      UserRepository
+	Sessions                   SessionRepository
+	AcademicYears              AcademicYearRepository
+	Classes                    ClassRepository
+	Students                   StudentRepository
+	StudentClassHistories      StudentClassHistoryRepository
+	TeacherClassAssignments    TeacherClassAssignmentRepository
+	ClassTransferRequests      ClassTransferRequestRepository
+	SavingsAccounts            SavingsAccountRepository
+	Transactions               TransactionRepository
+	LeavingTransactionRequests LeavingTransactionRequestRepository
+	Settlements                SettlementRepository
+	AuditLogs                  AuditRepository
 }
 
 // UnitOfWork merepresentasikan satu transaction boundary.

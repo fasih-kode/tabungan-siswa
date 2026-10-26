@@ -187,7 +187,7 @@ func TestNewRouterPublicLoginRoute(t *testing.T) {
 		t.Fatalf("status = %d, want %d", recorder.Code, http.StatusOK)
 	}
 
-	if got := recorder.Body.String(); got != "<html><body>Login</body></html>" {
+	if got := recorder.Body.String(); got != "<html><body>Masuk</body></html>" {
 		t.Fatalf("body = %q, want rendered login page", got)
 	}
 
@@ -693,7 +693,7 @@ func TestNewRouterProtectedRouteMapsAuthenticationFailureToServerError(t *testin
 		)
 	}
 
-	if got := recorder.Body.String(); got != "Internal Server Error\n" {
+	if got := recorder.Body.String(); got != "Terjadi kesalahan pada server. Silakan coba lagi.\n" {
 		t.Fatalf("body = %q, want generic error", got)
 	}
 

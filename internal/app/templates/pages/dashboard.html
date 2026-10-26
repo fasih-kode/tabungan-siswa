@@ -1,90 +1,75 @@
-{{define "page-content"}}
+{{define "dashboard"}}<!doctype html><html lang="id"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>{{.Title}} - Tabungan Siswa</title><link rel="icon" type="image/svg+xml" href="/static/img/favicon.svg"><link rel="stylesheet" href="/static/css/app.css?v=20261024-user-management-polish"><script src="/static/js/htmx.min.js" defer></script></head><body class="bg-gray-50 dark:bg-gray-900"><div class="flex h-screen overflow-hidden">{{template "sidebar" .}}<div class="relative flex min-w-0 flex-1 flex-col overflow-x-hidden overflow-y-auto">{{template "header" .}}<main class="min-w-0"><div class="mx-auto w-full max-w-(--breakpoint-2xl) p-4 md:p-6">{{template "dashboard-content" .}}</div></main></div></div></body></html>{{end}}
+{{define "dashboard-content"}}
 <div class="space-y-6 lg:space-y-7">
     <div>
-        <h1 class="text-2xl font-bold tracking-tight text-gray-800 dark:text-white">
-            {{.Heading}}
-        </h1>
-        <p class="mt-2 text-sm text-gray-500 dark:text-gray-400">
-            {{.Description}}
-        </p>
+        <h1 class="text-2xl font-bold tracking-tight text-gray-800 dark:text-white">{{.Heading}}</h1>
+        <p class="mt-2 text-sm text-gray-500 dark:text-gray-400">{{.Description}}</p>
+        {{if .HasActiveYear}}<p class="mt-2 text-sm font-medium text-brand-600 dark:text-brand-400">Tahun ajaran: {{.AcademicYear}}</p>{{end}}
     </div>
 
+    {{if .HasActiveYear}}
     <div class="grid grid-cols-1 gap-5 sm:grid-cols-2 xl:grid-cols-3">
-        <div class="rounded-2xl border border-gray-200 bg-white p-6 shadow-theme-sm transition-shadow hover:shadow-theme-md dark:border-gray-800 dark:bg-gray-800">
-            <div class="flex items-center justify-between">
-                <p class="text-sm font-medium text-gray-500 dark:text-gray-400">
-                    Siswa
-                </p>
-                <div class="flex h-10 w-10 items-center justify-center rounded-lg bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300">
-                    <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-                        <path stroke-linecap="round" stroke-linejoin="round" d="M15 19.5a3 3 0 1 0-6 0m9-9a6 6 0 1 1-12 0 6 6 0 0 1 12 0Zm3 9a3 3 0 0 0-3-3m0-6a3 3 0 0 0-3-3"/>
-                    </svg>
-                </div>
+        {{range .Metrics}}
+        <article class="dashboard-metric-card rounded-2xl border border-gray-200 bg-white p-5 shadow-theme-sm dark:border-gray-800 dark:bg-gray-800" aria-label="{{.Label}}: {{.Value}}">
+            <div class="dashboard-metric-icon flex h-10 w-10 items-center justify-center rounded-xl bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300" aria-hidden="true">
+                {{if eq .Icon "students"}}
+                <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path stroke-linecap="round" stroke-linejoin="round" d="M16 19h5v-1a4 4 0 0 0-5.4-3.75M16 19H8m8 0v-1a6 6 0 0 0-12 0v1h4m8-12a4 4 0 1 1 0 8M14 7a4 4 0 1 0-8 0 4 4 0 0 0 8 0Z"/></svg>
+                {{else if eq .Icon "classes"}}
+                <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="3.5" y="4" width="17" height="16" rx="2.5"/><path stroke-linecap="round" d="M8 4v16M8 9h12.5M12 13h2M16 13h2M12 17h2M16 17h2"/></svg>
+                {{else if eq .Icon "balance"}}
+                <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="3" y="5" width="18" height="14" rx="2.5"/><path stroke-linecap="round" stroke-linejoin="round" d="M3 9h18m-5 5h2"/></svg>
+                {{else if eq .Icon "deposit"}}
+                <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path stroke-linecap="round" stroke-linejoin="round" d="M12 3v12m0 0 4-4m-4 4-4-4"/><path stroke-linecap="round" stroke-linejoin="round" d="M5 16v3a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-3"/></svg>
+                {{else if eq .Icon "withdrawal"}}
+                <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path stroke-linecap="round" stroke-linejoin="round" d="M12 21V9m0 0 4 4m-4-4-4 4"/><path stroke-linecap="round" stroke-linejoin="round" d="M5 8V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v3"/></svg>
+                {{else if eq .Icon "completed"}}
+                <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="9"/><path stroke-linecap="round" stroke-linejoin="round" d="m8 12 2.5 2.5L16.5 9"/></svg>
+                {{end}}
             </div>
-
-            <p class="mt-5 text-3xl font-bold tracking-tight text-gray-800 dark:text-white">
-                -
-            </p>
-        </div>
-
-        <div class="rounded-2xl border border-gray-200 bg-white p-6 shadow-theme-sm transition-shadow hover:shadow-theme-md dark:border-gray-800 dark:bg-gray-800">
-            <div class="flex items-center justify-between">
-                <p class="text-sm font-medium text-gray-500 dark:text-gray-400">
-                    Saldo
-                </p>
-                <div class="flex h-10 w-10 items-center justify-center rounded-lg bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300">
-                    <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-                        <path stroke-linecap="round" stroke-linejoin="round" d="M3 7.5A2.5 2.5 0 0 1 5.5 5h13A2.5 2.5 0 0 1 21 7.5v9a2.5 2.5 0 0 1-2.5 2.5h-13A2.5 2.5 0 0 1 3 16.5v-9Zm13 4.5h5"/>
-                        <circle cx="16.5" cy="14" r="1"/>
-                    </svg>
-                </div>
-            </div>
-
-            <p class="mt-5 text-3xl font-bold tracking-tight text-gray-800 dark:text-white">
-                -
-            </p>
-        </div>
-
-        <div class="rounded-2xl border border-gray-200 bg-white p-6 shadow-theme-sm transition-shadow hover:shadow-theme-md dark:border-gray-800 dark:bg-gray-800">
-            <div class="flex items-center justify-between">
-                <p class="text-sm font-medium text-gray-500 dark:text-gray-400">
-                    Transaksi
-                </p>
-                <div class="flex h-10 w-10 items-center justify-center rounded-lg bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300">
-                    <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-                        <path stroke-linecap="round" stroke-linejoin="round" d="M7 3v18m10-18v18M4 7h4m8 10h4M4 17h4m8-10h4"/>
-                    </svg>
-                </div>
-            </div>
-
-            <p class="mt-5 text-3xl font-bold tracking-tight text-gray-800 dark:text-white">
-                -
-            </p>
-        </div>
+            <p class="mt-4 text-sm font-medium text-gray-500 dark:text-gray-400">{{.Label}}</p>
+            <p class="mt-1 text-2xl font-semibold tracking-tight text-gray-800 dark:text-white">{{.Value}}</p>
+        </article>
+        {{end}}
     </div>
+    {{end}}
 
-    <div class="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-theme-sm dark:border-gray-800 dark:bg-gray-800">
-        <div class="border-b border-gray-200 px-6 py-5 dark:border-gray-800">
-            <h2 class="text-base font-semibold text-gray-800 dark:text-white">
-                Aktivitas Terbaru
-            </h2>
-        </div>
+    {{if .CanViewReports}}
+    <section class="rounded-2xl border border-gray-200 bg-white p-6 dark:border-gray-800 dark:bg-gray-800">
+        <h2 class="text-base font-semibold text-gray-800 dark:text-white">Laporan tahun aktif</h2>
+        <nav class="dashboard-report-tabs mt-4 flex overflow-x-auto border-b border-gray-200 dark:border-gray-800" aria-label="Laporan tahun aktif">
+            <a class="dashboard-report-tab inline-flex shrink-0 items-center gap-2 border-b-2 border-transparent px-3 py-3 text-sm font-medium text-gray-500 transition-colors hover:border-brand-500 hover:text-brand-600 dark:text-gray-400 dark:hover:text-brand-300" href="/reports/students">
+                <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><circle cx="9" cy="8" r="3.25"/><path stroke-linecap="round" stroke-linejoin="round" d="M3.5 19v-1.25A4.75 4.75 0 0 1 8.25 13h1.5a4.75 4.75 0 0 1 4.75 4.75V19h-11ZM16 5.2a3.2 3.2 0 0 1 0 6.2m2.2 2a4.5 4.5 0 0 1 2.3 3.9V19h-3"/></svg>
+                <span>Laporan siswa</span>
+            </a>
+            <a class="dashboard-report-tab inline-flex shrink-0 items-center gap-2 border-b-2 border-transparent px-3 py-3 text-sm font-medium text-gray-500 transition-colors hover:border-brand-500 hover:text-brand-600 dark:text-gray-400 dark:hover:text-brand-300" href="/reports/classes">
+                <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><rect x="3.5" y="4" width="17" height="16" rx="2.5"/><path stroke-linecap="round" d="M8 4v16M8 9h12.5M12 13h2M16 13h2M12 17h2M16 17h2"/></svg>
+                <span>Laporan kelas</span>
+            </a>
+            <a class="dashboard-report-tab inline-flex shrink-0 items-center gap-2 border-b-2 border-transparent px-3 py-3 text-sm font-medium text-gray-500 transition-colors hover:border-brand-500 hover:text-brand-600 dark:text-gray-400 dark:hover:text-brand-300" href="/reports/academic-year">
+                <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><rect x="3.5" y="5" width="17" height="16" rx="2.5"/><path stroke-linecap="round" stroke-linejoin="round" d="M7.5 3v4M16.5 3v4M3.5 10h17m-13 4h2m3 0h2m-7 4h2m3 0h2"/></svg>
+                <span>Laporan tahun ajaran</span>
+            </a>
+            <a class="dashboard-report-tab inline-flex shrink-0 items-center gap-2 border-b-2 border-transparent px-3 py-3 text-sm font-medium text-gray-500 transition-colors hover:border-brand-500 hover:text-brand-600 dark:text-gray-400 dark:hover:text-brand-300" href="/reports/settlements">
+                <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2.5"/><path stroke-linecap="round" stroke-linejoin="round" d="M3 9h18m-5 5h2M9 14l1.5 1.5L14 12"/></svg>
+                <span>Laporan penyelesaian tabungan</span>
+            </a>
+        </nav>
+    </section>
+    {{end}}
 
+    <section class="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-theme-sm dark:border-gray-800 dark:bg-gray-800">
+        <div class="border-b border-gray-200 px-6 py-5 dark:border-gray-800"><h2 class="text-base font-semibold text-gray-800 dark:text-white">Aktivitas Terbaru</h2></div>
+        {{if .Recent}}
+        <div class="overflow-x-auto"><table class="min-w-full divide-y divide-gray-200 text-left text-sm dark:divide-gray-800">
+            <thead><tr class="text-gray-500 dark:text-gray-400"><th class="px-6 py-3">Tanggal</th><th class="px-6 py-3">Jenis</th><th class="px-6 py-3">Nominal</th><th class="px-6 py-3">Status</th></tr></thead>
+            <tbody class="divide-y divide-gray-100 dark:divide-gray-800">{{range .Recent}}<tr><td class="px-6 py-4">{{.Date}}</td><td class="px-6 py-4">{{.Type}}</td><td class="px-6 py-4">{{.Amount}}</td><td class="px-6 py-4">{{.Status}}</td></tr>{{end}}</tbody>
+        </table></div>
+        {{else}}
         <div class="px-6 py-14 text-center">
-            <div class="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-gray-100 text-gray-500 dark:bg-gray-700 dark:text-gray-400">
-                <svg class="h-6 w-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-                    <path stroke-linecap="round" stroke-linejoin="round" d="M12 6v6l4 2m5-2a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z"/>
-                </svg>
-            </div>
-
-            <h3 class="mt-4 text-sm font-medium text-gray-800 dark:text-white">
-                Belum ada aktivitas
-            </h3>
-
-            <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
-                Aktivitas terbaru akan ditampilkan di sini.
-            </p>
+            <h3 class="text-sm font-medium text-gray-800 dark:text-white">{{if .HasActiveYear}}Belum ada transaksi pada tahun ajaran ini{{else}}Belum ada tahun ajaran aktif{{end}}</h3>
+            <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">{{if .HasActiveYear}}Aktivitas transaksi terbaru akan ditampilkan di sini.{{else}}Buka tahun ajaran untuk melihat ringkasan aplikasi.{{end}}</p>
         </div>
-    </div>
+        {{end}}
+    </section>
 </div>
 {{end}}

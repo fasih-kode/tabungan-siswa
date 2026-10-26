@@ -164,3 +164,126 @@ Rujuk kontrak fase untuk status terbarunya sebelum melanjutkan.
 - Implementation commit: `e233883` (`feat(fase-24): administer user accounts`). Catatan lock: [fase-24-implementation-lock.md](contracts/fase-24-implementation-lock.md).
 - Verifikasi sebelum lock lulus: integration tests normal dan `-race`, `go vet ./...`, `go build ./...`, frontend (7/7), Playwright E2E (2/2), tes router root redirect, dan `git diff --check`.
 - E2E menggunakan database tes disposable versi 12 dan menghapus fixture otomatis. Browser server dihentikan setelah tes. Database development ada pada schema v12; produksi tidak diubah.
+
+## FASE 25 — implementasi dashboard & reporting (belum lock) — 2026-10-21
+
+- Kontrak disetujui owner berdasarkan tiga keputusan: memakai satu tahun ajaran aktif saja, setor/tarik dihitung sebagai total nominal transaksi `ACTIVE` (transaksi batal dikecualikan), dan laporan berupa tabel web tanpa ekspor. Tahun `CLOSING` tetap menjadi tahun aktif selama belum `CLOSED`, agar dashboard/laporan tersedia dalam workflow settlement. Rincian ada di [kontrak FASE 25](contracts/fase-25-dashboard-reporting-contract.md).
+- Dashboard placeholder diganti metrik per role dan aktivitas terbaru Siswa. Empat laporan ditambahkan: siswa, kelas, tahun ajaran, dan settlement. Query reporting terpisah menerapkan scope Admin/Wali/Siswa server-side dan menghitung total dari satu tahun saja. Tidak ada migration.
+- Tes repository menguji agregasi ledger aktif serta scope query; tes service mencakup tahun `CLOSING`, keadaan tanpa tahun aktif, dan larangan SISWA membuka direktori laporan.
+- Verifikasi 2026-10-21: `GOCACHE=/tmp/tabungan-siswa-gocache make test-integration` lulus seluruh package; `GOCACHE=/tmp/tabungan-siswa-gocache GOFLAGS=-race make test-integration` lulus; `go build ./...`, `go vet ./...`, `npm run test:instant-search` (7/7), Playwright E2E (2/2), dan `git diff --check` lulus. Playwright mencakup dashboard dan empat route laporan sebelum alur settlement; fixture dibersihkan otomatis dari `tabungan_siswa_fase168_clean_test`.
+- Satu percobaan E2E awal gagal karena tahun `CLOSING` dianggap tidak aktif. Definisi kontrak dan service diperbaiki; E2E berikutnya lulus. Server test berhenti setelah script selesai. DB development/produksi tidak disentuh.
+- Status: acceptance otomatis yang dijalankan lulus. Owner review akhir, implementation lock record, commit, dan push belum dilakukan. Working tree berisi perubahan FASE 25; jangan menyatakan fase terkunci.
+- Langkah berikutnya: review visual halaman laporan/dashboard bersama owner, lakukan owner acceptance, lalu buat implementation lock dan commit setelah instruksi eksplisit.
+
+## Klarifikasi UX FASE 25: Penutupan, histori, dan laporan — 2026-10-21
+
+- Owner menyetujui pemisahan fungsi Admin: **Penutupan Tahun** untuk hambatan kesiapan per Wali/Kelas; **Histori Tabungan** untuk membuka rekening berdasarkan tahun ajaran dan kelas, dengan filter hanya siswa pemilik rekening; **Laporan** sebagai indeks empat laporan. Addendum disimpan di [kontrak FASE 25](contracts/fase-25-dashboard-reporting-contract.md).
+- Menu Admin kini memisahkan Penutupan Tahun dan Histori Tabungan. Overview penutupan menampilkan status “Menghambat penutupan” pada grup dengan rekening belum settlement atau penyerahan belum selesai, beserta rincian yang dapat ditelusuri. Histori Admin memakai penempatan siswa pada tahun terpilih, pilihan kelas, serta filter pemilik rekening. Admin tetap baca-saja.
+- `/reports` menampilkan indeks laporan Siswa, Kelas, Tahun Ajaran, dan Settlement. Filter laporan tetap terbatas pada tahun aktif; cakupan histori tidak mengubah kontrak laporan.
+- Tes yang dijalankan pada sesi ini: `GOCACHE=/tmp/tabungan-siswa-gocache make test-integration` lulus dan guard memverifikasi `tabungan_siswa_fase168_clean_test`; `go vet ./...`, `go build ./...`, tes HTTP termasuk filter histori dan indeks laporan, `npm run test:instant-search` (7/7), Playwright E2E (2/2), dan `git diff --check` lulus. E2E menghapus fixture dan menghentikan server otomatis. Tidak ada migration atau perubahan database development/produksi.
+- Saat percobaan E2E pertama, port 8080 dipakai server lokal lain. Sesuai izin owner sebelumnya, proses `web` PID 43328 dihentikan agar harness menjalankan server aplikasi yang benar; E2E kemudian lulus.
+- FASE 25 belum dikunci dan belum di-commit. Working tree tetap memuat implementasi dashboard/laporan sebelumnya beserta klarifikasi UX ini; pertahankan seluruh perubahan tersebut saat sesi berikutnya.
+
+## Format uang Indonesia pada semua halaman — 2026-10-21
+
+- Atas permintaan owner, formatter bersama `formatRupiah` kini menampilkan prefiks `Rp. ` dan pemisah ribuan titik; contoh `Rp. 10.000`. Semua tampilan saldo, transaksi, settlement/penyerahan, dashboard, dan laporan menggunakannya. Nilai yang dikirim pada form tetap angka integer agar validasi dan pengiriman transaksi tidak berubah; input nominal saat itu masih memakai kontrol angka native.
+- Tes formatter mencakup nol, ribuan, dan jutaan; ekspektasi tes tabungan, transaksi, settlement, serta rendering template diperbarui.
+- Verifikasi: `GOCACHE=/tmp/tabungan-siswa-gocache go test ./internal/http ./internal/app -count=1`, `go build ./...`, Playwright E2E (2/2), dan `git diff --check` lulus. E2E memakai database disposable dan membersihkan fixture.
+- Untuk menjalankan E2E, port 8080 kembali dipakai server `web` PID 48162. Sesuai izin owner sebelumnya, proses itu dihentikan; server yang diluncurkan harness berhenti otomatis setelah E2E. Tidak ada migration atau perubahan database development/produksi.
+- Perubahan tetap di working tree tanpa commit/push, bersama perubahan FASE 25 sebelumnya.
+
+
+## Pemisah ribuan otomatis pada input uang — 2026-10-21
+
+- Input setoran dan penarikan pada halaman detail tabungan serta input koreksi transaksi kini menampilkan pemisah ribuan titik saat diketik (contoh `20.000`). JavaScript mengubah nilai tampilan menjadi input teks dan mengirim angka integer tanpa pemisah melalui input tersembunyi. Bila JavaScript tidak tersedia, kontrol angka native tetap dipakai.
+- Formatter mempertahankan posisi caret saat mengetik/mengedit, menerima input tempel bertanda baca, dan membatasi input sampai 13 digit sesuai batas transaksi yang sudah berlaku. Tidak ada perubahan pada aturan nominal atau validasi server.
+- Tes baru: unit JS untuk pengelompokan, paste, dan batas digit; Playwright untuk format tampilan dan payload integer; tes rendering template memastikan halaman memuat script dan menandai input terkait.
+- Verifikasi sesi: `npm run test:rupiah-input` lulus (3/3); `GOCACHE=/tmp/tabungan-siswa-gocache go test ./internal/http ./internal/app -count=1` lulus; Playwright E2E lulus (3/3); `git diff --check` lulus. E2E memakai database disposable dan membersihkan fixture.
+- Perubahan tetap di working tree bersama implementasi FASE 25; belum di-commit atau di-push.
+
+## Permintaan transaksi terlewat sebelum siswa pindah — 2026-10-21
+
+- Owner menyetujui alur Wali mengajukan rincian transaksi yang benar-benar terjadi sebelum pindah, Admin menyetujui/menolak dengan alasan, lalu Wali mencatat rincian yang disetujui satu kali. Batas tahap ini: rekening belum diselesaikan dan tahun belum `CLOSED`; saldo keluar tetap lewat settlement. Kebijakan: [amendment permintaan transaksi terlewat](contracts/late-transaction-request-amendment.md).
+- Ditambahkan migration 13 untuk `students.leaving_date`, tabel permintaan dengan state/approval/audit, dan `transactions.late_request_id` yang unik. Tanggal perpindahan baru disimpan saat Admin menandai siswa `LEFT`; data `LEFT` lama dibiarkan tanpa tanggal (tidak ditebak dari riwayat kelas), sehingga belum dapat mengajukan sampai tanggal terverifikasi tersedia.
+- FE: Wali mengajukan di detail buku tabungan, Admin meninjau di menu **Transaksi Terlewat**, Wali mengeksekusi permintaan approved dari inbox yang sama. Backend mengunci tahun/rekening/siswa/permintaan, memeriksa role/scope/status/tanggal/balance kronologis, merekam audit, dan menghalangi settlement rekening serta penutupan tahun saat ada request `PENDING`/`APPROVED`.
+- Migration 13 diterapkan pada database disposable `tabungan_siswa_fase168_clean_test` setelah memverifikasi schema 12 bersih, lalu diverifikasi schema 13 bersih. Setelah memastikan `.env` menunjuk ke `tabungan_siswa_dev` versi 12 bersih, migration additif yang sama diterapkan di sana dan diverifikasi versi 13 bersih. Produksi tidak disentuh. Baris siswa `LEFT` lama tetap memiliki `leaving_date=NULL` agar tanggal tidak ditebak; alur request menolaknya sampai tanggal terverifikasi tersedia.
+- Verifikasi terakhir: `GOCACHE=/tmp/tabungan-siswa-gocache make test-integration` lulus semua package termasuk PostgreSQL dan lifecycle request; target diverifikasi `tabungan_siswa_fase168_clean_test`. `GOCACHE=/tmp/tabungan-siswa-gocache go build ./...`, `GOCACHE=/tmp/tabungan-siswa-gocache go vet ./...`, `npm run test:instant-search` (7/7), `npm run test:rupiah-input` (3/3), E2E Playwright (3/3), dan `git diff --check` lulus. Browser E2E memakai DB disposable dan membersihkan fixture otomatis.
+- Referensi bukti yang sama kini ditolak untuk request PENDING, APPROVED, maupun COMPLETED; request REJECTED dapat diajukan ulang. Tes integrasi memastikan bukti yang sudah selesai tidak dapat digunakan kembali.
+- Working tree tetap mencakup FASE 25 dan perbaikan sebelumnya yang belum di-commit. Jangan menghapus atau meng-commit perubahan tersebut tanpa instruksi.
+
+## Petunjuk Wali saat penutupan belum dimulai — 2026-10-21
+
+- Halaman Proses Tutup Buku Tabungan kini menampilkan petunjuk untuk Wali ketika tahun yang dipilih masih `OPEN`: minta Admin membuka Tahun Ajaran, memilih tahun terkait, dan klik **Mulai Penutupan**; setelah status `CLOSING`, Wali kembali dan tautan settlement tersedia per rekening.
+- Petunjuk ini tidak mengubah hak akses atau alur settlement. Tes rendering template memverifikasi pesan untuk Wali.
+- Verifikasi lulus: `GOCACHE=/tmp/tabungan-siswa-gocache go test ./internal/app -count=1` dan `git diff --check`.
+
+## Settlement tabungan siswa pindah sekolah melalui web — 2026-10-21
+
+- Owner menyetujui amendment alur: Admin mencatat siswa `LEFT`; Wali menangani rekening melalui menu Tabungan, memeriksa buku transaksi dan pratinjau saldo, lalu mengonfirmasi settlement. Settlement positif memerlukan konfirmasi penyerahan; saldo nol tidak memerlukan langkah penyerahan. Admin memantau hasilnya dari Penutupan Tahun. Detail keputusan ada di [amendment](contracts/student-leaving-settlement-ui-amendment.md).
+- Implementasi menambahkan pratinjau khusus settlement pindah saat tahun `OPEN` atau `CLOSING`, konfirmasi saldo yang diperiksa, deteksi preview kedaluwarsa, tautan “Perlu penyelesaian” pada direktori/detail Tabungan Wali, dan pemberitahuan setelah Admin mencatat siswa pindah. Settlement dan penyerahan ditolak pada tahun `CLOSED`; tidak ada migration.
+- Tes HTTP/template dan integrasi mencakup pratinjau/konfirmasi saat tahun `OPEN`, handover, serta saldo berubah antara preview dan konfirmasi. Verifikasi yang dijalankan: `GOCACHE=/tmp/tabungan-siswa-gocache go test ./internal/http ./internal/app -count=1`, `GOCACHE=/tmp/tabungan-siswa-gocache make test-integration`, `GOCACHE=/tmp/tabungan-siswa-gocache go build ./...`, `GOCACHE=/tmp/tabungan-siswa-gocache go vet ./...`, dan `git diff --check`; semuanya lulus. `make test-integration` memverifikasi database disposable `tabungan_siswa_fase168_clean_test`. Browser E2E tidak dijalankan.
+- Working tree juga memuat perubahan FASE 25, format uang/input, dan petunjuk penutupan dari pekerjaan sebelumnya. Semua perubahan tersebut dipertahankan. FASE 25 belum dikunci; tidak ada commit/push pada sesi ini.
+- Penyelarasan akses yang disetujui owner setelah audit: backend kini membatasi setoran/penarikan ke Wali dan mengunci/memeriksa status siswa `ACTIVE`; Wali masih dapat mengoreksi transaksi lama sesuai FASE 22 sebelum settlement. Jalur settlement `STUDENT_LEAVING` khusus untuk `LEFT`; `GRADUATED` diarahkan ke settlement penutupan tahun reguler. Admin tetap baca-saja.
+- Antarmuka menyembunyikan form keuangan Admin, menghentikan form setoran/penarikan untuk siswa nonaktif, memberi petunjuk settlement khusus `LEFT`/`GRADUATED`, dan tidak menautkan settlement pindah untuk tahun `CLOSED`. HTTP, service, integrasi PostgreSQL, dan template mencakup penolakan Admin, siswa `LEFT`/`GRADUATED`, tahun ditutup, serta alur settlement `LEFT`.
+- Verifikasi setelah penyelarasan: `GOCACHE=/tmp/tabungan-siswa-gocache make test-integration`, `GOCACHE=/tmp/tabungan-siswa-gocache go test ./internal/http ./internal/app -count=1`, `GOCACHE=/tmp/tabungan-siswa-gocache go build ./...`, `GOCACHE=/tmp/tabungan-siswa-gocache go vet ./...`, dan `git diff --check` lulus. Browser E2E tidak dijalankan; database development/produksi tidak disentuh.
+
+## Pelokalan antarmuka ke Bahasa Indonesia — 2026-10-24
+
+- Istilah yang dilihat pengguna diseragamkan: **Dashboard** menjadi **Ringkasan**, **Username** menjadi **Nama pengguna**, **Password** menjadi **Kata sandi**, **Transfer Kelas** menjadi **Pindah Kelas**, dan **Settlement** menjadi **Penyelesaian Tabungan**. Nilai status seperti `OPEN`, `CLOSING`, `PENDING`, `APPROVED`, `SETTLED`, dan `COMPLETED` ditampilkan dengan padanan Indonesia; nilai internal, route, dan kontrak data tidak berubah.
+- Label rekap penutupan membedakan rekening yang selesai diselesaikan dari penyerahan uang yang selesai. Pesan HTTP umum dan token/akses kini memakai pesan Indonesia.
+- Pemeriksaan teks template untuk istilah Inggris umum tidak menemukan istilah tersebut sebagai teks yang terlihat; kemunculan tersisa berada pada nama route, atribut form, dan kode internal.
+- Verifikasi: `GOCACHE=/tmp/tabungan-siswa-gocache go test ./internal/http ./internal/app -count=1`, `GOCACHE=/tmp/tabungan-siswa-gocache go build ./...`, `GOCACHE=/tmp/tabungan-siswa-gocache go vet ./...`, `npm run test:instant-search` (7/7), `npm run test:rupiah-input` (3/3), `PLAYWRIGHT_BROWSERS_PATH=/tmp/tabungan-siswa-playwright-browsers npm run test:e2e` (3/3), dan `git diff --check` lulus. E2E membuat dan membersihkan fixture di database disposable; database development dan produksi tidak disentuh. Tidak ada migration.
+- Perubahan berada di working tree bersama pekerjaan sebelumnya yang belum di-commit; tidak ada commit atau push.
+
+## Identitas visual dan favicon — 2026-10-24
+
+- Ikon merek SVG baru menggambarkan buku tabungan terbuka dengan koin bertanda Rp. Ikon dipakai pada navigasi samping dan di bagian atas halaman masuk; favicon SVG dipasang pada seluruh 16 template halaman.
+- Tes statis memeriksa bahwa kedua SVG dilayani sebagai `image/svg+xml`. Tes browser memeriksa logo dan favicon pada halaman masuk.
+- Verifikasi: `GOCACHE=/tmp/tabungan-siswa-gocache go test ./internal/http ./internal/app -count=1`, `GOCACHE=/tmp/tabungan-siswa-gocache go build ./...`, `GOCACHE=/tmp/tabungan-siswa-gocache go vet ./...`, E2E Playwright (3/3), dan `git diff --check` lulus. E2E membuat dan membersihkan fixture di database disposable; database development/produksi dan migration tidak disentuh.
+- Port 8080 sebelumnya dipakai oleh `make dev`; sesuai izin owner terdahulu untuk menghentikan server lokal saat tes, proses tersebut dihentikan. Server E2E berhenti otomatis setelah tes. Tidak ada commit/push.
+
+## Kartu ikon pada Ringkasan — 2026-10-24
+
+- Kartu metrik Ringkasan mengikuti pola Card with Icon TailAdmin: kotak ikon sederhana di atas label dan nilai, grid responsif, serta dukungan tema gelap. Setiap metrik memakai ikon relevan. Tidak ditambahkan indikator naik/turun karena data perbandingan periode belum tersedia.
+- Pemetaan ikon disimpan bersama view model metrik; tes unit memeriksa ikon untuk peran Admin dan Siswa. Tes E2E memastikan enam kartu metrik dan ikonnya tampil di Ringkasan Admin.
+- Verifikasi: `GOCACHE=/tmp/tabungan-siswa-gocache go test ./internal/http ./internal/app -count=1`, `GOCACHE=/tmp/tabungan-siswa-gocache go build ./...`, `GOCACHE=/tmp/tabungan-siswa-gocache go vet ./...`, E2E Playwright (3/3), dan `git diff --check` lulus. E2E membersihkan fixture database disposable; database development/produksi tidak disentuh.
+- Port 8080 dipakai `make dev`; proses dihentikan sesuai izin owner sebelumnya agar E2E dapat dijalankan. Server tes berhenti otomatis. Tidak ada migration atau commit/push.
+
+## Tab Laporan pada Ringkasan — 2026-10-24
+
+- Empat tautan Laporan tahun aktif sekarang disusun sebagai navigasi tab bergaris bawah dengan ikon (siswa, kelas, kalender, penyelesaian tabungan), mengikuti referensi Tabs with underline and icon TailAdmin. Tautan tetap menuju halaman laporan terpisah dan tetap dapat dibuka langsung.
+- E2E memastikan navigasi memiliki empat tautan dan empat ikon. Verifikasi: `GOCACHE=/tmp/tabungan-siswa-gocache go test ./internal/http ./internal/app -count=1`, `GOCACHE=/tmp/tabungan-siswa-gocache go build ./...`, `GOCACHE=/tmp/tabungan-siswa-gocache go vet ./...`, E2E Playwright (3/3), dan `git diff --check` lulus. E2E membersihkan fixture database disposable; database development/produksi tidak disentuh.
+- Port 8080 dipakai `make dev`; proses dihentikan sesuai izin owner sebelumnya agar E2E dapat dijalankan. Server tes berhenti otomatis. Tidak ada migration atau commit/push.
+
+## Kartu ikon pada indeks Laporan — 2026-10-24
+
+- Empat pilihan laporan pada `/reports` kini memakai kartu Card with Icon: ikon untuk siswa, kelas, tahun ajaran, dan penyelesaian tabungan; judul, deskripsi, dan tujuan tiap tautan dipertahankan. Referensi visual: [TailAdmin Cards](https://demo.tailadmin.com/cards).
+- Tes HTTP memeriksa pemetaan ikon dan tujuan link; tes template serta E2E memastikan empat kartu dan ikon dirender. Verifikasi: `GOCACHE=/tmp/tabungan-siswa-gocache go test ./internal/http ./internal/app -count=1`, `GOCACHE=/tmp/tabungan-siswa-gocache go build ./...`, `GOCACHE=/tmp/tabungan-siswa-gocache go vet ./...`, E2E Playwright (3/3), dan `git diff --check` lulus. E2E membersihkan fixture database disposable; database development/produksi tidak disentuh.
+- Port 8080 dipakai `make dev`; proses dihentikan sesuai izin owner sebelumnya agar E2E dapat berjalan. Server E2E berhenti otomatis. Tidak ada migration atau commit/push.
+
+## Ikon di depan tombol di seluruh aplikasi — 2026-10-24
+
+- Atas klarifikasi owner, pola tombol berikon diterapkan ke seluruh halaman, bukan hanya indeks Laporan. Partial bersama `button-leading-icon` menyediakan ikon SVG konsisten untuk aksi tambah, cari/tampilkan, simpan, batal/tolak, impor, kata sandi, salin, keluar, dan konfirmasi. Tombol teks dan tautan navigasi yang memakai gaya tombol kini menampilkan ikon di depan; tombol tutup dialog yang berupa ikon saja tetap dipertahankan. Pagination memakai ikon di depan dan label Bahasa Indonesia.
+- Variasi tindakan yang sudah ada (utama, sekunder, dan berbahaya) serta perilaku/endpoint tidak berubah. Query cache stylesheet diperbarui agar browser memuat CSS yang baru.
+- Tes rendering aplikasi lulus; tes Playwright memverifikasi ikon tombol Masuk dan tiga aksi pada baris pengguna. Verifikasi akhir: `GOCACHE=/tmp/tabungan-siswa-gocache go test ./internal/app -count=1`, `npm run test:instant-search` (7/7), `npm run test:rupiah-input` (3/3), `npm run test:e2e` (3/3), `npm run css:build`, dan `git diff --check` lulus. Percobaan E2E pertama gagal sebelum browser diluncurkan karena Chromium belum terpasang; setelah menjalankan `npm run test:e2e:install`, E2E lulus. Fixture dibersihkan dari database disposable secara otomatis.
+- Tidak ada migration, perubahan database development/produksi, commit, atau push. Working tree tetap memuat perubahan terdahulu yang belum di-commit; pertahankan semuanya.
+
+## Menu aksi titik tiga pada daftar Pengguna — 2026-10-24
+
+- Kolom Aksi pada daftar Pengguna kini memakai pemicu titik tiga horizontal; menu menampung penyuntingan nama pengguna, aktivasi/nonaktivasi, dan reset kata sandi. Menu memakai elemen `<details>/<summary>` agar dapat dibuka dengan keyboard; klik di luar, Escape, dan memilih aksi menutupnya. Posisi panel dihitung terhadap viewport agar tidak terpotong oleh pembungkus tabel. Aksi, CSRF, konfirmasi, serta pencabutan sesi tetap menggunakan endpoint yang sudah ada.
+- CSS menu dan mode gelap ditambahkan ke stylesheet bersama, cache CSS/JS diperbarui, dan E2E memeriksa pembukaan menu, tiga pilihan, Escape, serta keberhasilan alur ubah/nonaktifkan/aktifkan/reset akun.
+- Verifikasi akhir: `npm run css:build`, `node --check static/js/app.js`, `GOCACHE=/tmp/tabungan-siswa-gocache go test ./internal/app -count=1`, `npm run test:e2e` (3/3), dan `git diff --check` lulus. Percobaan E2E awal mendeteksi server `make dev` aktif di port 8080; sesuai izin owner sebelumnya, proses itu dihentikan. E2E kemudian lulus dan membersihkan fixture database disposable otomatis.
+- Tidak ada perubahan aturan bisnis, migration, database development/produksi, commit, atau push. Working tree tetap memuat pekerjaan terdahulu yang belum di-commit.
+
+## Perapian daftar Pengguna dan ikon halaman — 2026-10-24
+
+- Aksi **Ubah nama pengguna** pada menu titik tiga kini membuka modal tersendiri; field edit tidak lagi memenuhi dropdown. Modal memiliki label aksesibel, nilai awal, token CSRF, serta tombol Batal/Simpan. Aksi aktivasi dan reset tetap berada pada menu dengan konfirmasi yang sama.
+- Screenshot login dan Ringkasan menunjukkan ikon Masuk/Keluar membesar dan tata letak tab Laporan tidak mengikuti gaya terbaru. Akar masalahnya adalah beberapa halaman (layout masuk, Ringkasan, dan Laporan) memakai `app.css` tanpa versi cache, sehingga browser dapat menggabungkan HTML baru dengan stylesheet lama. Semua referensi CSS template diberi versi cache baru, dan SVG ikon tombol diberi atribut ukuran eksplisit agar tetap kecil walau utility CSS belum termuat.
+- Tes template menguji pemicu modal dan isi edit; E2E menguji ukuran ikon Masuk/Keluar, pembukaan modal, perubahan nama, aktivasi/nonaktivasi, reset kata sandi, dan penutupan menu via Escape. Verifikasi: `npm run css:build`, `node --check static/js/app.js`, `GOCACHE=/tmp/tabungan-siswa-gocache go test ./internal/app -count=1`, `npm run test:e2e` (3/3), dan `git diff --check` lulus. E2E membersihkan fixture database disposable. Port 8080 digunakan `make dev`; proses server dihentikan sesuai izin owner sebelumnya agar E2E memakai build terkini.
+- Tidak ada perubahan aturan bisnis, migration, database development/produksi, commit, atau push. Perubahan terdahulu di working tree tetap dipertahankan.
+
+## Perapian tampilan tabel Pengguna — 2026-10-24
+
+- Pada screenshot terbaru, kartu filter dan tabel tampak menyatu karena tidak ada jarak vertikal; label kolom Aksi tidak sejajar dengan tombol titik tiga; baris yang longgar mendorong pagination melewati area bawah layar. Daftar kini memberi jarak antar kartu, meratakan label Aksi ke kanan, dan mengurangi padding vertikal pada baris agar tabel lebih ringkas.
+- Verifikasi: `npm run css:build`, `GOCACHE=/tmp/tabungan-siswa-gocache go test ./internal/app -count=1`, dan `git diff --check` lulus. E2E tidak diulang untuk perubahan tata letak ini.
+- Perubahan hanya memengaruhi presentasi daftar Pengguna; aturan bisnis, database, dan endpoint tidak berubah. Tidak ada commit/push; perubahan lain di working tree dipertahankan.

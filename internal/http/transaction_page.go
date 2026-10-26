@@ -85,17 +85,17 @@ func (h *TransactionPageHandler) List(w http.ResponseWriter, r *http.Request) {
 	}
 	actor, ok := service.ActorFromContext(r.Context())
 	if !ok {
-		http.Error(w, http.StatusText(http.StatusUnauthorized), http.StatusUnauthorized)
+		http.Error(w, localizedStatusMessage(http.StatusUnauthorized), http.StatusUnauthorized)
 		return
 	}
 	accountID, err := parseTransactionPathUUID(r, "account_id")
 	if err != nil {
-		http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
+		http.Error(w, localizedStatusMessage(http.StatusBadRequest), http.StatusBadRequest)
 		return
 	}
 	page, err := parseTransactionPage(r)
 	if err != nil {
-		http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
+		http.Error(w, localizedStatusMessage(http.StatusBadRequest), http.StatusBadRequest)
 		return
 	}
 	account, student, year, err := h.loadAccountContext(r, actor, accountID)
@@ -113,12 +113,12 @@ func (h *TransactionPageHandler) List(w http.ResponseWriter, r *http.Request) {
 	}
 	csrf, ok := middleware.CSRFToken(r)
 	if !ok {
-		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		http.Error(w, localizedStatusMessage(http.StatusInternalServerError), http.StatusInternalServerError)
 		return
 	}
 	vm := h.baseVM(actor)
 	vm.AccountID, vm.StudentName, vm.NIS = accountID.String(), student.Name, stringValue(student.NIS)
-	vm.YearName, vm.AccountStatus, vm.CSRFToken = year.Name, string(account.Status), csrf
+	vm.YearName, vm.AccountStatus, vm.CSRFToken = year.Name, interfaceStatusLabel(string(account.Status)), csrf
 	vm.AccountBalance = formatRupiah(out.Balance)
 	vm.Page, vm.Limit = page, tablePageSize
 	vm.Rows = make([]TransactionPageRow, 0, len(out.Transactions))
@@ -129,7 +129,7 @@ func (h *TransactionPageHandler) List(w http.ResponseWriter, r *http.Request) {
 		vm.Rows = append(vm.Rows, TransactionPageRow{
 			ID: tx.ID.String(), Date: tx.TransactionDate.Format("2006-01-02"),
 			Type: transactionTypeLabel(tx.Type), Amount: formatRupiah(tx.Amount),
-			Balance: formatTransactionBalance(out.RunningBalances[tx.ID], tx.Status), Status: string(tx.Status),
+			Balance: formatTransactionBalance(out.RunningBalances[tx.ID], tx.Status), Status: interfaceStatusLabel(string(tx.Status)),
 		})
 	}
 	hasNext := page*tablePageSize < out.Total
@@ -147,12 +147,12 @@ func (h *TransactionPageHandler) Detail(w http.ResponseWriter, r *http.Request) 
 	}
 	actor, ok := service.ActorFromContext(r.Context())
 	if !ok {
-		http.Error(w, http.StatusText(http.StatusUnauthorized), http.StatusUnauthorized)
+		http.Error(w, localizedStatusMessage(http.StatusUnauthorized), http.StatusUnauthorized)
 		return
 	}
 	transactionID, err := parseTransactionPathUUID(r, "transaction_id")
 	if err != nil {
-		http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
+		http.Error(w, localizedStatusMessage(http.StatusBadRequest), http.StatusBadRequest)
 		return
 	}
 	out, err := h.transactions.Get(r.Context(), service.GetTransactionInput{Actor: actor, TransactionID: transactionID})
@@ -161,7 +161,7 @@ func (h *TransactionPageHandler) Detail(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	if out.Transaction == nil {
-		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		http.Error(w, localizedStatusMessage(http.StatusInternalServerError), http.StatusInternalServerError)
 		return
 	}
 	tx := out.Transaction
@@ -177,15 +177,15 @@ func (h *TransactionPageHandler) Detail(w http.ResponseWriter, r *http.Request) 
 	}
 	csrf, ok := middleware.CSRFToken(r)
 	if !ok {
-		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		http.Error(w, localizedStatusMessage(http.StatusInternalServerError), http.StatusInternalServerError)
 		return
 	}
 	vm := h.baseVM(actor)
 	vm.IsDetail, vm.TransactionID, vm.AccountID = true, tx.ID.String(), account.ID.String()
 	vm.StudentName, vm.NIS, vm.YearName = student.Name, stringValue(student.NIS), year.Name
-	vm.AccountStatus, vm.AccountBalance, vm.CSRFToken = string(account.Status), formatRupiah(balance.Balance), csrf
+	vm.AccountStatus, vm.AccountBalance, vm.CSRFToken = interfaceStatusLabel(string(account.Status)), formatRupiah(balance.Balance), csrf
 	vm.TransactionDate, vm.TransactionType = tx.TransactionDate.Format("2006-01-02"), transactionTypeLabel(tx.Type)
-	vm.TransactionStatus, vm.AmountValue = string(tx.Status), strconv.FormatInt(int64(tx.Amount), 10)
+	vm.TransactionStatus, vm.AmountValue = interfaceStatusLabel(string(tx.Status)), strconv.FormatInt(int64(tx.Amount), 10)
 	vm.Amount, vm.RecordedAt = formatRupiah(tx.Amount), tx.CreatedAt.Format(time.RFC3339)
 	vm.CanAudit = h.audit != nil && (actor.Role == domain.RoleAdmin || actor.Role == domain.RoleWaliKelas)
 	if vm.CanAudit {
@@ -253,7 +253,7 @@ func (h *TransactionPageHandler) correct(w http.ResponseWriter, r *http.Request,
 	}
 	actor, ok := service.ActorFromContext(r.Context())
 	if !ok {
-		http.Error(w, http.StatusText(http.StatusUnauthorized), http.StatusUnauthorized)
+		http.Error(w, localizedStatusMessage(http.StatusUnauthorized), http.StatusUnauthorized)
 		return
 	}
 	if err := service.RequireRole(actor, domain.RoleWaliKelas); err != nil {
@@ -261,12 +261,12 @@ func (h *TransactionPageHandler) correct(w http.ResponseWriter, r *http.Request,
 		return
 	}
 	if err := parseCorrectionTransactionForm(w, r); err != nil {
-		http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
+		http.Error(w, localizedStatusMessage(http.StatusBadRequest), http.StatusBadRequest)
 		return
 	}
 	id, err := parseTransactionPathUUID(r, "transaction_id")
 	if err != nil {
-		http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
+		http.Error(w, localizedStatusMessage(http.StatusBadRequest), http.StatusBadRequest)
 		return
 	}
 	reason := r.PostForm.Get("reason")
@@ -276,7 +276,7 @@ func (h *TransactionPageHandler) correct(w http.ResponseWriter, r *http.Request,
 		amount, amountErr := strconv.ParseInt(r.PostForm.Get("amount"), 10, 64)
 		date, dateErr := time.Parse("2006-01-02", r.PostForm.Get("transaction_date"))
 		if amountErr != nil || amount <= 0 || amount > int64(domain.MaxMoney) || dateErr != nil {
-			http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
+			http.Error(w, localizedStatusMessage(http.StatusBadRequest), http.StatusBadRequest)
 			return
 		}
 		_, err = h.transactions.Edit(r.Context(), service.EditTransactionInput{Actor: actor, TransactionID: id, Amount: domain.Money(amount), TransactionDate: date, Reason: reason})
@@ -294,7 +294,7 @@ func (h *TransactionPageHandler) correct(w http.ResponseWriter, r *http.Request,
 
 func writeCorrectionError(w http.ResponseWriter, err error) {
 	status := httperror.Status(err)
-	message := http.StatusText(status)
+	message := localizedStatusMessage(status)
 	switch {
 	case errors.Is(err, service.ErrTransactionDateOutOfAcademicYear):
 		message = "Tanggal transaksi harus berada dalam periode tahun ajaran."
@@ -305,7 +305,7 @@ func writeCorrectionError(w http.ResponseWriter, err error) {
 	case errors.Is(err, domain.ErrAlreadyCancelled):
 		message = "Transaksi ini sudah dibatalkan."
 	case errors.Is(err, repository.ErrNotFound):
-		message = http.StatusText(http.StatusNotFound)
+		message = localizedStatusMessage(http.StatusNotFound)
 	}
 	http.Error(w, message, status)
 }
@@ -359,26 +359,26 @@ func (h *TransactionPageHandler) record(w http.ResponseWriter, r *http.Request, 
 	}
 	actor, ok := service.ActorFromContext(r.Context())
 	if !ok {
-		http.Error(w, http.StatusText(http.StatusUnauthorized), http.StatusUnauthorized)
+		http.Error(w, localizedStatusMessage(http.StatusUnauthorized), http.StatusUnauthorized)
 		return
 	}
-	if err := service.RequireRole(actor, domain.RoleAdmin, domain.RoleWaliKelas); err != nil {
+	if err := service.RequireRole(actor, domain.RoleWaliKelas); err != nil {
 		httperror.Write(w, err)
 		return
 	}
 	if err := parseTransactionForm(w, r); err != nil {
-		http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
+		http.Error(w, localizedStatusMessage(http.StatusBadRequest), http.StatusBadRequest)
 		return
 	}
 	accountID, err := parseTransactionPathUUID(r, "account_id")
 	if err != nil {
-		http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
+		http.Error(w, localizedStatusMessage(http.StatusBadRequest), http.StatusBadRequest)
 		return
 	}
 	amount, errAmount := strconv.ParseInt(r.PostForm.Get("amount"), 10, 64)
 	date, errDate := time.Parse("2006-01-02", r.PostForm.Get("transaction_date"))
 	if errAmount != nil || amount <= 0 || amount > int64(domain.MaxMoney) || errDate != nil {
-		http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
+		http.Error(w, localizedStatusMessage(http.StatusBadRequest), http.StatusBadRequest)
 		return
 	}
 	if deposit {
@@ -439,7 +439,7 @@ func (h *TransactionPageHandler) baseVM(actor service.Actor) TransactionPageView
 
 func (h *TransactionPageHandler) render(w http.ResponseWriter, vm TransactionPageViewModel) {
 	if err := h.templates.ExecuteTemplate(w, "transactions", vm); err != nil {
-		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		http.Error(w, localizedStatusMessage(http.StatusInternalServerError), http.StatusInternalServerError)
 	}
 }
 
@@ -485,15 +485,15 @@ func validateTransactionForm(next http.Handler, allowReason bool) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		actor, ok := service.ActorFromContext(r.Context())
 		if !ok {
-			http.Error(w, http.StatusText(http.StatusUnauthorized), http.StatusUnauthorized)
+			http.Error(w, localizedStatusMessage(http.StatusUnauthorized), http.StatusUnauthorized)
 			return
 		}
-		if err := service.RequireRole(actor, domain.RoleAdmin, domain.RoleWaliKelas); err != nil {
+		if err := service.RequireRole(actor, domain.RoleWaliKelas); err != nil {
 			httperror.Write(w, err)
 			return
 		}
 		if err := parseTransactionFormFields(w, r, allowReason); err != nil {
-			http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
+			http.Error(w, localizedStatusMessage(http.StatusBadRequest), http.StatusBadRequest)
 			return
 		}
 		next.ServeHTTP(w, r)

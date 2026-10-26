@@ -618,6 +618,33 @@ layer(base);
 .dark .pagination-number, .dark .pagination-ellipsis { color: #d0d5dd; }
 .dark .pagination-number:hover, .dark .pagination-button:hover:not(:disabled) { background: #344054; }
 .dark .pagination-current, .dark .pagination-current:hover { background: rgb(70 95 255 / 15%); color: #9cb9ff; }
+
+/* Compact per-row actions, styled like the TailAdmin table overflow menu. */
+.row-action-menu { display: inline-block; }
+.row-action-menu > summary { list-style: none; }
+.row-action-menu > summary::-webkit-details-marker { display: none; }
+.row-action-trigger { display: inline-flex; width: 2.25rem; height: 2.25rem; align-items: center; justify-content: center; border: 1px solid transparent; border-radius: .5rem; color: #667085; cursor: pointer; }
+.row-action-trigger:hover, .row-action-menu[open] > .row-action-trigger { border-color: #e4e7ec; background: #f9fafb; color: #344054; }
+.row-action-trigger:focus-visible { outline: 2px solid #465fff; outline-offset: 2px; }
+.row-action-trigger svg { width: 1.25rem; height: 1.25rem; }
+.row-action-panel { position: fixed; z-index: 100; display: grid; width: 14rem; gap: .25rem; padding: .375rem; border: 1px solid #e4e7ec; border-radius: .75rem; background: #fff; box-shadow: 0 8px 24px rgb(16 24 40 / 12%); }
+.row-action-edit-form { display: grid; gap: .375rem; padding: .5rem; border-bottom: 1px solid #e4e7ec; }
+.row-action-edit-form label { color: #475467; font-size: .75rem; font-weight: 500; }
+.row-action-edit-form .form-input { min-width: 0; height: 2.25rem; font-size: .8125rem; }
+.row-action-item { display: flex; width: 100%; min-height: 2.25rem; align-items: center; gap: .625rem; border-radius: .5rem; padding: .5rem .625rem; color: #344054; font-size: .8125rem; text-align: left; }
+.row-action-item:hover, .row-action-item:focus-visible { background: #f2f4f7; outline: none; }
+.row-action-item svg { width: 1rem; height: 1rem; flex: none; }
+.row-action-danger { color: #b42318; }
+.row-action-danger:hover, .row-action-danger:focus-visible { background: #fef3f2; }
+.dark .row-action-trigger { color: #98a2b3; }
+.dark .row-action-trigger:hover, .dark .row-action-menu[open] > .row-action-trigger { border-color: #344054; background: #1d2939; color: #f2f4f7; }
+.dark .row-action-panel { border-color: #344054; background: #101828; box-shadow: 0 8px 24px rgb(0 0 0 / 35%); }
+.dark .row-action-edit-form { border-color: #344054; }
+.dark .row-action-edit-form label { color: #d0d5dd; }
+.dark .row-action-item { color: #d0d5dd; }
+.dark .row-action-item:hover, .dark .row-action-item:focus-visible { background: #1d2939; }
+.dark .row-action-danger { color: #fda29b; }
+.dark .row-action-danger:hover, .dark .row-action-danger:focus-visible { background: rgb(217 45 32 / 12%); }
 @media (max-width: 767px) {
  .table-pagination { grid-template-columns: 1fr 1fr; gap: .75rem; padding: 1rem; }
  .pagination-numbers { grid-column: 1 / -1; grid-row: 2; flex-wrap: wrap; }

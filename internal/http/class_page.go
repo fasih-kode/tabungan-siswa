@@ -61,12 +61,12 @@ func (h *ClassPageHandler) List(w http.ResponseWriter, r *http.Request) {
 	}
 	actor, ok := service.ActorFromContext(r.Context())
 	if !ok {
-		http.Error(w, http.StatusText(http.StatusUnauthorized), http.StatusUnauthorized)
+		http.Error(w, localizedStatusMessage(http.StatusUnauthorized), http.StatusUnauthorized)
 		return
 	}
 	page, limit, err := parsePageOptions(r)
 	if err != nil {
-		http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
+		http.Error(w, localizedStatusMessage(http.StatusBadRequest), http.StatusBadRequest)
 		return
 	}
 	years, err := h.academicYears.List(r.Context(), service.ListAcademicYearsInput{Actor: actor, Options: service.ListOptions{Limit: maxAcademicYearPageSize}})
@@ -77,7 +77,7 @@ func (h *ClassPageHandler) List(w http.ResponseWriter, r *http.Request) {
 	yearOptions := make([]ClassAcademicYearOption, 0, len(years.AcademicYears))
 	for _, year := range years.AcademicYears {
 		if year != nil {
-			yearOptions = append(yearOptions, ClassAcademicYearOption{ID: year.ID.String(), Name: year.Name, Status: string(year.Status)})
+			yearOptions = append(yearOptions, ClassAcademicYearOption{ID: year.ID.String(), Name: year.Name, Status: interfaceStatusLabel(string(year.Status))})
 		}
 	}
 	yearID := strings.TrimSpace(r.URL.Query().Get("academic_year_id"))
@@ -95,13 +95,13 @@ func (h *ClassPageHandler) List(w http.ResponseWriter, r *http.Request) {
 	if token, ok := middleware.CSRFToken(r); ok {
 		vm.CSRFToken = token
 	} else {
-		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		http.Error(w, localizedStatusMessage(http.StatusInternalServerError), http.StatusInternalServerError)
 		return
 	}
 	if yearID != "" {
 		parsedID, parseErr := uuid.Parse(yearID)
 		if parseErr != nil || parsedID == uuid.Nil {
-			http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
+			http.Error(w, localizedStatusMessage(http.StatusBadRequest), http.StatusBadRequest)
 			return
 		}
 		output, listErr := h.classes.List(r.Context(), service.ListClassesInput{Actor: actor, AcademicYearID: parsedID, Options: service.ListOptions{Limit: limit + 1, Offset: (page - 1) * limit, IncludeTotal: true}})
@@ -125,7 +125,7 @@ func (h *ClassPageHandler) List(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := h.render(w, vm); err != nil {
-		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		http.Error(w, localizedStatusMessage(http.StatusInternalServerError), http.StatusInternalServerError)
 	}
 }
 
@@ -137,11 +137,11 @@ func (h *ClassPageHandler) Create(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-store")
 	actor, ok := service.ActorFromContext(r.Context())
 	if !ok {
-		http.Error(w, http.StatusText(http.StatusUnauthorized), http.StatusUnauthorized)
+		http.Error(w, localizedStatusMessage(http.StatusUnauthorized), http.StatusUnauthorized)
 		return
 	}
 	if err := parseClassForm(w, r); err != nil {
-		http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
+		http.Error(w, localizedStatusMessage(http.StatusBadRequest), http.StatusBadRequest)
 		return
 	}
 	name, level, err := parseClassValues(r)
@@ -157,7 +157,7 @@ func (h *ClassPageHandler) Create(w http.ResponseWriter, r *http.Request) {
 	}
 	years, err := h.academicYears.List(r.Context(), service.ListAcademicYearsInput{Actor: actor, Options: service.ListOptions{Limit: maxAcademicYearPageSize}})
 	if err != nil {
-		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		http.Error(w, localizedStatusMessage(http.StatusInternalServerError), http.StatusInternalServerError)
 		return
 	}
 	validYear := false
@@ -197,12 +197,12 @@ func (h *ClassPageHandler) Detail(w http.ResponseWriter, r *http.Request) {
 	}
 	actor, ok := service.ActorFromContext(r.Context())
 	if !ok {
-		http.Error(w, http.StatusText(http.StatusUnauthorized), http.StatusUnauthorized)
+		http.Error(w, localizedStatusMessage(http.StatusUnauthorized), http.StatusUnauthorized)
 		return
 	}
 	id, err := uuid.Parse(r.PathValue("id"))
 	if err != nil || id == uuid.Nil {
-		http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
+		http.Error(w, localizedStatusMessage(http.StatusBadRequest), http.StatusBadRequest)
 		return
 	}
 	output, err := h.classes.Get(r.Context(), service.GetClassInput{Actor: actor, ClassID: id})
@@ -229,11 +229,11 @@ func (h *ClassPageHandler) Detail(w http.ResponseWriter, r *http.Request) {
 	if token, ok := middleware.CSRFToken(r); ok {
 		vm.CSRFToken = token
 	} else {
-		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		http.Error(w, localizedStatusMessage(http.StatusInternalServerError), http.StatusInternalServerError)
 		return
 	}
 	if err := h.render(w, vm); err != nil {
-		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		http.Error(w, localizedStatusMessage(http.StatusInternalServerError), http.StatusInternalServerError)
 	}
 }
 
@@ -245,16 +245,16 @@ func (h *ClassPageHandler) Update(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-store")
 	actor, ok := service.ActorFromContext(r.Context())
 	if !ok {
-		http.Error(w, http.StatusText(http.StatusUnauthorized), http.StatusUnauthorized)
+		http.Error(w, localizedStatusMessage(http.StatusUnauthorized), http.StatusUnauthorized)
 		return
 	}
 	id, err := uuid.Parse(r.PathValue("id"))
 	if err != nil || id == uuid.Nil {
-		http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
+		http.Error(w, localizedStatusMessage(http.StatusBadRequest), http.StatusBadRequest)
 		return
 	}
 	if err := parseClassForm(w, r); err != nil {
-		http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
+		http.Error(w, localizedStatusMessage(http.StatusBadRequest), http.StatusBadRequest)
 		return
 	}
 	name, level, err := parseClassValues(r)
@@ -296,7 +296,7 @@ func (h *ClassPageHandler) formError(w http.ResponseWriter, r *http.Request, act
 	if years, err := h.academicYears.List(r.Context(), service.ListAcademicYearsInput{Actor: actor, Options: service.ListOptions{Limit: maxAcademicYearPageSize}}); err == nil {
 		for _, year := range years.AcademicYears {
 			if year != nil {
-				yearOptions = append(yearOptions, ClassAcademicYearOption{ID: year.ID.String(), Name: year.Name, Status: string(year.Status)})
+				yearOptions = append(yearOptions, ClassAcademicYearOption{ID: year.ID.String(), Name: year.Name, Status: interfaceStatusLabel(string(year.Status))})
 			}
 		}
 	}

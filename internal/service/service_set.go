@@ -6,16 +6,18 @@ package service
 // ServiceSet does not create services, manage transactions,
 // authorize actors, or implement business rules.
 type ServiceSet struct {
-	Authentication   AuthenticationService
-	User             UserService
-	AcademicYear     AcademicYearService
-	Class            ClassService
-	Student          StudentService
-	StudentPromotion StudentPromotionService
-	ClassAssignment  ClassAssignmentService
-	ClassTransfer    ClassTransferService
-	SavingsAccount   SavingsAccountService
-	Transaction      TransactionService
-	Settlement       SettlementService
-	Audit            AuditService
+	Authentication             AuthenticationService
+	User                       UserService
+	AcademicYear               AcademicYearService
+	Class                      ClassService
+	Student                    StudentService
+	StudentPromotion           StudentPromotionService
+	ClassAssignment            ClassAssignmentService
+	ClassTransfer              ClassTransferService
+	SavingsAccount             SavingsAccountService
+	Transaction                TransactionService
+	LeavingTransactionRequests LeavingTransactionRequestService
+	Settlement                 SettlementService
+	Audit                      AuditService
+	Reporting                  ReportingService
 }

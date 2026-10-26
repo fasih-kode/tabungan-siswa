@@ -5,6 +5,7 @@
     "css:build": "postcss assets/css/app.css -o static/css/app.css",
     "css:watch": "postcss assets/css/app.css -o static/css/app.css --watch",
     "test:instant-search": "node --test scripts/instant-search.test.cjs",
+    "test:rupiah-input": "node --test scripts/rupiah-input.test.cjs",
     "test:e2e": "bash scripts/test-e2e.sh",
     "test:e2e:cleanup": "bash scripts/cleanup-e2e.sh",
     "test:e2e:install": "playwright install chromium"

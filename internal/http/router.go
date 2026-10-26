@@ -69,6 +69,8 @@ func registerRoutes(
 	if handlers.Settlement != nil {
 		mux.Handle("GET /savings/{account_id}/settlement-preview", middlewares.Authentication.RequireAuthentication(middlewares.CSRF.Protect(http.HandlerFunc(handlers.Settlement.Preview))))
 		mux.Handle("POST /savings/{account_id}/settlements", middlewares.Authentication.RequireAuthentication(validateSettlementRequestForm(middlewares.CSRF.Protect(http.HandlerFunc(handlers.Settlement.Create)))))
+		mux.Handle("GET /savings/{account_id}/leaving-settlement-preview", middlewares.Authentication.RequireAuthentication(middlewares.CSRF.Protect(http.HandlerFunc(handlers.Settlement.PreviewStudentLeaving))))
+		mux.Handle("POST /savings/{account_id}/leaving-settlements", middlewares.Authentication.RequireAuthentication(validateSettlementRequestForm(middlewares.CSRF.Protect(http.HandlerFunc(handlers.Settlement.SettleStudentLeaving)))))
 		mux.Handle("GET /settlements/{settlement_id}", middlewares.Authentication.RequireAuthentication(middlewares.CSRF.Protect(http.HandlerFunc(handlers.Settlement.Detail))))
 		mux.Handle("POST /settlements/{settlement_id}/distribution-confirmation", middlewares.Authentication.RequireAuthentication(validateSettlementRequestForm(middlewares.CSRF.Protect(http.HandlerFunc(handlers.Settlement.Handover)))))
 		mux.Handle("POST /settlements/{settlement_id}/reopen-requests", middlewares.Authentication.RequireAuthentication(validateSettlementRequestForm(middlewares.CSRF.Protect(http.HandlerFunc(handlers.Settlement.RequestReopen)))))
@@ -83,6 +85,12 @@ func registerRoutes(
 		mux.Handle("POST /transactions/{transaction_id}/edit", middlewares.Authentication.RequireAuthentication(validateTransactionCorrectionForm(middlewares.CSRF.Protect(http.HandlerFunc(handlers.Transactions.Edit)))))
 		mux.Handle("POST /transactions/{transaction_id}/cancel", middlewares.Authentication.RequireAuthentication(validateTransactionCorrectionForm(middlewares.CSRF.Protect(http.HandlerFunc(handlers.Transactions.Cancel)))))
 	}
+	if handlers.LeavingTransactionRequests != nil {
+		mux.Handle("GET /leaving-transaction-requests", middlewares.Authentication.RequireAuthentication(middlewares.CSRF.Protect(http.HandlerFunc(handlers.LeavingTransactionRequests.List))))
+		mux.Handle("POST /savings/{account_id}/late-transaction-requests", middlewares.Authentication.RequireAuthentication(validateTransactionRequestForm(middlewares.CSRF.Protect(http.HandlerFunc(handlers.LeavingTransactionRequests.Create)))))
+		mux.Handle("POST /leaving-transaction-requests/{request_id}/decision", middlewares.Authentication.RequireAuthentication(middlewares.CSRF.Protect(http.HandlerFunc(handlers.LeavingTransactionRequests.Decide))))
+		mux.Handle("POST /leaving-transaction-requests/{request_id}/execute", middlewares.Authentication.RequireAuthentication(validateTransactionRequestForm(middlewares.CSRF.Protect(http.HandlerFunc(handlers.LeavingTransactionRequests.Execute)))))
+	}
 	if handlers.TeacherAssignment != nil {
 		registerTeacherAssignmentRoutes(mux, handlers.TeacherAssignment, middlewares.Authentication, middlewares.CSRF)
 	}
@@ -95,6 +103,13 @@ func registerRoutes(
 		middlewares.CSRF,
 		handlers.Dashboard,
 	)
+	if handlers.Reports != nil {
+		mux.Handle("GET /reports", middlewares.Authentication.RequireAuthentication(middlewares.CSRF.Protect(http.HandlerFunc(handlers.Reports.Index))))
+		mux.Handle("GET /reports/students", middlewares.Authentication.RequireAuthentication(middlewares.CSRF.Protect(http.HandlerFunc(handlers.Reports.Students))))
+		mux.Handle("GET /reports/classes", middlewares.Authentication.RequireAuthentication(middlewares.CSRF.Protect(http.HandlerFunc(handlers.Reports.Classes))))
+		mux.Handle("GET /reports/academic-year", middlewares.Authentication.RequireAuthentication(middlewares.CSRF.Protect(http.HandlerFunc(handlers.Reports.AcademicYear))))
+		mux.Handle("GET /reports/settlements", middlewares.Authentication.RequireAuthentication(middlewares.CSRF.Protect(http.HandlerFunc(handlers.Reports.Settlements))))
+	}
 }
 
 func registerStudentRoutes(mux *http.ServeMux, handler *StudentPageHandler, authentication *middleware.AuthenticationMiddleware, csrf *middleware.CSRFMiddleware) {

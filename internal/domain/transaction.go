@@ -16,6 +16,7 @@ type Transaction struct {
 	CreatedBy        uuid.UUID
 	CreatedAt        time.Time
 	UpdatedAt        time.Time
+	LateRequestID    *uuid.UUID
 }
 
 func NewTransaction(

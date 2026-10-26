@@ -41,7 +41,8 @@ func (r *TransactionRepository) Create(
 			status,
 			created_by,
 			created_at,
-			updated_at
+			updated_at,
+			late_request_id
 		)
 		VALUES (
 			$1,
@@ -52,7 +53,8 @@ func (r *TransactionRepository) Create(
 			$6,
 			$7,
 			$8,
-			$9
+			$9,
+			$10
 		)
 	`
 
@@ -68,6 +70,7 @@ func (r *TransactionRepository) Create(
 		transaction.CreatedBy,
 		transaction.CreatedAt,
 		transaction.UpdatedAt,
+		transaction.LateRequestID,
 	)
 	if err != nil {
 		return translateTransactionError(

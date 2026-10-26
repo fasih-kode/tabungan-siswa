@@ -11,17 +11,18 @@ import (
 type AuditEntityType string
 
 const (
-	AuditEntityUser                    AuditEntityType = "USER"
-	AuditEntityAcademicYear            AuditEntityType = "ACADEMIC_YEAR"
-	AuditEntityClass                   AuditEntityType = "CLASS"
-	AuditEntityStudent                 AuditEntityType = "STUDENT"
-	AuditEntityStudentClassHistory     AuditEntityType = "STUDENT_CLASS_HISTORY"
-	AuditEntityTeacherClassAssignment  AuditEntityType = "TEACHER_CLASS_ASSIGNMENT"
-	AuditEntityClassTransferRequest    AuditEntityType = "CLASS_TRANSFER_REQUEST"
-	AuditEntitySavingsAccount          AuditEntityType = "SAVINGS_ACCOUNT"
-	AuditEntityTransaction             AuditEntityType = "TRANSACTION"
-	AuditEntitySavingsSettlement       AuditEntityType = "SAVINGS_SETTLEMENT"
-	AuditEntitySettlementReopenRequest AuditEntityType = "SETTLEMENT_REOPEN_REQUEST"
+	AuditEntityUser                      AuditEntityType = "USER"
+	AuditEntityAcademicYear              AuditEntityType = "ACADEMIC_YEAR"
+	AuditEntityClass                     AuditEntityType = "CLASS"
+	AuditEntityStudent                   AuditEntityType = "STUDENT"
+	AuditEntityStudentClassHistory       AuditEntityType = "STUDENT_CLASS_HISTORY"
+	AuditEntityTeacherClassAssignment    AuditEntityType = "TEACHER_CLASS_ASSIGNMENT"
+	AuditEntityClassTransferRequest      AuditEntityType = "CLASS_TRANSFER_REQUEST"
+	AuditEntitySavingsAccount            AuditEntityType = "SAVINGS_ACCOUNT"
+	AuditEntityTransaction               AuditEntityType = "TRANSACTION"
+	AuditEntitySavingsSettlement         AuditEntityType = "SAVINGS_SETTLEMENT"
+	AuditEntitySettlementReopenRequest   AuditEntityType = "SETTLEMENT_REOPEN_REQUEST"
+	AuditEntityLeavingTransactionRequest AuditEntityType = "LEAVING_TRANSACTION_REQUEST"
 )
 
 func (e AuditEntityType) IsValid() bool {
@@ -37,7 +38,8 @@ func (e AuditEntityType) IsValid() bool {
 		AuditEntitySavingsAccount,
 		AuditEntityTransaction,
 		AuditEntitySavingsSettlement,
-		AuditEntitySettlementReopenRequest:
+		AuditEntitySettlementReopenRequest,
+		AuditEntityLeavingTransactionRequest:
 		return true
 	default:
 		return false
