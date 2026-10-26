@@ -336,3 +336,11 @@ Audit read-only selesai pada baseline `cb7add40796c81a508770c85b595fbfacecff8c2`
 - `gofmt -l` lulus (tidak mencetak file); `go build ./...`, `go vet ./...`, `go test ./internal/domain ./internal/security ./internal/http/... -count=1`, dan `git diff --check` lulus.
 - Integration test dilewati berdasarkan pengecualian supervisor untuk pemindahan yang terbukti identik. Tidak ada PostgreSQL yang dibuka atau digunakan.
 - Interface, aturan bisnis, transaksi, lock, audit, dan otorisasi tidak berubah. Risiko perubahan perilaku rendah; tes service/PostgreSQL tidak dijalankan pada tahap ini. Tahap lain dan isu race reaktivasi siswa tetap di luar scope dan menunggu review terpisah.
+
+### MQ-04-IMPL-01B — pemisahan fungsi preview settlement
+
+- Pada branch `review`, `PreviewStudentLeaving` dan `PreviewYearEnd` dipindahkan secara mekanis dari `settlement_service.go` ke `settlement_service_read.go`.
+- Perbandingan per blok dengan HEAD awal memastikan signature, body, statement/repository-call order, validasi role dan scope, error/return, perhitungan saldo, serta timestamp UTC identik. Kedua deklarasi masing-masing muncul tepat satu kali. Source tersisa di file lama tidak berubah selain penghapusan blok dan separator kosong; fungsi yang sudah ada di file tujuan tidak berubah. Inventaris pada dua file tetap 21 deklarasi fungsi sebelum dan sesudah.
+- Lulus: `gofmt -l` (tanpa keluaran), `go build ./...`, `go vet ./...`, `go test ./internal/domain ./internal/security ./internal/http/... -count=1`, dan `git diff --check`.
+- Integration test **SKIPPED** berdasarkan pengecualian supervisor untuk pemindahan mekanis yang terbukti identik; tidak mengakses database.
+- Tidak ada perubahan perilaku, kontrak, API, Unit of Work, transaksi, locking, atau audit. Risiko regresi rendah. MQ-04-IMPL-01C dan risiko race Reactivate vs SettleStudentLeaving tetap menunggu review terpisah.

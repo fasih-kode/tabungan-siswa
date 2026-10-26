@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"errors"
+	"time"
 
 	"github.com/fasih/tabungan-siswa/internal/domain"
 	"github.com/fasih/tabungan-siswa/internal/repository"
@@ -122,4 +123,95 @@ func settlementPointers(settlements []domain.SavingsSettlement) []*domain.Saving
 		result[i] = &settlement
 	}
 	return result
+}
+
+func (s *settlementService) PreviewStudentLeaving(ctx context.Context, input PreviewStudentLeavingInput) (PreviewYearEndOutput, error) {
+	if err := RequireRole(input.Actor, domain.RoleWaliKelas); err != nil {
+		return PreviewYearEndOutput{}, err
+	}
+	if input.SavingsAccountID == uuid.Nil {
+		return PreviewYearEndOutput{}, domain.ErrInvalidID
+	}
+	account, err := s.deps.Repositories.SavingsAccounts.GetByID(ctx, input.SavingsAccountID)
+	if err != nil {
+		return PreviewYearEndOutput{}, err
+	}
+	year, err := s.deps.Repositories.AcademicYears.GetByID(ctx, account.AcademicYearID)
+	if err != nil {
+		return PreviewYearEndOutput{}, err
+	}
+	if year.IsClosed() {
+		return PreviewYearEndOutput{}, domain.ErrInvalidTransition
+	}
+	if !account.IsOpen() {
+		return PreviewYearEndOutput{}, domain.ErrInvalidTransition
+	}
+	if err := s.authorizeAccount(ctx, s.deps.Repositories, input.Actor, account); err != nil {
+		return PreviewYearEndOutput{}, err
+	}
+	student, err := s.deps.Repositories.Students.GetByID(ctx, account.StudentID)
+	if err != nil {
+		return PreviewYearEndOutput{}, err
+	}
+	if !student.IsLeft() {
+		return PreviewYearEndOutput{}, domain.ErrInvalidTransition
+	}
+	if pending, e := hasPendingLateRequest(ctx, s.deps.Repositories, account.ID); e != nil {
+		return PreviewYearEndOutput{}, e
+	} else if pending {
+		return PreviewYearEndOutput{}, domain.ErrInvalidTransition
+	}
+	transactions, err := s.deps.Repositories.Transactions.ListActiveBySavingsAccount(ctx, account.ID)
+	if err != nil {
+		return PreviewYearEndOutput{}, err
+	}
+	balance, err := domain.CalculateBalance(transactions)
+	if err != nil {
+		return PreviewYearEndOutput{}, err
+	}
+	return PreviewYearEndOutput{Account: &account, Student: &student, Balance: balance.Amount, PreviewedAt: time.Now().UTC()}, nil
+}
+
+func (s *settlementService) PreviewYearEnd(ctx context.Context, input PreviewYearEndInput) (PreviewYearEndOutput, error) {
+	if err := RequireRole(input.Actor, domain.RoleAdmin, domain.RoleWaliKelas); err != nil {
+		return PreviewYearEndOutput{}, err
+	}
+	if input.SavingsAccountID == uuid.Nil {
+		return PreviewYearEndOutput{}, domain.ErrInvalidID
+	}
+	account, err := s.deps.Repositories.SavingsAccounts.GetByID(ctx, input.SavingsAccountID)
+	if err != nil {
+		return PreviewYearEndOutput{}, err
+	}
+	year, err := s.deps.Repositories.AcademicYears.GetByID(ctx, account.AcademicYearID)
+	if err != nil {
+		return PreviewYearEndOutput{}, err
+	}
+	if !year.IsClosing() || !account.IsOpen() {
+		return PreviewYearEndOutput{}, domain.ErrInvalidTransition
+	}
+	if pending, e := hasPendingLateRequest(ctx, s.deps.Repositories, account.ID); e != nil {
+		return PreviewYearEndOutput{}, e
+	} else if pending {
+		return PreviewYearEndOutput{}, domain.ErrInvalidTransition
+	}
+	if input.Actor.Role == domain.RoleWaliKelas {
+		if err := authorizeResponsibleWali(ctx, s.deps.Repositories, input.Actor, account, year); err != nil {
+			return PreviewYearEndOutput{}, err
+		}
+	}
+	transactions, err := s.deps.Repositories.Transactions.ListActiveBySavingsAccount(ctx, account.ID)
+	if err != nil {
+		return PreviewYearEndOutput{}, err
+	}
+	balance, err := domain.CalculateBalance(transactions)
+	if err != nil {
+		return PreviewYearEndOutput{}, err
+	}
+	student, err := s.deps.Repositories.Students.GetByID(ctx, account.StudentID)
+	if err != nil {
+		return PreviewYearEndOutput{}, err
+	}
+	now := time.Now().UTC()
+	return PreviewYearEndOutput{Account: &account, Student: &student, Balance: balance.Amount, PreviewedAt: now}, nil
 }
