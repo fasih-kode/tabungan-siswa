@@ -344,3 +344,11 @@ Audit read-only selesai pada baseline `cb7add40796c81a508770c85b595fbfacecff8c2`
 - Lulus: `gofmt -l` (tanpa keluaran), `go build ./...`, `go vet ./...`, `go test ./internal/domain ./internal/security ./internal/http/... -count=1`, dan `git diff --check`.
 - Integration test **SKIPPED** berdasarkan pengecualian supervisor untuk pemindahan mekanis yang terbukti identik; tidak mengakses database.
 - Tidak ada perubahan perilaku, kontrak, API, Unit of Work, transaksi, locking, atau audit. Risiko regresi rendah. MQ-04-IMPL-01C dan risiko race Reactivate vs SettleStudentLeaving tetap menunggu review terpisah.
+
+### MQ-04-IMPL-01C — pemisahan YearReadiness
+
+- `(*settlementService).YearReadiness` dipindahkan secara mekanis dari `settlement_service.go` ke `settlement_service_read.go`.
+- Perbandingan source terhadap HEAD awal membuktikan signature dan body identik, deklarasi hanya satu kali, dan seluruh source lain pada file asal/tujuan tetap sama selain penghapusan blok serta separator kosong. Inventaris dua file tetap 21 deklarasi fungsi. Query/repository-call order, filter Wali, seluruh penghitung kesiapan, blocker, dan kondisi `Ready` tidak berubah.
+- Lulus: `gofmt -l` (tanpa keluaran), `go build ./...`, `go vet ./...`, `go test ./internal/domain ./internal/security ./internal/http/... -count=1`, dan `git diff --check`.
+- Integration test **SKIPPED** berdasarkan pengecualian supervisor untuk perpindahan identik; tidak ada database yang diakses.
+- Tidak ada perubahan API, Unit of Work, locking, audit, atau hak akses. Sebelum melanjutkan pemisahan fungsi mutasi, tahap 01A, 01B, dan 01C perlu verifikasi regresi gabungan. Tahap mutasi tetap menunggu review terpisah.
