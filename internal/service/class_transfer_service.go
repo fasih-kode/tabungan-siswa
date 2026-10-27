@@ -103,7 +103,27 @@ func (s *classTransferService) Request(
 		return RequestTransferOutput{}, err
 	}
 
-	student, err := s.deps.Repositories.Students.GetByID(
+	uow, err := s.deps.UOW.Begin(ctx)
+	if err != nil {
+		return RequestTransferOutput{}, err
+	}
+
+	rollback := true
+	defer func() {
+		if rollback {
+			_ = uow.Rollback()
+		}
+	}()
+	repos := uow.Repositories()
+	// Lock tahun mendahului siswa agar searah dengan transisi tahun ajaran.
+	academicYear, err := repos.AcademicYears.GetByIDForShare(ctx, input.AcademicYearID)
+	if err != nil {
+		return RequestTransferOutput{}, err
+	}
+	if !academicYear.IsOpen() {
+		return RequestTransferOutput{}, domain.ErrInvalidTransition
+	}
+	student, err := repos.Students.GetByIDForUpdate(
 		ctx,
 		input.StudentID,
 	)
@@ -118,18 +138,11 @@ func (s *classTransferService) Request(
 		return RequestTransferOutput{}, ErrInvalidDependency
 	}
 
-	academicYear, err := s.deps.Repositories.AcademicYears.GetByID(
-		ctx,
-		input.AcademicYearID,
-	)
-	if err != nil {
+	if err := RequireStudentScope(ctx, repos, input.Actor, input.StudentID, input.AcademicYearID); err != nil {
 		return RequestTransferOutput{}, err
 	}
-	if !academicYear.IsOpen() {
-		return RequestTransferOutput{}, domain.ErrInvalidTransition
-	}
 
-	fromClass, err := s.deps.Repositories.Classes.GetByID(
+	fromClass, err := repos.Classes.GetByID(
 		ctx,
 		input.FromClassID,
 	)
@@ -137,7 +150,7 @@ func (s *classTransferService) Request(
 		return RequestTransferOutput{}, err
 	}
 
-	toClass, err := s.deps.Repositories.Classes.GetByID(
+	toClass, err := repos.Classes.GetByID(
 		ctx,
 		input.ToClassID,
 	)
@@ -153,7 +166,7 @@ func (s *classTransferService) Request(
 	}
 
 	currentHistory, err :=
-		s.deps.Repositories.StudentClassHistories.
+		repos.StudentClassHistories.
 			GetCurrentByStudentAndAcademicYear(
 				ctx,
 				input.StudentID,
@@ -187,29 +200,7 @@ func (s *classTransferService) Request(
 		return RequestTransferOutput{}, err
 	}
 
-	uow, err := s.deps.UOW.Begin(ctx)
-	if err != nil {
-		return RequestTransferOutput{}, err
-	}
-
-	rollback := true
-	defer func() {
-		if rollback {
-			_ = uow.Rollback()
-		}
-	}()
-	lockedStudent, err := uow.Repositories().Students.GetByIDForUpdate(
-		ctx,
-		input.StudentID,
-	)
-	if err != nil {
-		return RequestTransferOutput{}, err
-	}
-	if !lockedStudent.IsActive() {
-		return RequestTransferOutput{}, domain.ErrInvalidTransition
-	}
-
-	if err := uow.Repositories().ClassTransferRequests.Create(
+	if err := repos.ClassTransferRequests.Create(
 		ctx,
 		request,
 	); err != nil {

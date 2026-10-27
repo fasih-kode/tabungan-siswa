@@ -483,8 +483,8 @@ func TestClassTransferServiceRequestAdmin(t *testing.T) {
 		},
 	}
 
-	academicYearRepo := &classAssignmentFakeAcademicYearRepository{
-		getByIDFn: func(
+	academicYearRepo := &transactionServiceFakeAcademicYearRepository{
+		getByIDForShareFn: func(
 			_ context.Context,
 			id uuid.UUID,
 		) (domain.AcademicYear, error) {
