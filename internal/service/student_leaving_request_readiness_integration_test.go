@@ -59,11 +59,122 @@ func TestStudentLeavingReadinessIntegration(t *testing.T) {
 			if err := f.repos.Settlements.Create(context.Background(), oldSettlement); err != nil {
 				t.Fatal(err)
 			}
+			createReadinessTransaction(t, f, current, domain.TransactionDeposit, 5000, false)
 			currentSettlement := createLinkedCancelSettlement(t, f, request, current, 5000)
 			insertCancelMovement(t, f, currentSettlement, domain.SettlementCashHandover, 5000)
 			out := readStudentLeavingReadiness(t, f, request.ID)
 			if !out.Ready || out.TotalAccounts != 2 || out.SettledAccounts != 2 {
 				t.Fatalf("readiness=%+v", out)
+			}
+		}},
+		{name: "nominal settlement berbeda dari saldo ledger", run: func(t *testing.T, f leavingStartFixture, request domain.StudentLeavingRequest) {
+			account := mustReadinessAccount(t, f)
+			settlement := createLinkedCancelSettlement(t, f, request, account, 5000)
+			insertCancelMovement(t, f, settlement, domain.SettlementCashHandover, 5000)
+			out := readStudentLeavingReadiness(t, f, request.ID)
+			if out.Ready || !hasReadinessBlocker(out, service.LeavingBlockerSettlementLedgerMismatch, &settlement.ID) {
+				t.Fatalf("mismatch settlement-ledger tidak menghambat: %+v", out)
+			}
+		}},
+		{name: "saldo ledger berbeda dari settlement nol", run: func(t *testing.T, f leavingStartFixture, request domain.StudentLeavingRequest) {
+			account := mustReadinessAccount(t, f)
+			createReadinessTransaction(t, f, account, domain.TransactionDeposit, 5000, false)
+			settlement := createLinkedCancelSettlement(t, f, request, account, 0)
+			out := readStudentLeavingReadiness(t, f, request.ID)
+			if out.Ready || !hasReadinessBlocker(out, service.LeavingBlockerSettlementLedgerMismatch, &settlement.ID) {
+				t.Fatalf("saldo ledger berbeda dari settlement nol tidak menghambat: %+v", out)
+			}
+		}},
+		{name: "ledger dan settlement positif cocok", run: func(t *testing.T, f leavingStartFixture, request domain.StudentLeavingRequest) {
+			account := mustReadinessAccount(t, f)
+			createReadinessTransaction(t, f, account, domain.TransactionDeposit, 5000, false)
+			settlement := createLinkedCancelSettlement(t, f, request, account, 5000)
+			insertCancelMovement(t, f, settlement, domain.SettlementCashHandover, 5000)
+			out := readStudentLeavingReadiness(t, f, request.ID)
+			if !out.Ready || hasReadinessBlocker(out, service.LeavingBlockerSettlementLedgerMismatch, &settlement.ID) {
+				t.Fatalf("ledger dan settlement cocok seharusnya siap: %+v", out)
+			}
+		}},
+		{name: "transaksi cancelled tidak memengaruhi saldo settlement", run: func(t *testing.T, f leavingStartFixture, request domain.StudentLeavingRequest) {
+			account := mustReadinessAccount(t, f)
+			createReadinessTransaction(t, f, account, domain.TransactionDeposit, 5000, false)
+			createReadinessTransaction(t, f, account, domain.TransactionDeposit, 7000, true)
+			settlement := createLinkedCancelSettlement(t, f, request, account, 5000)
+			insertCancelMovement(t, f, settlement, domain.SettlementCashHandover, 5000)
+			out := readStudentLeavingReadiness(t, f, request.ID)
+			if !out.Ready {
+				t.Fatalf("transaksi CANCELLED memengaruhi saldo aktif: %+v", out)
+			}
+		}},
+		{name: "settlement tahun ajaran historis cocok dengan ledger", run: func(t *testing.T, f leavingStartFixture, request domain.StudentLeavingRequest) {
+			account := mustReadinessAccount(t, f)
+			createReadinessTransaction(t, f, account, domain.TransactionDeposit, 5000, false)
+			settleReadinessAccount(t, f, account)
+			settlement, err := domain.NewSavingsSettlement(account.ID, domain.SettlementRegularYearEnd, 5000, f.in.Actor.UserID, time.Now().UTC(), nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := f.repos.Settlements.Create(context.Background(), settlement); err != nil {
+				t.Fatal(err)
+			}
+			insertCancelMovement(t, f, settlement, domain.SettlementCashHandover, 5000)
+			out := readStudentLeavingReadiness(t, f, request.ID)
+			if !out.Ready {
+				t.Fatalf("settlement REGULAR_YEAR_END cocok tidak seharusnya diblokir: %+v", out)
+			}
+		}},
+		{name: "settlement tahun ajaran historis mismatch ledger", run: func(t *testing.T, f leavingStartFixture, request domain.StudentLeavingRequest) {
+			account := mustReadinessAccount(t, f)
+			createReadinessTransaction(t, f, account, domain.TransactionDeposit, 5000, false)
+			settleReadinessAccount(t, f, account)
+			settlement, err := domain.NewSavingsSettlement(account.ID, domain.SettlementRegularYearEnd, 0, f.in.Actor.UserID, time.Now().UTC(), nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := f.repos.Settlements.Create(context.Background(), settlement); err != nil {
+				t.Fatal(err)
+			}
+			out := readStudentLeavingReadiness(t, f, request.ID)
+			if out.Ready || !hasReadinessBlocker(out, service.LeavingBlockerSettlementLedgerMismatch, &settlement.ID) {
+				t.Fatalf("settlement historis mismatch tidak menghambat: %+v", out)
+			}
+		}},
+		{name: "ledger negatif menjadi blocker integritas", run: func(t *testing.T, f leavingStartFixture, request domain.StudentLeavingRequest) {
+			account := mustReadinessAccount(t, f)
+			createReadinessTransaction(t, f, account, domain.TransactionWithdrawal, 1000, false)
+			settlement := createLinkedCancelSettlement(t, f, request, account, 0)
+			out := readStudentLeavingReadiness(t, f, request.ID)
+			if out.Ready || !hasReadinessBlocker(out, service.LeavingBlockerLedgerInvalid, &settlement.ID) {
+				t.Fatalf("ledger negatif tidak dilaporkan sebagai blocker integritas: %+v", out)
+			}
+		}},
+		{name: "mismatch satu rekening lintas tahun menghambat semuanya", run: func(t *testing.T, f leavingStartFixture, request domain.StudentLeavingRequest) {
+			accounts, err := f.repos.SavingsAccounts.ListByStudent(context.Background(), f.in.StudentID)
+			if err != nil || len(accounts) != 2 {
+				t.Fatalf("accounts=%d err=%v", len(accounts), err)
+			}
+			var current, historical domain.SavingsAccount
+			for _, account := range accounts {
+				if account.AcademicYearID == f.year.ID {
+					current = account
+				} else {
+					historical = account
+				}
+			}
+			settleReadinessAccount(t, f, historical)
+			oldSettlement, err := domain.NewSavingsSettlement(historical.ID, domain.SettlementRegularYearEnd, 0, f.in.Actor.UserID, time.Now().UTC(), nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := f.repos.Settlements.Create(context.Background(), oldSettlement); err != nil {
+				t.Fatal(err)
+			}
+			createReadinessTransaction(t, f, current, domain.TransactionDeposit, 5000, false)
+			settlement := createLinkedCancelSettlement(t, f, request, current, 4000)
+			insertCancelMovement(t, f, settlement, domain.SettlementCashHandover, 4000)
+			out := readStudentLeavingReadiness(t, f, request.ID)
+			if out.Ready || out.TotalAccounts != 2 || !hasReadinessBlocker(out, service.LeavingBlockerSettlementLedgerMismatch, &settlement.ID) {
+				t.Fatalf("mismatch satu rekening lintas tahun tidak memblokir proses: %+v", out)
 			}
 		}},
 		{name: "rekening terbuka tahun tutup blocker khusus", run: func(t *testing.T, f leavingStartFixture, request domain.StudentLeavingRequest) {
@@ -105,6 +216,7 @@ func TestStudentLeavingReadinessIntegration(t *testing.T) {
 		}},
 		{name: "settlement positif tanpa handover", run: func(t *testing.T, f leavingStartFixture, request domain.StudentLeavingRequest) {
 			account := mustReadinessAccount(t, f)
+			createReadinessTransaction(t, f, account, domain.TransactionDeposit, 10000, false)
 			settlement := createLinkedCancelSettlement(t, f, request, account, 10000)
 			out := readStudentLeavingReadiness(t, f, request.ID)
 			if out.Ready || out.OutstandingHandovers != 1 || !hasReadinessBlocker(out, service.LeavingBlockerHandoverIncomplete, &settlement.ID) {
@@ -113,6 +225,7 @@ func TestStudentLeavingReadinessIntegration(t *testing.T) {
 		}},
 		{name: "handover lengkap siap", run: func(t *testing.T, f leavingStartFixture, request domain.StudentLeavingRequest) {
 			account := mustReadinessAccount(t, f)
+			createReadinessTransaction(t, f, account, domain.TransactionDeposit, 10000, false)
 			settlement := createLinkedCancelSettlement(t, f, request, account, 10000)
 			insertCancelMovement(t, f, settlement, domain.SettlementCashHandover, 10000)
 			out := readStudentLeavingReadiness(t, f, request.ID)
@@ -122,6 +235,7 @@ func TestStudentLeavingReadinessIntegration(t *testing.T) {
 		}},
 		{name: "handover sebagian menghambat", run: func(t *testing.T, f leavingStartFixture, request domain.StudentLeavingRequest) {
 			account := mustReadinessAccount(t, f)
+			createReadinessTransaction(t, f, account, domain.TransactionDeposit, 10000, false)
 			settlement := createLinkedCancelSettlement(t, f, request, account, 10000)
 			insertCancelMovement(t, f, settlement, domain.SettlementCashHandover, 4000)
 			out := readStudentLeavingReadiness(t, f, request.ID)
@@ -131,6 +245,7 @@ func TestStudentLeavingReadinessIntegration(t *testing.T) {
 		}},
 		{name: "handover berlebih masalah integritas", run: func(t *testing.T, f leavingStartFixture, request domain.StudentLeavingRequest) {
 			account := mustReadinessAccount(t, f)
+			createReadinessTransaction(t, f, account, domain.TransactionDeposit, 10000, false)
 			settlement := createLinkedCancelSettlement(t, f, request, account, 10000)
 			insertCancelMovement(t, f, settlement, domain.SettlementCashHandover, 12000)
 			out := readStudentLeavingReadiness(t, f, request.ID)
@@ -322,7 +437,7 @@ func TestStudentLeavingReadinessIntegration(t *testing.T) {
 			switch tc.name {
 			case "tanpa rekening siap":
 				request = startLeavingRequestForCancel(t, f)
-			case "rekening lintas tahun seluruhnya diperiksa", "rekening settled lintas tahun siap setelah handover":
+			case "rekening lintas tahun seluruhnya diperiksa", "rekening settled lintas tahun siap setelah handover", "mismatch satu rekening lintas tahun menghambat semuanya":
 				createCancelAccount(t, f, f.year.ID)
 				moveReadinessFixtureToNextYear(t, &f)
 				createCancelAccount(t, f, f.year.ID)
@@ -477,6 +592,30 @@ func settleReadinessAccount(t *testing.T, f leavingStartFixture, account domain.
 	if err := f.repos.SavingsAccounts.Update(context.Background(), account); err != nil {
 		t.Fatal(err)
 	}
+}
+
+func createReadinessTransaction(
+	t *testing.T,
+	f leavingStartFixture,
+	account domain.SavingsAccount,
+	typeOf domain.TransactionType,
+	amount domain.Money,
+	cancelled bool,
+) domain.Transaction {
+	t.Helper()
+	transaction, err := domain.NewTransaction(account.ID, typeOf, amount, f.in.EffectiveLeavingDate, f.in.Actor.UserID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cancelled {
+		if err := transaction.Cancel(); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := f.repos.Transactions.Create(context.Background(), transaction); err != nil {
+		t.Fatal(err)
+	}
+	return transaction
 }
 
 func createReadinessLateRequest(t *testing.T, f leavingStartFixture, account domain.SavingsAccount, status domain.LeavingTransactionRequestStatus) domain.LeavingTransactionRequest {

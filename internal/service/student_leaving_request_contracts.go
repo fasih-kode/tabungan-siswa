@@ -69,6 +69,8 @@ const (
 	LeavingBlockerAccountOpenYearClosed         StudentLeavingReadinessBlockerCode = "ACCOUNT_OPEN_YEAR_CLOSED"
 	LeavingBlockerSettlementMissing             StudentLeavingReadinessBlockerCode = "SETTLEMENT_MISSING"
 	LeavingBlockerSettlementInvalid             StudentLeavingReadinessBlockerCode = "SETTLEMENT_INVALID"
+	LeavingBlockerSettlementLedgerMismatch      StudentLeavingReadinessBlockerCode = "SETTLEMENT_LEDGER_MISMATCH"
+	LeavingBlockerLedgerInvalid                 StudentLeavingReadinessBlockerCode = "LEDGER_INVALID"
 	LeavingBlockerHandoverIncomplete            StudentLeavingReadinessBlockerCode = "HANDOVER_INCOMPLETE"
 	LeavingBlockerHandoverInvalid               StudentLeavingReadinessBlockerCode = "HANDOVER_INVALID"
 	LeavingBlockerLateRequestPending            StudentLeavingReadinessBlockerCode = "LATE_REQUEST_PENDING"

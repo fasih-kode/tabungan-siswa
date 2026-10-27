@@ -150,6 +150,7 @@ func (s *studentLeavingRequestService) checkLeavingAccountReadiness(
 	account domain.SavingsAccount,
 	output *StudentLeavingReadinessOutput,
 ) error {
+	var settlementForBalance *domain.SavingsSettlement
 	if account.IsOpen() {
 		output.OpenAccounts++
 		year, err := repos.AcademicYears.GetByID(ctx, account.AcademicYearID)
@@ -177,8 +178,11 @@ func (s *studentLeavingRequestService) checkLeavingAccountReadiness(
 		} else if !validReadinessSettlement(settlement, account.ID) {
 			output.addBlocker(LeavingBlockerSettlementInvalid, &account.ID, &settlement.ID,
 				"Settlement rekening tidak memiliki data yang sah.")
-		} else if err := s.checkLeavingSettlementHandover(ctx, repos, settlement, account.ID, output); err != nil {
-			return err
+		} else {
+			settlementForBalance = &settlement
+			if err := s.checkLeavingSettlementHandover(ctx, repos, settlement, account.ID, output); err != nil {
+				return err
+			}
 		}
 	} else {
 		output.addBlocker(LeavingBlockerSettlementInvalid, &account.ID, nil,
@@ -192,6 +196,16 @@ func (s *studentLeavingRequestService) checkLeavingAccountReadiness(
 	transactions, err := repos.Transactions.ListAllBySavingsAccount(ctx, account.ID)
 	if err != nil {
 		return err
+	}
+	if account.IsSettled() {
+		balance, balanceErr := domain.CalculateBalance(transactions)
+		if balanceErr != nil {
+			output.addBlocker(LeavingBlockerLedgerInvalid, &account.ID, readinessSettlementID(settlementForBalance),
+				"Transaksi rekening tidak dapat dihitung sebagai saldo yang sah.")
+		} else if settlementForBalance != nil && balance.Amount != settlementForBalance.Amount {
+			output.addBlocker(LeavingBlockerSettlementLedgerMismatch, &account.ID, &settlementForBalance.ID,
+				"Nominal penyelesaian tabungan tidak sesuai dengan saldo transaksi rekening.")
+		}
 	}
 	transactionsByLateRequest := make(map[uuid.UUID]domain.Transaction)
 	lateRequestsByID := make(map[uuid.UUID]domain.LeavingTransactionRequest, len(requests))
@@ -249,6 +263,13 @@ func (s *studentLeavingRequestService) checkLeavingAccountReadiness(
 		}
 	}
 	return nil
+}
+
+func readinessSettlementID(settlement *domain.SavingsSettlement) *uuid.UUID {
+	if settlement == nil {
+		return nil
+	}
+	return &settlement.ID
 }
 
 func validReadinessSettlement(settlement domain.SavingsSettlement, accountID uuid.UUID) bool {
