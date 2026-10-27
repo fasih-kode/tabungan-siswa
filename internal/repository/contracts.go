@@ -257,6 +257,9 @@ type LeavingTransactionRequestRepository interface {
 	GetLeavingTransactionRequest(context.Context, uuid.UUID) (domain.LeavingTransactionRequest, error)
 	GetLeavingTransactionRequestForUpdate(context.Context, uuid.UUID) (domain.LeavingTransactionRequest, error)
 	ListLeavingTransactionRequests(context.Context, uuid.UUID, domain.LeavingTransactionRequestStatus) ([]domain.LeavingTransactionRequest, error)
+	// ListByStudentLeavingRequest membaca relasi yang tersedia mulai schema v16.
+	// Proses yang tidak ditemukan menghasilkan repository.ErrNotFound.
+	ListByStudentLeavingRequest(context.Context, uuid.UUID) ([]domain.LeavingTransactionRequest, error)
 	UpdateLeavingTransactionRequest(context.Context, domain.LeavingTransactionRequest) error
 	HasPendingLeavingTransactionRequests(context.Context, uuid.UUID) (bool, error)
 	HasPendingForSavingsAccount(context.Context, uuid.UUID) (bool, error)
@@ -294,6 +297,9 @@ type SettlementRepository interface {
 		savingsAccountID uuid.UUID,
 		options ListOptions,
 	) ([]domain.SavingsSettlement, error)
+	// ListByStudentLeavingRequest membaca settlement pindah yang terhubung
+	// melalui relasi schema v16; settlement akhir tahun tidak disertakan.
+	ListByStudentLeavingRequest(context.Context, uuid.UUID) ([]domain.SavingsSettlement, error)
 	Update(
 		ctx context.Context,
 		settlement domain.SavingsSettlement,
