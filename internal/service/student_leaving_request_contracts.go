@@ -16,6 +16,7 @@ type StudentLeavingRequestService interface {
 	Start(context.Context, StartStudentLeavingRequestInput) (StartStudentLeavingRequestOutput, error)
 	Get(context.Context, GetStudentLeavingRequestInput) (GetStudentLeavingRequestOutput, error)
 	Cancel(context.Context, CancelStudentLeavingRequestInput) (CancelStudentLeavingRequestOutput, error)
+	Readiness(context.Context, StudentLeavingReadinessInput) (StudentLeavingReadinessOutput, error)
 }
 
 type StartStudentLeavingRequestInput struct {
@@ -46,4 +47,54 @@ type CancelStudentLeavingRequestInput struct {
 
 type CancelStudentLeavingRequestOutput struct {
 	Request *domain.StudentLeavingRequest
+}
+
+type StudentLeavingReadinessInput struct {
+	Actor                   Actor
+	StudentLeavingRequestID uuid.UUID
+}
+
+type StudentLeavingReadinessBlockerCode string
+
+const (
+	LeavingBlockerProcessNotInProgress          StudentLeavingReadinessBlockerCode = "PROCESS_NOT_IN_PROGRESS"
+	LeavingBlockerReferenceYearInvalid          StudentLeavingReadinessBlockerCode = "REFERENCE_YEAR_INVALID"
+	LeavingBlockerStudentNotActive              StudentLeavingReadinessBlockerCode = "STUDENT_NOT_ACTIVE"
+	LeavingBlockerFinancialLinkInconsistent     StudentLeavingReadinessBlockerCode = "FINANCIAL_LINK_INCONSISTENT"
+	LeavingBlockerSettlementStudentMismatch     StudentLeavingReadinessBlockerCode = "SETTLEMENT_STUDENT_MISMATCH"
+	LeavingBlockerSettlementTypeMismatch        StudentLeavingReadinessBlockerCode = "SETTLEMENT_TYPE_MISMATCH"
+	LeavingBlockerLateRequestStudentMismatch    StudentLeavingReadinessBlockerCode = "LATE_REQUEST_STUDENT_MISMATCH"
+	LeavingBlockerLinkedLateRequestYearMismatch StudentLeavingReadinessBlockerCode = "LINKED_LATE_REQUEST_YEAR_MISMATCH"
+	LeavingBlockerAccountOpen                   StudentLeavingReadinessBlockerCode = "ACCOUNT_OPEN"
+	LeavingBlockerAccountOpenYearClosed         StudentLeavingReadinessBlockerCode = "ACCOUNT_OPEN_YEAR_CLOSED"
+	LeavingBlockerSettlementMissing             StudentLeavingReadinessBlockerCode = "SETTLEMENT_MISSING"
+	LeavingBlockerSettlementInvalid             StudentLeavingReadinessBlockerCode = "SETTLEMENT_INVALID"
+	LeavingBlockerHandoverIncomplete            StudentLeavingReadinessBlockerCode = "HANDOVER_INCOMPLETE"
+	LeavingBlockerHandoverInvalid               StudentLeavingReadinessBlockerCode = "HANDOVER_INVALID"
+	LeavingBlockerLateRequestPending            StudentLeavingReadinessBlockerCode = "LATE_REQUEST_PENDING"
+	LeavingBlockerLateRequestApproved           StudentLeavingReadinessBlockerCode = "LATE_REQUEST_APPROVED"
+	LeavingBlockerLateRequestYearMismatch       StudentLeavingReadinessBlockerCode = "LATE_REQUEST_YEAR_MISMATCH"
+	LeavingBlockerLateRequestLedgerMissing      StudentLeavingReadinessBlockerCode = "LATE_REQUEST_LEDGER_MISSING"
+	LeavingBlockerLateRequestLedgerInvalid      StudentLeavingReadinessBlockerCode = "LATE_REQUEST_LEDGER_INVALID"
+	LeavingBlockerTransactionLateLinkInvalid    StudentLeavingReadinessBlockerCode = "TRANSACTION_LATE_LINK_INVALID"
+	LeavingBlockerTransactionAfterLeavingDate   StudentLeavingReadinessBlockerCode = "TRANSACTION_AFTER_LEAVING_DATE"
+)
+
+type StudentLeavingReadinessBlocker struct {
+	Code      StudentLeavingReadinessBlockerCode
+	AccountID *uuid.UUID
+	RecordID  *uuid.UUID
+	Message   string
+}
+
+type StudentLeavingReadinessOutput struct {
+	Request              domain.StudentLeavingRequest
+	Student              domain.Student
+	TotalAccounts        int
+	SettledAccounts      int
+	OpenAccounts         int
+	OutstandingHandovers int
+	BlockingLateRequests int
+	Blockers             []StudentLeavingReadinessBlocker
+	Ready                bool
 }

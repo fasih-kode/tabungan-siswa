@@ -261,6 +261,9 @@ type LeavingTransactionRequestRepository interface {
 	GetLeavingTransactionRequest(context.Context, uuid.UUID) (domain.LeavingTransactionRequest, error)
 	GetLeavingTransactionRequestForUpdate(context.Context, uuid.UUID) (domain.LeavingTransactionRequest, error)
 	ListLeavingTransactionRequests(context.Context, uuid.UUID, domain.LeavingTransactionRequestStatus) ([]domain.LeavingTransactionRequest, error)
+	// ListBySavingsAccount membaca seluruh status permintaan historis rekening,
+	// termasuk permintaan yang belum memiliki relasi ke proses pindah.
+	ListBySavingsAccount(context.Context, uuid.UUID) ([]domain.LeavingTransactionRequest, error)
 	// ListByStudentLeavingRequest membaca relasi yang tersedia mulai schema v16.
 	// Proses yang tidak ditemukan menghasilkan repository.ErrNotFound.
 	ListByStudentLeavingRequest(context.Context, uuid.UUID) ([]domain.LeavingTransactionRequest, error)
@@ -472,4 +475,9 @@ type UnitOfWork interface {
 // Service hanya bergantung pada kontrak ini.
 type UnitOfWorkManager interface {
 	Begin(ctx context.Context) (UnitOfWork, error)
+}
+
+// ReadOnlySnapshotUnitOfWorkManager menyediakan pembacaan konsisten tanpa lock tulis.
+type ReadOnlySnapshotUnitOfWorkManager interface {
+	BeginReadOnlySnapshot(ctx context.Context) (UnitOfWork, error)
 }

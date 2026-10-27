@@ -159,6 +159,37 @@ func (r *LeavingTransactionRequestRepository) ListLeavingTransactionRequests(
 	return out, rows.Err()
 }
 
+func (r *LeavingTransactionRequestRepository) ListBySavingsAccount(
+	ctx context.Context,
+	accountID uuid.UUID,
+) ([]domain.LeavingTransactionRequest, error) {
+	const query = `
+		SELECT ` + leavingRequestColumns + `
+		FROM leaving_transaction_requests
+		WHERE savings_account_id = $1
+		ORDER BY requested_at ASC, id ASC
+	`
+
+	rows, err := r.db.QueryContext(ctx, query, accountID)
+	if err != nil {
+		return nil, fmt.Errorf("list leaving transaction requests by savings account: %w", err)
+	}
+	defer rows.Close()
+
+	requests := make([]domain.LeavingTransactionRequest, 0)
+	for rows.Next() {
+		request, err := scanLeavingRequest(rows)
+		if err != nil {
+			return nil, fmt.Errorf("scan leaving transaction request by savings account: %w", err)
+		}
+		requests = append(requests, request)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("read leaving transaction requests by savings account: %w", err)
+	}
+	return requests, nil
+}
+
 func (r *LeavingTransactionRequestRepository) UpdateLeavingTransactionRequest(
 	ctx context.Context,
 	x domain.LeavingTransactionRequest,

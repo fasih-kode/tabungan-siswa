@@ -56,6 +56,22 @@ func (m *PostgresUnitOfWorkManager) Begin(
 	}, nil
 }
 
+func (m *PostgresUnitOfWorkManager) BeginReadOnlySnapshot(
+	ctx context.Context,
+) (repository.UnitOfWork, error) {
+	if m == nil || m.db == nil {
+		return nil, errors.New("database connection is nil")
+	}
+	tx, err := m.db.BeginTx(ctx, &sql.TxOptions{
+		Isolation: sql.LevelRepeatableRead,
+		ReadOnly:  true,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("begin read-only snapshot: %w", err)
+	}
+	return &PostgresUnitOfWork{tx: tx, repos: NewRepositorySet(tx)}, nil
+}
+
 // Repositories mengembalikan seluruh repository yang menggunakan
 // database transaction yang sama.
 func (u *PostgresUnitOfWork) Repositories() repository.RepositorySet {
