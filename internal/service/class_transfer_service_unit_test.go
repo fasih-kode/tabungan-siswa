@@ -642,13 +642,15 @@ func TestClassTransferServiceApproveRejectsClosedAcademicYear(t *testing.T) {
 		getByIDForUpdateFn: func(context.Context, uuid.UUID) (domain.ClassTransferRequest, error) { return request, nil },
 		updateFn:           func(context.Context, domain.ClassTransferRequest) error { updated = true; return nil },
 	}
-	yearRepo := &classAssignmentFakeAcademicYearRepository{
-		getByIDFn: func(context.Context, uuid.UUID) (domain.AcademicYear, error) {
+	yearRepo := &transactionServiceFakeAcademicYearRepository{
+		getByIDForShareFn: func(context.Context, uuid.UUID) (domain.AcademicYear, error) {
 			return newTestAcademicYear(yearID, domain.AcademicYearClosed), nil
 		},
 	}
-	uow := &classTransferServiceFakeUnitOfWork{repos: repository.RepositorySet{ClassTransferRequests: requestRepo, AcademicYears: yearRepo}}
-	svc := newClassTransferServiceForTest(t, repository.RepositorySet{}, &classTransferServiceFakeUnitOfWorkManager{uow: uow})
+	uow := &classTransferServiceFakeUnitOfWork{repos: repository.RepositorySet{ClassTransferRequests: requestRepo, AcademicYears: yearRepo, Students: &classTransferServiceFakeStudentRepository{getByIDFn: func(_ context.Context, id uuid.UUID) (domain.Student, error) {
+		return domain.Student{ID: id, Status: domain.StudentActive}, nil
+	}}}}
+	svc := newClassTransferServiceForTest(t, repository.RepositorySet{ClassTransferRequests: &classTransferServiceFakeClassTransferRepository{getByIDFn: func(context.Context, uuid.UUID) (domain.ClassTransferRequest, error) { return request, nil }}}, &classTransferServiceFakeUnitOfWorkManager{uow: uow})
 
 	_, err := svc.Approve(context.Background(), ApproveTransferInput{
 		Actor: Actor{UserID: uuid.New(), Role: domain.RoleAdmin}, TransferRequestID: request.ID,
@@ -670,13 +672,13 @@ func TestClassTransferServiceRejectRejectsClosedAcademicYear(t *testing.T) {
 		getByIDForUpdateFn: func(context.Context, uuid.UUID) (domain.ClassTransferRequest, error) { return request, nil },
 		updateFn:           func(context.Context, domain.ClassTransferRequest) error { updated = true; return nil },
 	}
-	yearRepo := &classAssignmentFakeAcademicYearRepository{
-		getByIDFn: func(context.Context, uuid.UUID) (domain.AcademicYear, error) {
+	yearRepo := &transactionServiceFakeAcademicYearRepository{
+		getByIDForShareFn: func(context.Context, uuid.UUID) (domain.AcademicYear, error) {
 			return newTestAcademicYear(yearID, domain.AcademicYearClosed), nil
 		},
 	}
 	uow := &classTransferServiceFakeUnitOfWork{repos: repository.RepositorySet{ClassTransferRequests: requestRepo, AcademicYears: yearRepo}}
-	svc := newClassTransferServiceForTest(t, repository.RepositorySet{}, &classTransferServiceFakeUnitOfWorkManager{uow: uow})
+	svc := newClassTransferServiceForTest(t, repository.RepositorySet{ClassTransferRequests: &classTransferServiceFakeClassTransferRepository{getByIDFn: func(context.Context, uuid.UUID) (domain.ClassTransferRequest, error) { return request, nil }}}, &classTransferServiceFakeUnitOfWorkManager{uow: uow})
 
 	_, err := svc.Reject(context.Background(), RejectTransferInput{
 		Actor: Actor{UserID: uuid.New(), Role: domain.RoleAdmin}, TransferRequestID: request.ID, RejectionReason: "Ditolak",
@@ -1064,8 +1066,8 @@ func TestClassTransferServiceApprove(t *testing.T) {
 		domain.AcademicYearOpen,
 	)
 
-	academicYearRepo := &classAssignmentFakeAcademicYearRepository{
-		getByIDFn: func(
+	academicYearRepo := &transactionServiceFakeAcademicYearRepository{
+		getByIDForShareFn: func(
 			_ context.Context,
 			id uuid.UUID,
 		) (domain.AcademicYear, error) {
@@ -1082,7 +1084,10 @@ func TestClassTransferServiceApprove(t *testing.T) {
 
 	uow := &classTransferServiceFakeUnitOfWork{
 		repos: repository.RepositorySet{
-			AcademicYears:         academicYearRepo,
+			AcademicYears: academicYearRepo,
+			Students: &classTransferServiceFakeStudentRepository{getByIDFn: func(_ context.Context, id uuid.UUID) (domain.Student, error) {
+				return domain.Student{ID: id, Status: domain.StudentActive}, nil
+			}},
 			ClassTransferRequests: transferRepo,
 			StudentClassHistories: historyRepo,
 		},
@@ -1090,7 +1095,7 @@ func TestClassTransferServiceApprove(t *testing.T) {
 
 	svc := newClassTransferServiceForTest(
 		t,
-		repository.RepositorySet{},
+		repository.RepositorySet{ClassTransferRequests: &classTransferServiceFakeClassTransferRepository{getByIDFn: func(context.Context, uuid.UUID) (domain.ClassTransferRequest, error) { return request, nil }}},
 		&classTransferServiceFakeUnitOfWorkManager{uow: uow},
 	)
 
@@ -1223,8 +1228,8 @@ func TestClassTransferServiceApproveCloseHistoryErrorRollsBack(t *testing.T) {
 		domain.AcademicYearOpen,
 	)
 
-	academicYearRepo := &classAssignmentFakeAcademicYearRepository{
-		getByIDFn: func(
+	academicYearRepo := &transactionServiceFakeAcademicYearRepository{
+		getByIDForShareFn: func(
 			_ context.Context,
 			id uuid.UUID,
 		) (domain.AcademicYear, error) {
@@ -1271,7 +1276,10 @@ func TestClassTransferServiceApproveCloseHistoryErrorRollsBack(t *testing.T) {
 
 	uow := &classTransferServiceFakeUnitOfWork{
 		repos: repository.RepositorySet{
-			AcademicYears:         academicYearRepo,
+			AcademicYears: academicYearRepo,
+			Students: &classTransferServiceFakeStudentRepository{getByIDFn: func(_ context.Context, id uuid.UUID) (domain.Student, error) {
+				return domain.Student{ID: id, Status: domain.StudentActive}, nil
+			}},
 			ClassTransferRequests: transferRepo,
 			StudentClassHistories: historyRepo,
 		},
@@ -1279,7 +1287,7 @@ func TestClassTransferServiceApproveCloseHistoryErrorRollsBack(t *testing.T) {
 
 	svc := newClassTransferServiceForTest(
 		t,
-		repository.RepositorySet{},
+		repository.RepositorySet{ClassTransferRequests: &classTransferServiceFakeClassTransferRepository{getByIDFn: func(context.Context, uuid.UUID) (domain.ClassTransferRequest, error) { return request, nil }}},
 		&classTransferServiceFakeUnitOfWorkManager{uow: uow},
 	)
 
@@ -1390,8 +1398,8 @@ func TestClassTransferServiceApproveCreateHistoryErrorRollsBack(t *testing.T) {
 		},
 	}
 
-	academicYearRepo := &classAssignmentFakeAcademicYearRepository{
-		getByIDFn: func(
+	academicYearRepo := &transactionServiceFakeAcademicYearRepository{
+		getByIDForShareFn: func(
 			_ context.Context,
 			id uuid.UUID,
 		) (domain.AcademicYear, error) {
@@ -1401,7 +1409,10 @@ func TestClassTransferServiceApproveCreateHistoryErrorRollsBack(t *testing.T) {
 
 	uow := &classTransferServiceFakeUnitOfWork{
 		repos: repository.RepositorySet{
-			AcademicYears:         academicYearRepo,
+			AcademicYears: academicYearRepo,
+			Students: &classTransferServiceFakeStudentRepository{getByIDFn: func(_ context.Context, id uuid.UUID) (domain.Student, error) {
+				return domain.Student{ID: id, Status: domain.StudentActive}, nil
+			}},
 			ClassTransferRequests: transferRepo,
 			StudentClassHistories: historyRepo,
 		},
@@ -1409,7 +1420,7 @@ func TestClassTransferServiceApproveCreateHistoryErrorRollsBack(t *testing.T) {
 
 	svc := newClassTransferServiceForTest(
 		t,
-		repository.RepositorySet{},
+		repository.RepositorySet{ClassTransferRequests: &classTransferServiceFakeClassTransferRepository{getByIDFn: func(context.Context, uuid.UUID) (domain.ClassTransferRequest, error) { return request, nil }}},
 		&classTransferServiceFakeUnitOfWorkManager{uow: uow},
 	)
 
@@ -1468,8 +1479,8 @@ func TestClassTransferServiceRejectAdmin(t *testing.T) {
 
 	academicYear := newTestAcademicYear(uuid.New(), domain.AcademicYearOpen)
 	request.AcademicYearID = academicYear.ID
-	academicYearRepo := &classAssignmentFakeAcademicYearRepository{
-		getByIDFn: func(context.Context, uuid.UUID) (domain.AcademicYear, error) {
+	academicYearRepo := &transactionServiceFakeAcademicYearRepository{
+		getByIDForShareFn: func(context.Context, uuid.UUID) (domain.AcademicYear, error) {
 			return academicYear, nil
 		},
 	}
@@ -1482,7 +1493,7 @@ func TestClassTransferServiceRejectAdmin(t *testing.T) {
 
 	svc := newClassTransferServiceForTest(
 		t,
-		repository.RepositorySet{},
+		repository.RepositorySet{ClassTransferRequests: &classTransferServiceFakeClassTransferRepository{getByIDFn: func(context.Context, uuid.UUID) (domain.ClassTransferRequest, error) { return request, nil }}},
 		&classTransferServiceFakeUnitOfWorkManager{uow: uow},
 	)
 
@@ -1595,5 +1606,84 @@ func TestClassTransferServiceRejectNonAdminForbidden(t *testing.T) {
 
 	if manager.beginCount != 0 {
 		t.Fatalf("Begin() count = %d, want 0", manager.beginCount)
+	}
+}
+
+func TestClassTransferDecisionRejectsChangedLockIdentity(t *testing.T) {
+	for _, approve := range []bool{true, false} {
+		for _, changedYear := range []bool{true, false} {
+			name := "reject"
+			if approve {
+				name = "approve"
+			}
+			if changedYear {
+				name += " tahun berubah"
+			} else {
+				name += " siswa berubah"
+			}
+			t.Run(name, func(t *testing.T) {
+				request := newTestTransferRequest(t, uuid.New(), uuid.New(), uuid.New(), uuid.New(), uuid.New())
+				initial := request
+				if changedYear {
+					initial.AcademicYearID = uuid.New()
+				} else {
+					initial.StudentID = uuid.New()
+				}
+				var calls []string
+				requestRepo := &classTransferServiceFakeClassTransferRepository{
+					getByIDFn: func(context.Context, uuid.UUID) (domain.ClassTransferRequest, error) {
+						calls = append(calls, "pre-read")
+						return initial, nil
+					},
+					getByIDForUpdateFn: func(context.Context, uuid.UUID) (domain.ClassTransferRequest, error) {
+						calls = append(calls, "request")
+						return request, nil
+					},
+				}
+				repos := repository.RepositorySet{
+					ClassTransferRequests: requestRepo,
+					AcademicYears: &transactionServiceFakeAcademicYearRepository{getByIDForShareFn: func(_ context.Context, id uuid.UUID) (domain.AcademicYear, error) {
+						calls = append(calls, "tahun")
+						if id != initial.AcademicYearID {
+							t.Fatal("wrong year locked")
+						}
+						return newTestAcademicYear(id, domain.AcademicYearOpen), nil
+					}},
+					Students: &classTransferServiceFakeStudentRepository{getByIDFn: func(_ context.Context, id uuid.UUID) (domain.Student, error) {
+						calls = append(calls, "siswa")
+						if id != initial.StudentID {
+							t.Fatal("wrong student locked")
+						}
+						return domain.Student{ID: id, Status: domain.StudentActive}, nil
+					}},
+				}
+				uow := &classTransferServiceFakeUnitOfWork{repos: repos}
+				svc := newClassTransferServiceForTest(t, repos, &classTransferServiceFakeUnitOfWorkManager{uow: uow})
+				var err error
+				if approve {
+					_, err = svc.Approve(context.Background(), ApproveTransferInput{Actor: Actor{UserID: uuid.New(), Role: domain.RoleAdmin}, TransferRequestID: request.ID, EffectiveDate: time.Date(2026, 10, 15, 0, 0, 0, 0, time.UTC)})
+				} else {
+					_, err = svc.Reject(context.Background(), RejectTransferInput{Actor: Actor{UserID: uuid.New(), Role: domain.RoleAdmin}, TransferRequestID: request.ID, RejectionReason: "Alasan penolakan"})
+				}
+				if !errors.Is(err, repository.ErrConflict) {
+					t.Fatalf("error=%v, want conflict", err)
+				}
+				want := []string{"pre-read", "tahun", "request"}
+				if approve {
+					want = []string{"pre-read", "tahun", "siswa", "request"}
+				}
+				if len(calls) != len(want) {
+					t.Fatalf("calls=%v, want %v", calls, want)
+				}
+				for i := range want {
+					if calls[i] != want[i] {
+						t.Fatalf("calls=%v, want %v", calls, want)
+					}
+				}
+				if uow.commitCount != 0 || uow.rollbackCount != 1 {
+					t.Fatalf("commit/rollback=%d/%d", uow.commitCount, uow.rollbackCount)
+				}
+			})
+		}
 	}
 }
