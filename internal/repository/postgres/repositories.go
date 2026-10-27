@@ -27,6 +27,7 @@ func NewRepositorySet(db database.DBTX) repository.RepositorySet {
 		SavingsAccounts:            NewSavingsAccountRepository(db),
 		Transactions:               NewTransactionRepository(db),
 		LeavingTransactionRequests: NewLeavingTransactionRequestRepository(db),
+		StudentLeavingRequests:     NewStudentLeavingRequestRepository(db),
 		Settlements:                NewSettlementRepository(db),
 		AuditLogs:                  NewAuditRepository(db),
 	}

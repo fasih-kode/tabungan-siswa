@@ -263,6 +263,19 @@ type LeavingTransactionRequestRepository interface {
 	HasEvidenceReference(context.Context, uuid.UUID, string) (bool, error)
 }
 
+// StudentLeavingRequestRepository mengelola proses pindah administratif.
+// Pemanggil harus menetapkan urutan lock lintas siswa, tahun ajaran, rekening,
+// dan proses sebelum memakai operasi ForUpdate dalam UOW.
+type StudentLeavingRequestRepository interface {
+	Create(context.Context, domain.StudentLeavingRequest) error
+	GetByID(context.Context, uuid.UUID) (domain.StudentLeavingRequest, error)
+	GetByIDForUpdate(context.Context, uuid.UUID) (domain.StudentLeavingRequest, error)
+	GetInProgressByStudent(context.Context, uuid.UUID) (domain.StudentLeavingRequest, error)
+	GetInProgressByStudentForUpdate(context.Context, uuid.UUID) (domain.StudentLeavingRequest, error)
+	ListByStudent(context.Context, uuid.UUID) ([]domain.StudentLeavingRequest, error)
+	Update(context.Context, domain.StudentLeavingRequest) error
+}
+
 type SettlementRepository interface {
 	Create(
 		ctx context.Context,
@@ -402,6 +415,7 @@ type RepositorySet struct {
 	SavingsAccounts            SavingsAccountRepository
 	Transactions               TransactionRepository
 	LeavingTransactionRequests LeavingTransactionRequestRepository
+	StudentLeavingRequests     StudentLeavingRequestRepository
 	Settlements                SettlementRepository
 	AuditLogs                  AuditRepository
 }
