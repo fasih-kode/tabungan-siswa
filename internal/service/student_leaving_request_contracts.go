@@ -11,8 +11,8 @@ import (
 // StudentLeavingRequestService menyediakan awal proses pindah untuk pemanggil internal.
 // Service belum dipasang pada ServiceSet atau endpoint aplikasi.
 type StudentLeavingRequestService interface {
-	// Start sementara dibatasi pada tahun OPEN dan tanggal hari ini UTC dengan placement yang berlaku.
-	// Batas tanggal ini perlu review kebijakan sebelum integrasi ke jalur pengguna.
+	// Start menerima tanggal hari ini atau tanggal lampau dalam tahun OPEN jika placement berlaku.
+	// Tanggal kalender memakai WIB; timestamp audit tetap UTC.
 	Start(context.Context, StartStudentLeavingRequestInput) (StartStudentLeavingRequestOutput, error)
 	Get(context.Context, GetStudentLeavingRequestInput) (GetStudentLeavingRequestOutput, error)
 }

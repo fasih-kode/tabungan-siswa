@@ -53,7 +53,11 @@ func newLeavingStartFixture(t *testing.T) leavingStartFixture {
 	if err := f.repos.Users.Create(ctx, admin); err != nil {
 		t.Fatal(err)
 	}
-	now := time.Now().UTC()
+	location, err := time.LoadLocation("Asia/Jakarta")
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now().In(location)
 	startYear := now.Year()
 	if now.Month() < time.July {
 		startYear--
@@ -69,14 +73,19 @@ func newLeavingStartFixture(t *testing.T) leavingStartFixture {
 		t.Fatal(err)
 	}
 	student := f.addStudent(t)
-	f.in = service.StartStudentLeavingRequestInput{Actor: service.Actor{UserID: admin.ID, Role: domain.RoleAdmin}, StudentID: student.ID, AcademicYearID: f.year.ID, EffectiveLeavingDate: now}
-	var err error
+	f.in = service.StartStudentLeavingRequestInput{Actor: service.Actor{UserID: admin.ID, Role: domain.RoleAdmin}, StudentID: student.ID, AcademicYearID: f.year.ID, EffectiveLeavingDate: serviceDateOnlyUTC(now)}
 	f.svc, err = service.NewStudentLeavingRequestService(service.Dependencies{Repositories: f.repos, UOW: f.manager})
 	if err != nil {
 		t.Fatal(err)
 	}
 	return f
 }
+
+func serviceDateOnlyUTC(value time.Time) time.Time {
+	year, month, day := value.Date()
+	return time.Date(year, month, day, 0, 0, 0, 0, time.UTC)
+}
+
 func (f leavingStartFixture) addStudent(t *testing.T) domain.Student {
 	t.Helper()
 	ctx := context.Background()
@@ -217,12 +226,30 @@ func TestStudentLeavingStartIntegrationValidation(t *testing.T) {
 				t.Fatal(err)
 			}
 		}, want: repository.ErrNotFound},
-		{name: "backdate ditolak sementara", change: func(_ *testing.T, _ *leavingStartFixture, in *service.StartStudentLeavingRequestInput) {
+		{name: "kemarin WIB diterima", change: func(_ *testing.T, f *leavingStartFixture, in *service.StartStudentLeavingRequestInput) {
 			in.EffectiveLeavingDate = in.EffectiveLeavingDate.AddDate(0, 0, -1)
-		}, want: domain.ErrInvalidDateRange},
-		{name: "future ditolak sementara", change: func(_ *testing.T, _ *leavingStartFixture, in *service.StartStudentLeavingRequestInput) {
+			if in.EffectiveLeavingDate.Before(f.year.StartDate) {
+				t.Skip("kemarin berada sebelum awal tahun ajaran pada hari pertama tahun")
+			}
+		}},
+		{name: "tanggal awal tahun ajaran diterima", change: func(_ *testing.T, f *leavingStartFixture, in *service.StartStudentLeavingRequestInput) {
+			in.EffectiveLeavingDate = f.year.StartDate
+		}},
+		{name: "besok WIB ditolak", change: func(_ *testing.T, _ *leavingStartFixture, in *service.StartStudentLeavingRequestInput) {
 			in.EffectiveLeavingDate = in.EffectiveLeavingDate.AddDate(0, 0, 1)
 		}, want: domain.ErrInvalidDateRange},
+		{name: "sebelum tahun ajaran ditolak", change: func(_ *testing.T, f *leavingStartFixture, in *service.StartStudentLeavingRequestInput) {
+			in.EffectiveLeavingDate = f.year.StartDate.AddDate(0, 0, -1)
+		}, want: domain.ErrInvalidDateRange},
+		{name: "batas akhir tahun ditolak", change: func(_ *testing.T, f *leavingStartFixture, in *service.StartStudentLeavingRequestInput) {
+			in.EffectiveLeavingDate = f.year.EndDate
+		}, want: domain.ErrInvalidDateRange},
+		{name: "placement tidak berlaku pada tanggal lampau", change: func(t *testing.T, f *leavingStartFixture, in *service.StartStudentLeavingRequestInput) {
+			in.EffectiveLeavingDate = f.year.StartDate
+			if _, err := f.db.Exec(`UPDATE student_class_histories SET validity=daterange($2::date,$3::date,'[)') WHERE student_id=$1 AND academic_year_id=$4`, f.in.StudentID, f.year.StartDate.AddDate(0, 0, 1), f.year.EndDate, f.year.ID); err != nil {
+				t.Fatal(err)
+			}
+		}, want: repository.ErrNotFound},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

@@ -1,7 +1,7 @@
 # Amendment — Penyelesaian Keuangan sebelum Pengesahan Pindah Sekolah
 
 **Status aturan bisnis:** disetujui pemilik aplikasi untuk MQ-08-CONTRACT-02.
-**Status implementasi:** belum diimplementasikan.
+**Status implementasi:** belum tersedia secara end-to-end. Start, settlement internal per rekening, dan pemeriksaan tautan sudah ada secara internal; HTTP/UI, readiness lintas rekening, pembatalan, dan finalisasi belum tersedia.
 **Cakupan:** urutan proses pindah sekolah, penyelesaian rekening, konfirmasi penyerahan, dan finalisasi status siswa.
 
 Amendment ini menggantikan urutan `LEFT`-sebelum-settlement pada [kontrak FASE 19](fase-19-student-http-contract.md), [amendment alur settlement pindah](student-leaving-settlement-ui-amendment.md), [amendment transaksi terlambat](late-transaction-request-amendment.md), dan ringkasan aturan lama di [BUSINESS_RULES.md](../BUSINESS_RULES.md). Dokumen-dokumen tersebut tetap menjadi bukti kontrak dan implementasi pada masanya; perubahan ini tidak menyatakan bahwa kode lama telah memenuhi aturan baru. Laporan audit historis tidak ditulis ulang.
@@ -21,7 +21,7 @@ Amendment ini menggantikan urutan `LEFT`-sebelum-settlement pada [kontrak FASE 1
 
 Keputusan berikut disetujui pemilik dan menggantikan rekomendasi atau pertanyaan terbuka yang bertentangan pada versi kontrak ini. Persetujuan aturan tidak berarti implementasinya sudah tersedia.
 
-1. Tanggal peristiwa pindah mengikuti kalender WIB (`Asia/Jakarta`). Tanggal hari ini atau tanggal sebelumnya diperbolehkan selama berada dalam tahun ajaran `OPEN` dan placement pada tanggal itu valid; tanggal mendatang ditolak. Implementasi `StudentLeavingRequestService.Start` saat ini masih membatasi tanggal pada hari UTC ini, sehingga belum sesuai. Perbaikannya adalah pekerjaan terpisah dan harus selesai sebelum alur HTTP/UI diaktifkan.
+1. Tanggal peristiwa pindah mengikuti kalender WIB (`Asia/Jakarta`). Tanggal hari ini atau tanggal sebelumnya diperbolehkan selama berada dalam tahun ajaran `OPEN` dan placement pada tanggal itu valid; tanggal mendatang ditolak. Implementasi internal `StudentLeavingRequestService.Start` mengikuti aturan ini sejak MQ-08-IMPL-04B. Alur HTTP/UI tetap belum diaktifkan.
 2. Clearance finalisasi mencakup seluruh rekening siswa lintas tahun ajaran. Rekening berstatus `OPEN` pada tahun ajaran `CLOSED` menghalangi finalisasi; sistem tidak membuka tahun otomatis.
 3. Transaksi biasa tetap diperbolehkan pada rekening `OPEN` selama proses pindah aktif, selama tahun ajaran dan otorisasi mengizinkan, hingga rekening diselesaikan. Pembuatan rekening baru diblokir selama ada proses pindah `IN_PROGRESS`.
 4. Proses pindah boleh dibatalkan sebelum siswa menjadi `LEFT`. Bila ada settlement positif, seluruh penyerahan yang diwajibkan harus sudah direkonsiliasi sebelum pembatalan. Pembatalan tidak membalik settlement, saldo, transaksi, penyerahan, atau histori.
@@ -83,6 +83,8 @@ Pembatalan setelah finalisasi `LEFT` tidak tersedia melalui proses ini; perubaha
 
 `effective_leaving_date` adalah tanggal peristiwa pindah yang sebenarnya dan ditetapkan ketika proses dimulai; tanggal itu dipakai untuk penutupan placement dan batas transaksi yang benar-benar terjadi sebelum siswa pindah. `finalized_at` adalah waktu administrasi saat Admin mengesahkan proses. Keduanya tidak boleh disamakan.
 
+Start menerima tanggal kalender hari ini atau lampau dalam WIB, mempertahankan komponen tanggal yang dipilih tanpa menggesernya melalui konversi timestamp, dan hanya menerima tanggal dalam tahun `OPEN` dengan placement yang berlaku. Waktu pembuatan/audit tetap timestamp UTC. Transaksi ledger yang bertanggal setelah `effective_leaving_date` tidak diubah atau dihapus otomatis; kondisi itu harus terlihat sebagai blocker rekonsiliasi pada readiness/finalisasi sampai aturan penanganannya ditetapkan.
+
 Dalam rancangan kompatibilitas, `students.leaving_date` tetap bermakna tanggal peristiwa pindah terakhir yang telah disahkan, bukan waktu finalisasi. Isi nilainya dari tanggal kejadian tersimpan saat finalisasi. Proses yang dibatalkan tidak mengubahnya. Histori lama tidak ditebak atau di-backfill dari tanggal finalisasi. Apakah `leaving_date` kelak didepresiasi demi tabel event merupakan keputusan teknis lanjutan.
 
 ## 5. Kontrak settlement dan penyerahan
@@ -103,11 +105,11 @@ Konfirmasi handover tetap aksi Wali, bukan Admin. Gunakan saldo bersih dan movem
 
 ### Transaksi biasa dan saldo final
 
-Selama proses berlangsung, rekomendasi awal adalah membolehkan setoran/penarikan biasa hanya pada rekening `OPEN` selama tahun dan scope mengizinkan. Wali boleh menyelesaikan transaksi terakhir sebelum memilih settlement; saldo final dihitung saat settlement di bawah lock rekening dan tahun. Setelah rekening berubah menjadi `SETTLED`, transaksi biasa ditolak seperti saat ini. Ini menghindari penghentian transaksi terlalu dini ketika proses baru dimulai.
+Selama proses berlangsung, setoran/penarikan biasa tetap boleh dilakukan pada rekening `OPEN` selama tahun dan scope mengizinkan. Wali boleh menyelesaikan transaksi terakhir sebelum memilih settlement; saldo final dihitung saat settlement di bawah lock rekening dan tahun. Setelah rekening berubah menjadi `SETTLED`, transaksi biasa ditolak seperti saat ini.
 
 Finalisasi harus mengunci ulang himpunan rekening relevan secara deterministik dan menghitung ulang kewajiban sebelum menandai siswa `LEFT`. Pembuatan rekening/siklus baru harus ditolak selama proses aktif. Agar tidak ada rekening baru yang lolos bersamaan dengan finalisasi, pemeriksaan proses dan insert rekening harus terserialisasi di backend dan trigger/database dengan protokol lock yang sama. Detail mekanisme dan urutan lock wajib direview sebelum implementasi; pernyataan ini adalah kebutuhan, bukan klaim race sudah tertangani.
 
-Jika produk menghendaki semua transaksi rutin berhenti segera saat proses dimulai, itu akan memerlukan perubahan aturan yang belum disetujui. Belum dipilih di amendment ini.
+Pembuatan rekening baru diblokir selama proses `IN_PROGRESS`; aturan transaksi ini tidak mengizinkan pembukaan siklus baru.
 
 ### Transaksi terlambat
 

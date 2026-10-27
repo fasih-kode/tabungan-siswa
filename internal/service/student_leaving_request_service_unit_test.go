@@ -178,6 +178,64 @@ func TestStudentLeavingRequestServiceStartOrderAndAudit(t *testing.T) {
 	}
 }
 
+func TestStudentLeavingRequestServiceStartJakartaCalendarDates(t *testing.T) {
+	date := func(day int) time.Time {
+		return time.Date(2026, time.October, day, 0, 0, 0, 0, time.UTC)
+	}
+	cases := []struct {
+		name      string
+		now       time.Time
+		inputDate time.Time
+		change    func(*leavingStartUnitFixture)
+		wantErr   error
+	}{
+		{name: "16.59 UTC hari WIB masih sama", now: time.Date(2026, 10, 27, 16, 59, 0, 0, time.UTC), inputDate: date(27)},
+		{name: "17.00 UTC hari WIB berganti", now: time.Date(2026, 10, 27, 17, 0, 0, 0, time.UTC), inputDate: date(28)},
+		{name: "tanggal-only tengah malam UTC tidak bergeser", now: time.Date(2026, 10, 27, 17, 0, 0, 0, time.UTC), inputDate: date(28)},
+		{name: "kemarin WIB diterima", now: time.Date(2026, 10, 27, 16, 59, 0, 0, time.UTC), inputDate: date(26)},
+		{name: "tanggal lampau lain diterima", now: time.Date(2026, 10, 27, 16, 59, 0, 0, time.UTC), inputDate: time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC)},
+		{name: "besok WIB ditolak", now: time.Date(2026, 10, 27, 16, 59, 0, 0, time.UTC), inputDate: date(28), wantErr: domain.ErrInvalidDateRange},
+		{name: "sebelum tahun ajaran ditolak", now: time.Date(2026, 10, 27, 16, 59, 0, 0, time.UTC), inputDate: time.Date(2026, 6, 30, 0, 0, 0, 0, time.UTC), wantErr: domain.ErrInvalidDateRange},
+		{name: "batas akhir tahun ditolak", now: time.Date(2026, 10, 27, 16, 59, 0, 0, time.UTC), inputDate: time.Date(2027, 7, 1, 0, 0, 0, 0, time.UTC), wantErr: domain.ErrInvalidDateRange},
+		{name: "placement tidak berlaku ditolak", now: time.Date(2026, 10, 27, 16, 59, 0, 0, time.UTC), inputDate: time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC), change: func(f *leavingStartUnitFixture) {
+			f.history.Period.From = time.Date(2026, 7, 2, 0, 0, 0, 0, time.UTC)
+		}, wantErr: domain.ErrInvalidTransition},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			f := newLeavingStartUnitFixture(t)
+			f.svc.now = func() time.Time { return tc.now }
+			f.in.EffectiveLeavingDate = tc.inputDate
+			if tc.change != nil {
+				tc.change(f)
+			}
+			out, err := f.svc.Start(context.Background(), f.in)
+			if !errors.Is(err, tc.wantErr) {
+				t.Fatalf("Start error=%v, want %v", err, tc.wantErr)
+			}
+			if tc.wantErr != nil {
+				if len(f.requests) != 0 || len(f.audits) != 0 {
+					t.Fatal("tanggal tidak valid membuat proses atau audit")
+				}
+				return
+			}
+			wantDate := dateOnlyUTC(tc.inputDate)
+			if out.Request == nil || !out.Request.EffectiveLeavingDate.Equal(wantDate) {
+				t.Fatalf("tanggal proses=%v, ingin %v", out.Request, wantDate)
+			}
+			var payload struct {
+				EffectiveLeavingDate string `json:"effective_leaving_date"`
+			}
+			if err := json.Unmarshal(f.audits[0].AfterData, &payload); err != nil {
+				t.Fatal(err)
+			}
+			if payload.EffectiveLeavingDate != wantDate.Format("2006-01-02") {
+				t.Fatalf("tanggal audit=%q, ingin %q", payload.EffectiveLeavingDate, wantDate.Format("2006-01-02"))
+			}
+		})
+	}
+}
+
 func TestStudentLeavingRequestServiceStartFailures(t *testing.T) {
 	failure := errors.New("repository failure")
 	cases := []struct {
@@ -199,10 +257,13 @@ func TestStudentLeavingRequestServiceStartFailures(t *testing.T) {
 		{"closing", func(f *leavingStartUnitFixture) { f.year.Status = domain.AcademicYearClosing }, domain.ErrInvalidTransition, false},
 		{"left", func(f *leavingStartUnitFixture) { f.student.Status = domain.StudentLeft }, domain.ErrInvalidTransition, false},
 		{"graduated", func(f *leavingStartUnitFixture) { f.student.Status = domain.StudentGraduated }, domain.ErrInvalidTransition, false},
-		{"backdate provisional restriction", func(f *leavingStartUnitFixture) {
-			f.in.EffectiveLeavingDate = f.in.EffectiveLeavingDate.AddDate(0, 0, -1)
+		{"before academic year", func(f *leavingStartUnitFixture) {
+			f.in.EffectiveLeavingDate = f.year.StartDate.AddDate(0, 0, -1)
 		}, domain.ErrInvalidDateRange, false},
-		{"future provisional restriction", func(f *leavingStartUnitFixture) {
+		{"at academic year end", func(f *leavingStartUnitFixture) {
+			f.in.EffectiveLeavingDate = f.year.EndDate
+		}, domain.ErrInvalidDateRange, false},
+		{"future date restriction", func(f *leavingStartUnitFixture) {
 			f.in.EffectiveLeavingDate = f.in.EffectiveLeavingDate.AddDate(0, 0, 1)
 		}, domain.ErrInvalidDateRange, false},
 		{"placement missing", func(f *leavingStartUnitFixture) { f.historyErr = repository.ErrNotFound }, repository.ErrNotFound, false},

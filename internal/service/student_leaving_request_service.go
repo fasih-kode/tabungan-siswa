@@ -69,11 +69,14 @@ func (s *studentLeavingRequestService) Start(ctx context.Context, input StartStu
 		return StartStudentLeavingRequestOutput{}, domain.ErrInvalidTransition
 	}
 
-	date := time.Date(input.EffectiveLeavingDate.Year(), input.EffectiveLeavingDate.Month(), input.EffectiveLeavingDate.Day(), 0, 0, 0, 0, time.UTC)
-	now := s.now().UTC()
-	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC)
-	// Pembatasan sementara: backdate, tanggal mendatang, dan zona tanggal bisnis belum disetujui.
-	if !date.Equal(today) || date.Before(year.StartDate) || !date.Before(year.EndDate) {
+	date := dateOnlyUTC(input.EffectiveLeavingDate)
+	today, err := jakartaCalendarDate(s.now())
+	if err != nil {
+		return StartStudentLeavingRequestOutput{}, err
+	}
+	startDate := dateOnlyUTC(year.StartDate)
+	endDate := dateOnlyUTC(year.EndDate)
+	if date.After(today) || date.Before(startDate) || !date.Before(endDate) {
 		return StartStudentLeavingRequestOutput{}, domain.ErrInvalidDateRange
 	}
 	history, err := repos.StudentClassHistories.GetCurrentByStudentAndAcademicYear(ctx, student.ID, year.ID, date)
@@ -135,6 +138,21 @@ func (s *studentLeavingRequestService) Start(ctx context.Context, input StartStu
 	}
 	committed = true
 	return StartStudentLeavingRequestOutput{Request: &request}, nil
+}
+
+// dateOnlyUTC mempertahankan komponen tanggal pemanggil dan menormalisasikannya untuk perbandingan tanggal-only.
+func dateOnlyUTC(value time.Time) time.Time {
+	year, month, day := value.Date()
+	return time.Date(year, month, day, 0, 0, 0, 0, time.UTC)
+}
+
+// jakartaCalendarDate mengubah clock timestamp menjadi tanggal kalender WIB tanpa mengubah timestamp audit.
+func jakartaCalendarDate(now time.Time) (time.Time, error) {
+	location, err := time.LoadLocation("Asia/Jakarta")
+	if err != nil {
+		return time.Time{}, fmt.Errorf("load business timezone Asia/Jakarta: %w", err)
+	}
+	return dateOnlyUTC(now.In(location)), nil
 }
 
 func (s *studentLeavingRequestService) Get(ctx context.Context, input GetStudentLeavingRequestInput) (GetStudentLeavingRequestOutput, error) {
