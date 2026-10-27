@@ -8,13 +8,14 @@ import (
 	"github.com/google/uuid"
 )
 
-// StudentLeavingRequestService menyediakan awal proses pindah untuk pemanggil internal.
+// StudentLeavingRequestService menyediakan lifecycle proses pindah untuk pemanggil internal.
 // Service belum dipasang pada ServiceSet atau endpoint aplikasi.
 type StudentLeavingRequestService interface {
 	// Start menerima tanggal hari ini atau tanggal lampau dalam tahun OPEN jika placement berlaku.
 	// Tanggal kalender memakai WIB; timestamp audit tetap UTC.
 	Start(context.Context, StartStudentLeavingRequestInput) (StartStudentLeavingRequestOutput, error)
 	Get(context.Context, GetStudentLeavingRequestInput) (GetStudentLeavingRequestOutput, error)
+	Cancel(context.Context, CancelStudentLeavingRequestInput) (CancelStudentLeavingRequestOutput, error)
 }
 
 type StartStudentLeavingRequestInput struct {
@@ -34,5 +35,15 @@ type GetStudentLeavingRequestInput struct {
 }
 
 type GetStudentLeavingRequestOutput struct {
+	Request *domain.StudentLeavingRequest
+}
+
+type CancelStudentLeavingRequestInput struct {
+	Actor                   Actor
+	StudentLeavingRequestID uuid.UUID
+	Reason                  string
+}
+
+type CancelStudentLeavingRequestOutput struct {
 	Request *domain.StudentLeavingRequest
 }

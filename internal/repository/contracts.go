@@ -205,6 +205,10 @@ type SavingsAccountRepository interface {
 		studentID uuid.UUID,
 		academicYearID uuid.UUID,
 	) (domain.SavingsAccount, error)
+	ListByStudent(context.Context, uuid.UUID) ([]domain.SavingsAccount, error)
+	// ListByStudentForUpdate mengunci seluruh rekening siswa berdasarkan ID.
+	// Pemanggil harus lebih dahulu mengunci semua tahun terkait.
+	ListByStudentForUpdate(context.Context, uuid.UUID) ([]domain.SavingsAccount, error)
 
 	// GetByIDForUpdate harus dijalankan oleh repository
 	// yang terikat pada transaction aktif.

@@ -29,6 +29,14 @@ type leavingStartFixture struct {
 }
 
 func newLeavingStartFixture(t *testing.T) leavingStartFixture {
+	return newLeavingRequestFixture(t, 15)
+}
+
+func newLeavingCancelFixture(t *testing.T) leavingStartFixture {
+	return newLeavingRequestFixture(t, 17)
+}
+
+func newLeavingRequestFixture(t *testing.T, requiredSchema int) leavingStartFixture {
 	t.Helper()
 	ctx := context.Background()
 	db := openServiceScopeTestDatabase(t)
@@ -37,17 +45,11 @@ func newLeavingStartFixture(t *testing.T) leavingStartFixture {
 	if err := db.QueryRowContext(ctx, `SELECT version,dirty FROM schema_migrations LIMIT 1`).Scan(&version, &dirty); err != nil {
 		t.Fatal(err)
 	}
-	if version != 15 || dirty {
-		t.Skipf("requires clean schema v15; version=%d dirty=%t", version, dirty)
+	if version != requiredSchema || dirty {
+		t.Skipf("requires clean schema v%d; version=%d dirty=%t", requiredSchema, version, dirty)
 	}
 	cleanupServiceScopeFixtures(t, db)
 	t.Cleanup(func() { cleanupServiceScopeFixtures(t, db) })
-	// Hapus row task ini sebelum cleanup lama mencoba menghapus siswa yang direferensikan.
-	t.Cleanup(func() {
-		if _, err := db.ExecContext(ctx, `DELETE FROM student_leaving_requests`); err != nil {
-			t.Error(err)
-		}
-	})
 	f := leavingStartFixture{db: db, repos: postgres.NewRepositorySet(db), manager: postgres.NewUnitOfWorkManager(db)}
 	admin := newServiceScopeUser(t, domain.RoleAdmin)
 	if err := f.repos.Users.Create(ctx, admin); err != nil {
