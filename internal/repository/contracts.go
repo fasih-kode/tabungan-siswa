@@ -276,7 +276,24 @@ type StudentLeavingRequestRepository interface {
 	GetInProgressByStudent(context.Context, uuid.UUID) (domain.StudentLeavingRequest, error)
 	GetInProgressByStudentForUpdate(context.Context, uuid.UUID) (domain.StudentLeavingRequest, error)
 	ListByStudent(context.Context, uuid.UUID) ([]domain.StudentLeavingRequest, error)
+	// ListFinancialLinkIssues memeriksa konsistensi relasi keuangan pada schema v16.
+	ListFinancialLinkIssues(context.Context, uuid.UUID) ([]StudentLeavingFinancialLinkIssue, error)
 	Update(context.Context, domain.StudentLeavingRequest) error
+}
+
+type StudentLeavingFinancialLinkIssueType string
+
+const (
+	StudentLeavingSettlementStudentMismatch  StudentLeavingFinancialLinkIssueType = "SETTLEMENT_STUDENT_MISMATCH"
+	StudentLeavingSettlementTypeMismatch     StudentLeavingFinancialLinkIssueType = "SETTLEMENT_TYPE_MISMATCH"
+	StudentLeavingLateRequestStudentMismatch StudentLeavingFinancialLinkIssueType = "LATE_REQUEST_STUDENT_MISMATCH"
+	StudentLeavingLateRequestYearMismatch    StudentLeavingFinancialLinkIssueType = "LATE_REQUEST_YEAR_MISMATCH"
+)
+
+// StudentLeavingFinancialLinkIssue mengidentifikasi satu relasi keuangan yang tidak konsisten.
+type StudentLeavingFinancialLinkIssue struct {
+	Type     StudentLeavingFinancialLinkIssueType
+	RecordID uuid.UUID
 }
 
 type SettlementRepository interface {

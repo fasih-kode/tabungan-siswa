@@ -405,6 +405,8 @@ func financialLinksSnapshot(t *testing.T, db *sql.DB) string {
 
 	const query = `
 		SELECT jsonb_build_object(
+			'leaving_requests', COALESCE((SELECT jsonb_agg(to_jsonb(lr) ORDER BY lr.id) FROM student_leaving_requests lr), '[]'::jsonb),
+			'savings_accounts', COALESCE((SELECT jsonb_agg(to_jsonb(sa) ORDER BY sa.id) FROM savings_accounts sa), '[]'::jsonb),
 			'transactions', COALESCE((SELECT jsonb_agg(to_jsonb(t) ORDER BY t.id) FROM transactions t), '[]'::jsonb),
 			'settlements', COALESCE((SELECT jsonb_agg(to_jsonb(s) ORDER BY s.id) FROM savings_settlements s), '[]'::jsonb),
 			'cash_movements', COALESCE((SELECT jsonb_agg(to_jsonb(m) ORDER BY m.id) FROM settlement_cash_movements m), '[]'::jsonb),
