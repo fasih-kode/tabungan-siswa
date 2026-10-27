@@ -251,7 +251,7 @@ func translateSavingsAccountError(
 			return fmt.Errorf("%s: %w", operation, repository.ErrConflict)
 		case "23514":
 			switch pgErr.ConstraintName {
-			case "savings_accounts_academic_year_must_be_open", "savings_accounts_student_must_be_active", "savings_accounts_no_reopen_after_year_close":
+			case "savings_accounts_academic_year_must_be_open", "savings_accounts_student_must_be_active", "savings_accounts_no_reopen_after_year_close", "savings_accounts_student_leaving_in_progress":
 				return fmt.Errorf("%s: %w", operation, domain.ErrInvalidTransition)
 			}
 		}

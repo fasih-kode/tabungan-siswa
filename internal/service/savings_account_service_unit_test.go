@@ -575,7 +575,7 @@ func TestSavingsAccountServiceCreateWaliKelasOutOfScope(t *testing.T) {
 }
 
 func TestSavingsAccountServiceCreatePropagatesRepositoryErrorAndRollsBack(t *testing.T) {
-	wantErr := errors.New("create savings account failed")
+	wantErr := domain.ErrInvalidTransition
 	savingsRepo := &savingsAccountServiceFakeSavingsAccountRepository{
 		createFn: func(context.Context, domain.SavingsAccount) error {
 			return wantErr
