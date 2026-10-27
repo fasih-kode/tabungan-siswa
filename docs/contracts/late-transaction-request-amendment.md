@@ -1,5 +1,7 @@
 # Addendum: permintaan transaksi terlambat untuk siswa pindah
 
+> **Prasyarat status di bawah telah superseded untuk proses pindah baru.** MQ-08-CONTRACT-02 mengizinkan penyelesaian permintaan terlambat selama proses pindah aktif dan sebelum siswa `LEFT`, dengan tanggal kejadian dari proses tersebut. Gunakan [amendment penyelesaian keuangan sebelum pengesahan pindah](student-transfer-financial-clearance-amendment.md); uraian di bawah tetap mendokumentasikan kontrak dan implementasi sebelumnya.
+
 Status: disetujui owner 2026-10-21; implementasi tahap pertama.
 
 ## Kebijakan yang disetujui

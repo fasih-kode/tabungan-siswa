@@ -2,6 +2,8 @@
 
 Status: APPROVED by product owner, 2026-10-21.
 
+> **Urutan dalam amendment ini telah superseded.** Keputusan MQ-08-CONTRACT-02 mewajibkan settlement dan penyerahan yang diperlukan selesai sebelum siswa menjadi `LEFT`. Gunakan [amendment penyelesaian keuangan sebelum pengesahan pindah](student-transfer-financial-clearance-amendment.md) sebagai kontrak terbaru untuk memulai proses, settlement, dan finalisasi. Isi di bawah dipertahankan sebagai catatan keputusan/alur UI terdahulu, bukan perilaku yang berlaku untuk urutan baru.
+
 This amendment adds the missing browser workflow for the existing
 `STUDENT_LEAVING` settlement operation. It clarifies the separation already
 specified by the [FASE 19 student contract](fase-19-student-http-contract.md)

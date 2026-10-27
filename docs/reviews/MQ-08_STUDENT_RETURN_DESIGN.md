@@ -1,5 +1,7 @@
 # MQ-08-CONTRACT-01 — Rancangan Siswa Kembali dan Siklus Tabungan
 
+> **Pembaharuan kontrak pindah:** MQ-08-CONTRACT-02 disetujui setelah rancangan ini ditulis. Untuk alur pindah baru, settlement dan handover yang diwajibkan harus selesai sebelum siswa `LEFT`; rekomendasi lock table di bawah yang menyebut `Student LEFT` sebagai prasyarat settlement adalah snapshot rancangan lama dan digantikan oleh [amendment terbaru](../contracts/student-transfer-financial-clearance-amendment.md). Rekomendasi multi-siklus lainnya tetap belum final.
+
 **Jenis dokumen:** rancangan teknis awal; bukan persetujuan implementasi.
 **Kontrak bisnis:** [Kontrak Siswa Kembali dan Siklus Tabungan](../contracts/student-return-and-savings-cycle-contract.md).
 **Audit konkurensi sumber:** [MQ-08-REVIEW-01](MQ-08_CONCURRENCY_SETTLEMENT_REVIEW.md).
@@ -157,3 +159,10 @@ Setiap tahap harus mendapat review supervisor sesuai workflow branch `review`; t
 - Belum ada keputusan khusus mengenai settlement dengan handover pending, siklus lama OPEN pada tahun berbeda, agregasi reporting, atau penyimpanan lifecycle event.
 - Race state `ACTIVE + SETTLED` dan deadlock lock-order masih risiko dari MQ-08 review, bukan bug yang direproduksi.
 - Fitur multi-cycle, endpoint, UI, dan test belum ada pada baseline; dokumen ini tidak menyatakan implementasi selesai.
+
+## 9. Pembaruan setelah MQ-08-CONTRACT-02
+
+- Pemilik menyetujui pemisahan proses pindah dari `students.status`: student tetap belum `LEFT` saat kewajiban diselesaikan. Settlement pindah yang baru harus terkait proses aktif; status LEFT ditetapkan setelah pemeriksaan finansial dan penutupan placement.
+- Tabel state dan UI lama dalam rancangan ini perlu ditafsirkan bersama amendment baru. `PENDING_LEAVE` belum disetujui sebagai enum student. Model tabel proses, aturan cancel setelah settlement, rekening lintas tahun, serta tanggal backdate masih menunggu keputusan/desain.
+- Amendment baru tidak mengunci pilihan row-per-cycle, saldo awal cycle, agregasi report, atau lifecycle-event. Jangan menganggap rekomendasi tersebut sudah menjadi aturan produk.
+- Perubahan kontrak belum diimplementasikan. Semua gap/race di bagian ini tetap perlu review dan tes, dengan lock protocol yang mencakup trigger PostgreSQL.

@@ -3,6 +3,8 @@
 **Status keputusan bisnis:** disetujui pemilik aplikasi untuk MQ-08-CONTRACT-01.
 **Status implementasi:** belum diimplementasikan. Dokumen ini menetapkan perilaku produk; rancangan schema/API rinci tetap rekomendasi sampai mendapat review teknis.
 
+**Urutan pindah sekolah diperbarui:** keputusan MQ-08-CONTRACT-02 pada [amendment penyelesaian keuangan sebelum pengesahan pindah](student-transfer-financial-clearance-amendment.md) menggantikan asumsi alur lama yang menetapkan `LEFT` sebelum settlement. Bagian rekomendasi multi-siklus di bawah tetap rancangan; amendment baru tidak mengesahkan saldo awal siklus, agregasi laporan, atau model lifecycle-event.
+
 ## 1. Keputusan bisnis yang disetujui
 
 1. Identitas siswa tidak berubah ketika siswa pindah lalu kembali. Jangan membuat siswa baru hanya untuk memulai ulang tabungan.
