@@ -908,6 +908,13 @@ func (s *studentService) Reactivate(
 	}()
 
 	repos := uow.Repositories()
+	year, err := repos.AcademicYears.GetByIDForUpdate(
+		ctx,
+		input.AcademicYearID,
+	)
+	if err != nil {
+		return ReactivateStudentOutput{}, err
+	}
 	student, err := repos.Students.GetByIDForUpdate(ctx, input.StudentID)
 	if err != nil {
 		return ReactivateStudentOutput{}, err
@@ -915,7 +922,14 @@ func (s *studentService) Reactivate(
 	if err := student.Reactivate(); err != nil {
 		return ReactivateStudentOutput{}, err
 	}
-	history, err := studentPlacementAtDate(ctx, repos, input.StudentID, input.AcademicYearID, input.ClassID, input.EffectiveDate)
+	history, err := studentPlacementAtDateInYear(
+		ctx,
+		repos,
+		input.StudentID,
+		year,
+		input.ClassID,
+		input.EffectiveDate,
+	)
 	if err != nil {
 		return ReactivateStudentOutput{}, err
 	}
@@ -940,11 +954,32 @@ func studentPlacementAtDate(ctx context.Context, repos repository.RepositorySet,
 	if err != nil {
 		return domain.StudentClassHistory{}, err
 	}
+	return studentPlacementAtDateInYear(
+		ctx,
+		repos,
+		studentID,
+		year,
+		classID,
+		effectiveDate,
+	)
+}
+
+func studentPlacementAtDateInYear(
+	ctx context.Context,
+	repos repository.RepositorySet,
+	studentID uuid.UUID,
+	year domain.AcademicYear,
+	classID uuid.UUID,
+	effectiveDate time.Time,
+) (domain.StudentClassHistory, error) {
+	if studentID == uuid.Nil || year.ID == uuid.Nil || classID == uuid.Nil {
+		return domain.StudentClassHistory{}, domain.ErrInvalidID
+	}
 	class, err := repos.Classes.GetByID(ctx, classID)
 	if err != nil {
 		return domain.StudentClassHistory{}, err
 	}
-	if class.AcademicYearID != yearID {
+	if class.AcademicYearID != year.ID {
 		return domain.StudentClassHistory{}, domain.ErrInvalidValue
 	}
 	if err := validateClassEffectiveDate(year, class.EffectiveDate); err != nil {
@@ -960,7 +995,7 @@ func studentPlacementAtDate(ctx context.Context, repos repository.RepositorySet,
 	if err != nil {
 		return domain.StudentClassHistory{}, err
 	}
-	return domain.NewStudentClassHistory(studentID, yearID, classID, period)
+	return domain.NewStudentClassHistory(studentID, year.ID, classID, period)
 }
 
 func validateStudentUpdate(student domain.Student) error {
