@@ -485,3 +485,11 @@ Audit read-only selesai pada baseline `cb7add40796c81a508770c85b595fbfacecff8c2`
 - Belum diputuskan: pembatalan setelah ada settlement; cakupan rekening lintas tahun/akun `OPEN` pada tahun tertutup; backdate; apakah transaksi rutin tetap berjalan sampai settlement; detail late-request approval selama siswa belum LEFT; siklus baru/saldo awal jika proses batal setelah settlement; lock protocol konkret.
 - Pemeriksaan: dokumentasi dan kode dibaca secara read-only. Tidak ada source, migration, database, fixture, atau tes yang diubah/dijalankan. `git diff --check` dan pemeriksaan tautan relatif lulus setelah perubahan.
 - Pekerjaan berikutnya: supervisor review amendment dan keputusan tambahan pada §11 sebelum rancangan implementasi. Tidak ada fitur yang dinyatakan selesai.
+
+## MQ-08-CONTRACT-03 — pembatalan pindah setelah settlement
+
+- Baseline awal: branch `review`, HEAD `12ac2351ca193ae371120a7478f93f5e5be23217`, working tree bersih.
+- Pemilik menyetujui pembatalan proses pindah sebelum finalisasi `LEFT`, termasuk setelah settlement bila seluruh handover positif yang diwajibkan sudah selesai. Pembatalan mengubah proses menjadi `CANCELLED`; siswa tetap `ACTIVE`, placement aktif tidak ditutup/dibuat ulang, dan riwayat transaksi, settlement, handover, serta audit tetap utuh. Pembatalan setelah `LEFT` tetap alur Siswa Kembali.
+- Rekening `SETTLED` tetap final dan tidak bisa dipakai setor/tarik. Jika rekening settled dan siswa ingin melanjutkan tabungan, Wali berwenang membuat siklus baru; Admin tidak membuat rekening atau memutasi keuangan. Dukungan multi-siklus belum ada; schema saat ini membatasi satu rekening per siswa/tahun. Desain harus menegakkan maksimal satu siklus `OPEN` per siswa/tahun.
+- Pembatalan saat handover positif masih tertunda belum disetujui. Serialisasi pembatalan terhadap settlement, handover, reopen, dan pembuatan siklus perlu review teknis serta tes concurrency deterministik.
+- Saldo awal siklus baru `Rp. 0` tetap rekomendasi lama, bukan keputusan MQ ini. Tidak ada source, migration, data, route, UI, atau test yang diubah/dijalankan. Pemeriksaan diff dan tautan relatif dilakukan setelah edit.

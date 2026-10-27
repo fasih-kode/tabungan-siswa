@@ -5,6 +5,8 @@
 
 **Urutan pindah sekolah diperbarui:** keputusan MQ-08-CONTRACT-02 pada [amendment penyelesaian keuangan sebelum pengesahan pindah](student-transfer-financial-clearance-amendment.md) menggantikan asumsi alur lama yang menetapkan `LEFT` sebelum settlement. Bagian rekomendasi multi-siklus di bawah tetap rancangan; amendment baru tidak mengesahkan saldo awal siklus, agregasi laporan, atau model lifecycle-event.
 
+**Pembatalan sebelum `LEFT`:** MQ-08-CONTRACT-03 menyetujui pembatalan proses pindah sebelum finalisasi, termasuk setelah settlement bila handover wajib telah selesai. Siswa tetap `ACTIVE`, placement berlaku, dan rekening `SETTLED` tetap final. Keadaan itu tidak sama dengan siswa `LEFT` yang kembali; jika ada rekening yang sudah settled dan siswa ingin lanjut menabung, Wali membuat siklus baru sesuai [amendment pindah](student-transfer-financial-clearance-amendment.md). Pembatalan ketika handover positif masih tertunda belum disetujui.
+
 ## 1. Keputusan bisnis yang disetujui
 
 1. Identitas siswa tidak berubah ketika siswa pindah lalu kembali. Jangan membuat siswa baru hanya untuk memulai ulang tabungan.
@@ -38,6 +40,7 @@ Dalam tabel berikut, “riwayat lama tetap” berarti semua kelas, rekening, tra
 - Keputusan yang diberikan belum menyatakan apakah Wali boleh membuat siklus baru saat settlement positif sebelumnya masih menunggu penyerahan/rekonsiliasi. Sistem wajib menampilkan tunggakan tersebut; usulan untuk menahan pembuatan siklus sampai rekonsiliasi adalah rekomendasi keamanan operasional, bukan aturan yang sudah disetujui.
 - Untuk kembali pada tahun berbeda yang sudah `CLOSED`, kontrak ini tidak menetapkan penempatan retroaktif atau pembukaan siklus. Perilaku harus mengikuti aturan tahun ajaran dan reopen yang sudah berlaku; jangan membuka tahun secara implisit dari alur kembali.
 - Tanggal efektif kembali harus mengikuti validasi rentang tahun dan kelas yang berlaku. Aturan jika tanggal efektif lebih awal dari `leaving_date` terakhir perlu ditetapkan sebelum menerima backdate.
+- Pembatalan proses pindah sebelum `LEFT` sudah diputuskan dalam MQ-08-CONTRACT-03 dan bukan kasus Siswa Kembali. Namun dukungan teknis untuk membuat siklus baru setelah rekening tahun yang sama settled belum ada; constraint unik saat ini menghalangi rekening kedua pada tahun tersebut.
 
 ## 3. Audit implementasi saat ini
 
@@ -90,6 +93,7 @@ Hal-hal berikut adalah rekomendasi/pertanyaan implementasi, bukan bagian yang di
 
 - Format model multi-cycle: gunakan row `savings_accounts` sebagai satu cycle dengan nomor siklus eksplisit, atau buat tabel induk `savings_cycles` dan pertahankan accounts sebagai ledger. Rekomendasi awal di dokumen desain memilih alternatif row-per-cycle dengan nomor eksplisit karena transaksi/settlement sudah berelasi ke account ID.
 - Kebijakan pembuatan cycle saat settlement penyerahan lama masih pending.
+- Detail teknis pembatalan setelah handover selesai: serialisasi terhadap settlement/handover dan pembuatan siklus baru tanpa membuka rekening settled.
 - Apakah perlu lifecycle event table terpisah untuk setiap leave/return, mengingat `leaving_date` hanya satu kolom pada Student.
 - Ubah API/queries yang kini mengembalikan satu rekening per siswa/tahun menjadi pemilihan current/open cycle dan daftar seluruh cycles.
 - Urutan lock global lintas leave, reactivate, settlement, transaksi biasa, dan create-cycle untuk menghilangkan deadlock yang tercatat di [MQ-08 review](../reviews/MQ-08_CONCURRENCY_SETTLEMENT_REVIEW.md).

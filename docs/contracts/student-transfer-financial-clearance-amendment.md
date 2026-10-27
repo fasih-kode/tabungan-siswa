@@ -60,7 +60,13 @@ Persistensi minimum yang direkomendasikan adalah status proses `IN_PROGRESS`, `F
 
 ### Pembatalan
 
-Pembatalan hanya berlaku sebelum finalisasi dan tidak boleh menghapus atau membalikkan transaksi, settlement, handover, audit, atau riwayat kelas. Jika rekening sudah `SETTLED`, jangan membuka rekening otomatis. Karena account `SETTLED` tidak dapat menerima transaksi biasa dan dukungan multi-cycle belum diimplementasikan, kemampuan membatalkan setelah settlement adalah **keputusan tambahan yang belum tersedia**. Rekomendasi keselamatan adalah menolak pembatalan setelah settlement pertama, kecuali ada alur pemulihan terpisah yang disetujui. Pemilik perlu mengonfirmasi aturan ini sebelum implementasi.
+Pemilik menyetujui pembatalan kapan saja sebelum proses difinalisasi sebagai `LEFT`, termasuk sebelum settlement dan setelah settlement selesai. Jika suatu settlement mewajibkan penyerahan positif, pembatalan sesudah settlement hanya termasuk keputusan yang disetujui setelah seluruh penyerahan wajib itu selesai direkonsiliasi. Keputusan ini **tidak** mengizinkan pembatalan saat penyerahan positif masih tertunda; perilaku untuk kondisi tersebut belum disetujui.
+
+Saat dibatalkan, proses menjadi `CANCELLED`; siswa tetap `ACTIVE`; placement yang masih berlaku tidak ditutup, dibuka ulang, atau dibuat ulang. Ini bukan status `LEFT` dan bukan alur **Siswa Kembali**. Settlement, transaksi, handover, audit, dan riwayat placement yang sudah terjadi tetap utuh. Rekening yang sudah `SETTLED` tetap final dan tidak boleh dipakai untuk setor/tarik; tidak ada reopen atau pembalikan otomatis.
+
+Jika siswa kemudian ingin melanjutkan tabungan pada tahun yang sama, Wali Kelas dengan scope yang sah membuat siklus tabungan baru; Admin tidak membuat rekening atau melakukan mutasi keuangan. Dukungan multi-siklus belum diimplementasikan. Baseline memiliki unique `(student_id, academic_year_id)`, sehingga pembuatan siklus baru dalam tahun yang sama memerlukan perubahan schema, repository, service, dan antarmuka. Desain harus menjaga paling banyak satu siklus `OPEN` per siswa/tahun, termasuk terhadap reopen settlement dan dua permintaan pembuatan bersamaan. Saldo awal siklus tetap belum diputuskan; `Rp. 0` adalah rekomendasi terdahulu, bukan keputusan dalam MQ-08-CONTRACT-03.
+
+Pembatalan setelah finalisasi `LEFT` tidak tersedia melalui proses ini; perubahan lifecycle tersebut mengikuti alur **Siswa Kembali**. Pembatalan, settlement, konfirmasi handover, dan pembuatan siklus harus diserialisasi agar settlement tidak commit atas proses yang sudah batal, handover tidak mengubah keputusan pembatalan, dan satu proses tidak menghasilkan dua siklus `OPEN`. Rincian lock dan recovery masih memerlukan review teknis.
 
 ## 4. Tanggal kejadian dan tanggal pengesahan
 
@@ -106,7 +112,7 @@ Siswa tanpa rekening dapat disahkan pindah tanpa membuat rekening. Bila ada reke
 
 Keputusan MQ-08-CONTRACT-01 tetap berlaku: identitas siswa dipertahankan; penempatan kembali membuat histori baru; settlement lama immutable; Admin menangani lifecycle/kelas; Wali menangani keuangan. Amendment ini hanya mengubah kapan `LEFT` ditetapkan, dan tidak menyelesaikan rincian multi-cycle.
 
-Jika proses pindah dibatalkan sebelum settlement, siswa tetap pada status/placement aktif dan kewajiban keuangan berlanjut seperti biasa. Jika pembatalan setelah settlement dipilih/diizinkan kemudian, rekening yang settled tidak dibuka otomatis; dibutuhkan kebijakan siklus baru dan keputusan tentang saldo awal yang hingga kini belum diputuskan. Jangan menafsirkan rekomendasi saldo awal `Rp. 0`, agregasi laporan, atau tabel lifecycle-event di [kontrak Siswa Kembali](student-return-and-savings-cycle-contract.md) sebagai keputusan final.
+Jika proses dibatalkan sebelum settlement, siswa tetap pada status/placement aktif dan rekening OPEN yang belum diselesaikan tidak ditutup oleh pembatalan. Jika rekening telah settled dan siswa ingin melanjutkan tabungan, Wali yang berwenang membuat siklus baru; rekening settled tidak dibuka kembali. Implementasi siklus baru pada tahun yang sama menunggu dukungan multi-siklus. Jangan menafsirkan rekomendasi saldo awal `Rp. 0`, agregasi laporan, atau tabel lifecycle-event di [kontrak Siswa Kembali](student-return-and-savings-cycle-contract.md) sebagai keputusan final.
 
 ## 8. Konkurensi dan kebutuhan urutan lock
 
@@ -140,7 +146,7 @@ Semua race perlu integration test PostgreSQL disposable yang deterministik, dua 
 
 ## 10. Rencana implementasi bertahap
 
-1. **Review kontrak teknis:** supervisor meninjau model proses, pembatalan setelah settlement, scope rekening relevan, perlakuan transaksi rutin selama proses, data historis, dan lock protocol.
+1. **Review kontrak teknis:** supervisor meninjau model proses, implementasi pembatalan yang sudah disetujui (termasuk batas handover tertunda), scope rekening relevan, perlakuan transaksi rutin selama proses, data historis, dan lock protocol.
 2. **Schema dan migrasi:** rancang tabel proses pindah serta FK nullable dari settlement/permintaan terlambat; verifikasi upgrade/rollback pada database PostgreSQL disposable berisi dan kosong. Tidak ada perubahan data historis otomatis atau tebakan tanggal.
 3. **Domain/repository/service:** buat start, cancel, readiness, finalize; ubah settlement dan late-request agar merujuk proses aktif; otorisasi Admin lifecycle dan Wali finansial tetap terpisah.
 4. **Serialisasi dan database guard:** selaraskan semua lock order termasuk trigger; cek account set secara atomik pada finalisasi; uji race start/transaction, settlement/transaction, cancellation, finalize/create-account, Reactivate, year close/reopen, dan multi-cycle.
@@ -152,14 +158,14 @@ Semua race perlu integration test PostgreSQL disposable yang deterministik, dua 
 
 Keputusan berikut belum ditetapkan oleh pemilik dan harus dipastikan sebelum tahap yang memerlukannya:
 
-1. Apakah proses boleh dibatalkan setelah ada satu atau lebih rekening settled? Rekomendasi: tidak, kecuali tersedia alur eksplisit siklus baru/pemulihan.
+1. Bagaimana server memblokir pembatalan saat handover positif masih tertunda dan menyerialisasi pembatalan yang sah terhadap settlement/handover?
 2. Rekening mana yang termasuk “kewajiban relevan”: rekomendasi audit adalah semua siklus/rekening siswa, termasuk tahun sebelumnya; perlakuan rekening `OPEN` pada tahun `CLOSED` belum disetujui dan tidak boleh auto-reopen.
 3. Apakah `effective_leaving_date` wajib dimasukkan saat start, dan apakah boleh backdate; validasi terhadap placement aktif/historis perlu diputuskan.
 4. Apakah transaksi biasa tetap boleh pada rekening OPEN setelah proses dimulai sampai Wali settle akun itu? Rekomendasi dokumen ini: ya; saldo dihitung ulang ketika settlement. Jika tidak, dibutuhkan aturan pembekuan yang eksplisit.
 5. Apakah permintaan transaksi terlambat baru boleh dibuat setelah proses mulai dan tetap mensyaratkan persetujuan Admin serta bukti? Rekomendasi: ya, memakai kontrol existing; apakah peninjau Admin boleh menyetujui sebelum siswa LEFT perlu dipastikan dari amendment implementasi.
 6. Apa yang dilakukan bila saldo negatif/tidak seimbang, ada transaksi tidak teratribusi, akun berada di tahun tertutup, atau settlement positif memiliki handover/reopen yang belum direkonsiliasi?
 7. Apakah finalisasi mengunci semua tahun/rekening siswa atau hanya proses/request lalu memeriksa ulang melalui mekanisme lain? Detail harus disepakati lewat review concurrency.
-8. Setelah proses pindah dibatalkan, kapan dan bagaimana Wali boleh melanjutkan siklus bila rekening sudah settled? Kebijakan saldo awal tetap belum diputuskan.
+8. Bagaimana siklus baru dibuat oleh Wali pada tahun yang sama ketika constraint unik baseline masih membatasi satu rekening per siswa/tahun, sambil menjaga maksimal satu siklus OPEN? Kebijakan saldo awal tetap belum diputuskan.
 
 ## 12. Batas verifikasi
 

@@ -163,6 +163,13 @@ Setiap tahap harus mendapat review supervisor sesuai workflow branch `review`; t
 ## 9. Pembaruan setelah MQ-08-CONTRACT-02
 
 - Pemilik menyetujui pemisahan proses pindah dari `students.status`: student tetap belum `LEFT` saat kewajiban diselesaikan. Settlement pindah yang baru harus terkait proses aktif; status LEFT ditetapkan setelah pemeriksaan finansial dan penutupan placement.
-- Tabel state dan UI lama dalam rancangan ini perlu ditafsirkan bersama amendment baru. `PENDING_LEAVE` belum disetujui sebagai enum student. Model tabel proses, aturan cancel setelah settlement, rekening lintas tahun, serta tanggal backdate masih menunggu keputusan/desain.
+- Tabel state dan UI lama dalam rancangan ini perlu ditafsirkan bersama amendment baru. `PENDING_LEAVE` belum disetujui sebagai enum student. Model tabel proses, rekening lintas tahun, serta tanggal backdate masih menunggu keputusan/desain.
 - Amendment baru tidak mengunci pilihan row-per-cycle, saldo awal cycle, agregasi report, atau lifecycle-event. Jangan menganggap rekomendasi tersebut sudah menjadi aturan produk.
 - Perubahan kontrak belum diimplementasikan. Semua gap/race di bagian ini tetap perlu review dan tes, dengan lock protocol yang mencakup trigger PostgreSQL.
+
+## 10. Pembaruan setelah MQ-08-CONTRACT-03
+
+- Pemilik menyetujui pembatalan proses pindah sebelum `LEFT`, termasuk setelah settlement bila penyerahan positif yang diwajibkan sudah selesai. Student tetap `ACTIVE`; placement tidak berubah; settlement dan handover tidak dibatalkan; status settled tetap final. Ini bukan reaktivasi/Siswa Kembali.
+- Jika tabungan dilanjutkan setelah pembatalan, siklus baru dibuat oleh Wali yang berwenang, bukan Admin. Multi-siklus belum diimplementasikan; schema baseline masih unik `(student_id, academic_year_id)`. Rekomendasi invariant tetap maksimal satu siklus `OPEN` per siswa/tahun.
+- Pembatalan ketika handover positif masih tertunda belum diputuskan. Serialisasi terhadap settlement, handover, serta pembuatan/reopen siklus perlu dirancang dan diuji; analisis lama tidak membuktikan race tertutup.
+- Keputusan saldo awal `Rp. 0` tetap rekomendasi, bukan keputusan MQ-08-CONTRACT-03. Tidak ada migration, source, atau test yang diubah untuk catatan ini.
