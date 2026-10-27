@@ -17,6 +17,17 @@ Amendment ini menggantikan urutan `LEFT`-sebelum-settlement pada [kontrak FASE 1
 7. Memulai proses dan mengesahkan pindah adalah dua tindakan berbeda.
 8. `PENDING_LEAVE` tidak disetujui sebagai nilai baru `students.status`. Proses pindah harus dimodelkan terpisah kecuali pemilik menyetujui perubahan status siswa kemudian.
 
+### Keputusan pemilik tambahan MQ-08-IMPL-04A
+
+Keputusan berikut disetujui pemilik dan menggantikan rekomendasi atau pertanyaan terbuka yang bertentangan pada versi kontrak ini. Persetujuan aturan tidak berarti implementasinya sudah tersedia.
+
+1. Tanggal peristiwa pindah mengikuti kalender WIB (`Asia/Jakarta`). Tanggal hari ini atau tanggal sebelumnya diperbolehkan selama berada dalam tahun ajaran `OPEN` dan placement pada tanggal itu valid; tanggal mendatang ditolak. Implementasi `StudentLeavingRequestService.Start` saat ini masih membatasi tanggal pada hari UTC ini, sehingga belum sesuai. Perbaikannya adalah pekerjaan terpisah dan harus selesai sebelum alur HTTP/UI diaktifkan.
+2. Clearance finalisasi mencakup seluruh rekening siswa lintas tahun ajaran. Rekening berstatus `OPEN` pada tahun ajaran `CLOSED` menghalangi finalisasi; sistem tidak membuka tahun otomatis.
+3. Transaksi biasa tetap diperbolehkan pada rekening `OPEN` selama proses pindah aktif, selama tahun ajaran dan otorisasi mengizinkan, hingga rekening diselesaikan. Pembuatan rekening baru diblokir selama ada proses pindah `IN_PROGRESS`.
+4. Proses pindah boleh dibatalkan sebelum siswa menjadi `LEFT`. Bila ada settlement positif, seluruh penyerahan yang diwajibkan harus sudah direkonsiliasi sebelum pembatalan. Pembatalan tidak membalik settlement, saldo, transaksi, penyerahan, atau histori.
+
+Implementasi MQ-08-IMPL-04A hanya menyelesaikan satu rekening dan tidak melakukan clearance final atau pembatalan. Mekanisme pembatalan, pemeriksaan seluruh rekening, dan pemblokiran pembuatan rekening menunggu tahap backend masing-masing.
+
 ## 2. Audit baseline: fakta implementasi yang belum sesuai
 
 Baseline `e211f21ee7a86179a7c60910d0e94724b047e7d1` memiliki perilaku berikut:
@@ -158,14 +169,12 @@ Semua race perlu integration test PostgreSQL disposable yang deterministik, dua 
 
 Keputusan berikut belum ditetapkan oleh pemilik dan harus dipastikan sebelum tahap yang memerlukannya:
 
-1. Bagaimana server memblokir pembatalan saat handover positif masih tertunda dan menyerialisasi pembatalan yang sah terhadap settlement/handover?
-2. Rekening mana yang termasuk “kewajiban relevan”: rekomendasi audit adalah semua siklus/rekening siswa, termasuk tahun sebelumnya; perlakuan rekening `OPEN` pada tahun `CLOSED` belum disetujui dan tidak boleh auto-reopen.
-3. Apakah `effective_leaving_date` wajib dimasukkan saat start, dan apakah boleh backdate; validasi terhadap placement aktif/historis perlu diputuskan.
-4. Apakah transaksi biasa tetap boleh pada rekening OPEN setelah proses dimulai sampai Wali settle akun itu? Rekomendasi dokumen ini: ya; saldo dihitung ulang ketika settlement. Jika tidak, dibutuhkan aturan pembekuan yang eksplisit.
-5. Apakah permintaan transaksi terlambat baru boleh dibuat setelah proses mulai dan tetap mensyaratkan persetujuan Admin serta bukti? Rekomendasi: ya, memakai kontrol existing; apakah peninjau Admin boleh menyetujui sebelum siswa LEFT perlu dipastikan dari amendment implementasi.
-6. Apa yang dilakukan bila saldo negatif/tidak seimbang, ada transaksi tidak teratribusi, akun berada di tahun tertutup, atau settlement positif memiliki handover/reopen yang belum direkonsiliasi?
-7. Apakah finalisasi mengunci semua tahun/rekening siswa atau hanya proses/request lalu memeriksa ulang melalui mekanisme lain? Detail harus disepakati lewat review concurrency.
-8. Bagaimana siklus baru dibuat oleh Wali pada tahun yang sama ketika constraint unik baseline masih membatasi satu rekening per siswa/tahun, sambil menjaga maksimal satu siklus OPEN? Kebijakan saldo awal tetap belum diputuskan.
+1. Cara teknis menyerialisasi pembatalan yang sah terhadap settlement dan handover masih perlu dirancang; keputusan bisnisnya adalah pembatalan hanya sebelum `LEFT` dan setelah seluruh handover positif wajib direkonsiliasi.
+2. Cakupan clearance lintas tahun, perlakuan rekening `OPEN` pada tahun `CLOSED`, kalender tanggal kejadian, izin tanggal lampau/mendatang, dan transaksi biasa selama proses aktif telah diputuskan pada “Keputusan pemilik tambahan MQ-08-IMPL-04A” di atas. Implementasi pemeriksaan final masih belum selesai.
+3. Apakah permintaan transaksi terlambat baru boleh dibuat setelah proses mulai dan tetap mensyaratkan persetujuan Admin serta bukti? Rekomendasi: ya, memakai kontrol existing; apakah peninjau Admin boleh menyetujui sebelum siswa LEFT perlu dipastikan dari amendment implementasi.
+4. Apa yang dilakukan bila saldo negatif/tidak seimbang, ada transaksi tidak teratribusi, atau settlement/reopen workflow memiliki keadaan yang belum direkonsiliasi?
+5. Apakah finalisasi mengunci semua tahun/rekening siswa atau hanya proses/request lalu memeriksa ulang melalui mekanisme lain? Detail harus disepakati lewat review concurrency.
+6. Bagaimana siklus baru dibuat oleh Wali pada tahun yang sama ketika constraint unik baseline masih membatasi satu rekening per siswa/tahun, sambil menjaga maksimal satu siklus OPEN? Kebijakan saldo awal tetap belum diputuskan.
 
 ## 12. Batas verifikasi
 

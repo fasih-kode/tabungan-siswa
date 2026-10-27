@@ -62,6 +62,66 @@ func (r *SettlementRepository) Create(
 	return nil
 }
 
+// CreateForStudentLeavingRequest hanya mengisi kolom relasi yang tersedia pada schema v16.
+func (r *SettlementRepository) CreateForStudentLeavingRequest(
+	ctx context.Context,
+	settlement domain.SavingsSettlement,
+	studentLeavingRequestID uuid.UUID,
+) error {
+	if settlement.Type != domain.SettlementStudentLeaving ||
+		settlement.ID == uuid.Nil ||
+		settlement.SavingsAccountID == uuid.Nil ||
+		studentLeavingRequestID == uuid.Nil {
+		return domain.ErrInvalidValue
+	}
+
+	const query = `
+		INSERT INTO savings_settlements (
+			id,
+			savings_account_id,
+			type,
+			amount,
+			executed_by,
+			executed_at,
+			status,
+			replaces_settlement_id,
+			student_leaving_request_id
+		)
+		SELECT $1, account.id, $3, $4, $5, $6, $7, $8, leaving_request.id
+		FROM savings_accounts AS account
+		JOIN student_leaving_requests AS leaving_request
+		  ON leaving_request.student_id = account.student_id
+		WHERE account.id = $2
+		  AND leaving_request.id = $9
+	`
+
+	result, err := r.db.ExecContext(
+		ctx,
+		query,
+		settlement.ID,
+		settlement.SavingsAccountID,
+		string(settlement.Type),
+		settlement.Amount,
+		settlement.ExecutedBy,
+		settlement.ExecutedAt,
+		string(settlement.Status),
+		settlement.ReplacesSettlementID,
+		studentLeavingRequestID,
+	)
+	if err != nil {
+		return translateSettlementRepositoryError(err)
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("get linked settlement rows affected: %w", err)
+	}
+	if rowsAffected == 0 {
+		return repository.ErrConflict
+	}
+	return nil
+}
+
 func (r *SettlementRepository) GetByID(
 	ctx context.Context,
 	id uuid.UUID,

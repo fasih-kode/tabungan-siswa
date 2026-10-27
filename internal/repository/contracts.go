@@ -301,6 +301,12 @@ type SettlementRepository interface {
 		ctx context.Context,
 		settlement domain.SavingsSettlement,
 	) error
+	// CreateForStudentLeavingRequest membuat settlement pindah yang tertaut pada schema v16.
+	CreateForStudentLeavingRequest(
+		ctx context.Context,
+		settlement domain.SavingsSettlement,
+		studentLeavingRequestID uuid.UUID,
+	) error
 	GetByID(
 		ctx context.Context,
 		id uuid.UUID,
