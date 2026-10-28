@@ -100,6 +100,7 @@ type StudentRepository interface {
 }
 
 type StudentClassHistoryRepository interface {
+	HasPlacementStartingAfter(context.Context, uuid.UUID, time.Time) (bool, error)
 	Create(ctx context.Context, history domain.StudentClassHistory) error
 	GetByID(
 		ctx context.Context,

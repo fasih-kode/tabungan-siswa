@@ -432,7 +432,18 @@ func TestStudentLeavingReadinessIntegration(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			f := newLeavingCancelFixture(t)
+			var f leavingStartFixture
+			switch tc.name {
+			case "rekening lintas tahun seluruhnya diperiksa", "rekening settled lintas tahun siap setelah handover", "mismatch satu rekening lintas tahun menghambat semuanya", "rekening terbuka tahun tutup blocker khusus":
+				now := time.Now()
+				startYear := now.Year()
+				if now.Month() < time.July {
+					startYear--
+				}
+				f = newLeavingRequestFixture(t, 17, startYear-1)
+			default:
+				f = newLeavingCancelFixture(t)
+			}
 			var request domain.StudentLeavingRequest
 			switch tc.name {
 			case "tanpa rekening siap":
@@ -454,6 +465,7 @@ func TestStudentLeavingReadinessIntegration(t *testing.T) {
 				request = startLeavingRequestForCancel(t, f)
 			}
 			tc.run(t, f, request)
+			assertFinalizeMatchesReadiness(t, f, request.ID)
 		})
 	}
 }
@@ -560,7 +572,7 @@ func moveReadinessFixtureToNextYear(t *testing.T, f *leavingStartFixture) {
 	}
 	f.year, f.class = value, class
 	f.in.AcademicYearID = value.ID
-	f.in.EffectiveLeavingDate = serviceDateOnlyUTC(value.StartDate)
+	f.in.EffectiveLeavingDate = serviceDateOnlyUTC(value.StartDate).AddDate(0, 0, 1)
 }
 
 func createReadinessProcess(t *testing.T, f leavingStartFixture) domain.StudentLeavingRequest {
@@ -667,7 +679,7 @@ func hasReadinessBlocker(out service.StudentLeavingReadinessOutput, code service
 func readinessSnapshot(t *testing.T, db *sql.DB) map[string]string {
 	t.Helper()
 	result := make(map[string]string)
-	for _, table := range []string{"students", "academic_years", "student_class_histories", "savings_accounts", "transactions", "leaving_transaction_requests", "savings_settlements", "settlement_cash_movements", "student_leaving_requests", "audit_logs"} {
+	for _, table := range []string{"students", "academic_years", "student_class_histories", "class_transfer_requests", "savings_accounts", "transactions", "leaving_transaction_requests", "savings_settlements", "settlement_cash_movements", "student_leaving_requests", "audit_logs"} {
 		var rows string
 		query := "SELECT COALESCE(jsonb_agg(to_jsonb(t) ORDER BY t.id),'[]'::jsonb)::text FROM " + table + " t"
 		if err := db.QueryRow(query).Scan(&rows); err != nil {

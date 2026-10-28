@@ -36,7 +36,7 @@ func newLeavingCancelFixture(t *testing.T) leavingStartFixture {
 	return newLeavingRequestFixture(t, 17)
 }
 
-func newLeavingRequestFixture(t *testing.T, requiredSchema int) leavingStartFixture {
+func newLeavingRequestFixture(t *testing.T, requiredSchema int, startYears ...int) leavingStartFixture {
 	t.Helper()
 	ctx := context.Background()
 	db := openServiceScopeTestDatabase(t)
@@ -63,6 +63,9 @@ func newLeavingRequestFixture(t *testing.T, requiredSchema int) leavingStartFixt
 	startYear := now.Year()
 	if now.Month() < time.July {
 		startYear--
+	}
+	if len(startYears) > 0 {
+		startYear = startYears[0]
 	}
 	f.year = newServiceScopeAcademicYearForStartYear(t, "Tahun uji proses pindah", startYear)
 	if err := f.repos.AcademicYears.Create(ctx, f.year); err != nil {

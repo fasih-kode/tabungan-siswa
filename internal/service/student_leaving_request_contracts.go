@@ -11,6 +11,7 @@ import (
 // StudentLeavingRequestService menyediakan lifecycle proses pindah untuk pemanggil internal.
 // Service belum dipasang pada ServiceSet atau endpoint aplikasi.
 type StudentLeavingRequestService interface {
+	Finalize(context.Context, FinalizeStudentLeavingRequestInput) (FinalizeStudentLeavingRequestOutput, error)
 	// Start menerima tanggal hari ini atau tanggal lampau dalam tahun OPEN jika placement berlaku.
 	// Tanggal kalender memakai WIB; timestamp audit tetap UTC.
 	Start(context.Context, StartStudentLeavingRequestInput) (StartStudentLeavingRequestOutput, error)
@@ -57,6 +58,9 @@ type StudentLeavingReadinessInput struct {
 type StudentLeavingReadinessBlockerCode string
 
 const (
+	LeavingBlockerPlacementInvalid              StudentLeavingReadinessBlockerCode = "PLACEMENT_INVALID"
+	LeavingBlockerLaterPlacement                StudentLeavingReadinessBlockerCode = "LATER_PLACEMENT"
+	LeavingBlockerPendingTransfer               StudentLeavingReadinessBlockerCode = "PENDING_TRANSFER"
 	LeavingBlockerProcessNotInProgress          StudentLeavingReadinessBlockerCode = "PROCESS_NOT_IN_PROGRESS"
 	LeavingBlockerReferenceYearInvalid          StudentLeavingReadinessBlockerCode = "REFERENCE_YEAR_INVALID"
 	LeavingBlockerStudentNotActive              StudentLeavingReadinessBlockerCode = "STUDENT_NOT_ACTIVE"
@@ -99,4 +103,13 @@ type StudentLeavingReadinessOutput struct {
 	BlockingLateRequests int
 	Blockers             []StudentLeavingReadinessBlocker
 	Ready                bool
+}
+
+type FinalizeStudentLeavingRequestInput struct {
+	Actor                   Actor
+	StudentLeavingRequestID uuid.UUID
+}
+type FinalizeStudentLeavingRequestOutput struct {
+	Request *domain.StudentLeavingRequest
+	Student *domain.Student
 }

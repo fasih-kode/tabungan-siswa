@@ -51,6 +51,23 @@ func (s *studentLeavingRequestService) Readiness(
 	if err != nil {
 		return StudentLeavingReadinessOutput{}, err
 	}
+	output, err := s.studentLeavingReadiness(ctx, repos, request, student)
+	if err != nil {
+		return StudentLeavingReadinessOutput{}, err
+	}
+	if err := uow.Commit(); err != nil {
+		return StudentLeavingReadinessOutput{}, err
+	}
+	committed = true
+	return output, nil
+}
+
+// studentLeavingReadiness memakai repository UOW pemanggil agar validasi dan mutasi melihat transaksi yang sama.
+func (s *studentLeavingRequestService) studentLeavingReadiness(ctx context.Context, repos repository.RepositorySet, request domain.StudentLeavingRequest, student domain.Student) (StudentLeavingReadinessOutput, error) {
+	if repos.AcademicYears == nil || repos.SavingsAccounts == nil || repos.Settlements == nil || repos.Transactions == nil || repos.LeavingTransactionRequests == nil || repos.StudentLeavingRequests == nil {
+		return StudentLeavingReadinessOutput{}, ErrInvalidDependency
+	}
+
 	output := StudentLeavingReadinessOutput{
 		Request:  request,
 		Student:  student,
@@ -68,9 +85,13 @@ func (s *studentLeavingRequestService) Readiness(
 	if err != nil {
 		return StudentLeavingReadinessOutput{}, err
 	}
-	if !calendarDateWithin(request.EffectiveLeavingDate, referenceYear.StartDate, referenceYear.EndDate) {
+	today, err := jakartaCalendarDate(s.now())
+	if err != nil {
+		return StudentLeavingReadinessOutput{}, err
+	}
+	if calendarDateAfter(request.EffectiveLeavingDate, today) || !calendarDateWithin(request.EffectiveLeavingDate, referenceYear.StartDate, referenceYear.EndDate) {
 		output.addBlocker(LeavingBlockerReferenceYearInvalid, nil, &request.ID,
-			"Tanggal efektif pindah berada di luar tahun ajaran referensi proses.")
+			"Tanggal efektif pindah berada di luar tahun ajaran referensi atau masih mendatang.")
 	}
 
 	accounts, err := repos.SavingsAccounts.ListByStudent(ctx, student.ID)
@@ -120,12 +141,40 @@ func (s *studentLeavingRequestService) Readiness(
 			return StudentLeavingReadinessOutput{}, currentErr
 		}
 	}
-	output.Ready = len(output.Blockers) == 0
-	if err := uow.Commit(); err != nil {
+	if err := checkLeavingPlacement(ctx, repos, request, &output); err != nil {
 		return StudentLeavingReadinessOutput{}, err
 	}
-	committed = true
+	output.Ready = len(output.Blockers) == 0
 	return output, nil
+}
+
+func checkLeavingPlacement(ctx context.Context, repos repository.RepositorySet, request domain.StudentLeavingRequest, output *StudentLeavingReadinessOutput) error {
+	if repos.StudentClassHistories == nil || repos.ClassTransferRequests == nil {
+		return ErrInvalidDependency
+	}
+	history, err := repos.StudentClassHistories.GetCurrentByStudentAndAcademicYear(ctx, request.StudentID, request.AcademicYearID, request.EffectiveLeavingDate)
+	if errors.Is(err, repository.ErrNotFound) {
+		output.addBlocker(LeavingBlockerPlacementInvalid, nil, &request.ID, "Penempatan kelas pada tanggal efektif pindah tidak ditemukan.")
+	} else if err != nil {
+		return err
+	} else if history.StudentID != request.StudentID || history.AcademicYearID != request.AcademicYearID || !history.Contains(request.EffectiveLeavingDate) || !calendarDateAfter(request.EffectiveLeavingDate, history.Period.From) {
+		output.addBlocker(LeavingBlockerPlacementInvalid, nil, &history.ID, "Penempatan tidak dapat ditutup pada tanggal efektif; tanggal pindah harus setelah awal penempatan.")
+	}
+	later, err := repos.StudentClassHistories.HasPlacementStartingAfter(ctx, request.StudentID, request.EffectiveLeavingDate)
+	if err != nil {
+		return err
+	}
+	if later {
+		output.addBlocker(LeavingBlockerLaterPlacement, nil, &request.ID, "Ada penempatan kelas setelah tanggal efektif pindah yang perlu ditinjau.")
+	}
+	pending, err := repos.ClassTransferRequests.HasPendingByStudent(ctx, request.StudentID)
+	if err != nil {
+		return err
+	}
+	if pending {
+		output.addBlocker(LeavingBlockerPendingTransfer, nil, &request.ID, "Permintaan pindah kelas masih menunggu keputusan.")
+	}
+	return nil
 }
 
 func leavingLinkIssueBlocker(issue repository.StudentLeavingFinancialLinkIssueType) (StudentLeavingReadinessBlockerCode, string) {

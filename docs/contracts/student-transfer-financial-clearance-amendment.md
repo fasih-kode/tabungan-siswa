@@ -1,7 +1,7 @@
 # Amendment — Penyelesaian Keuangan sebelum Pengesahan Pindah Sekolah
 
 **Status aturan bisnis:** disetujui pemilik aplikasi untuk MQ-08-CONTRACT-02.
-**Status implementasi:** belum tersedia secara end-to-end. Start, settlement internal per rekening, pemeriksaan tautan, serta pemblokiran pembuatan rekening selama proses aktif sudah tersedia secara internal; HTTP/UI, readiness lintas rekening, pembatalan, dan finalisasi belum tersedia.
+**Status implementasi:** Start, Cancel, Readiness lintas rekening, dan Finalize tersedia secara internal, beserta settlement per rekening, pemeriksaan tautan, serta blokir pembuatan rekening saat proses aktif. Finalize MQ-08-IMPL-05C menunggu review supervisor. HTTP/UI proses dua tahap belum tersedia; belum siap dirilis end-to-end.
 **Cakupan:** urutan proses pindah sekolah, penyelesaian rekening, konfirmasi penyerahan, dan finalisasi status siswa.
 
 Amendment ini menggantikan urutan `LEFT`-sebelum-settlement pada [kontrak FASE 19](fase-19-student-http-contract.md), [amendment alur settlement pindah](student-leaving-settlement-ui-amendment.md), [amendment transaksi terlambat](late-transaction-request-amendment.md), dan ringkasan aturan lama di [BUSINESS_RULES.md](../BUSINESS_RULES.md). Dokumen-dokumen tersebut tetap menjadi bukti kontrak dan implementasi pada masanya; perubahan ini tidak menyatakan bahwa kode lama telah memenuhi aturan baru. Laporan audit historis tidak ditulis ulang.
@@ -26,7 +26,7 @@ Keputusan berikut disetujui pemilik dan menggantikan rekomendasi atau pertanyaan
 3. Transaksi biasa tetap diperbolehkan pada rekening `OPEN` selama proses pindah aktif, selama tahun ajaran dan otorisasi mengizinkan, hingga rekening diselesaikan. Pembuatan rekening baru diblokir selama ada proses pindah `IN_PROGRESS`.
 4. Proses pindah boleh dibatalkan sebelum siswa menjadi `LEFT`. Bila ada settlement positif, seluruh penyerahan yang diwajibkan harus sudah direkonsiliasi sebelum pembatalan. Pembatalan tidak membalik settlement, saldo, transaksi, penyerahan, atau histori.
 
-Implementasi MQ-08-IMPL-04A hanya menyelesaikan satu rekening dan tidak melakukan clearance final atau pembatalan. Migration 000017 menambahkan penolakan pada trigger database untuk pembuatan rekening saat siswa memiliki proses `IN_PROGRESS`; guard ini berlaku juga untuk INSERT langsung dan lintas tahun. Pembatalan serta pemeriksaan seluruh rekening tetap menunggu tahap backend masing-masing.
+Implementasi MQ-08-IMPL-04A hanya menyelesaikan satu rekening dan tidak melakukan clearance final atau pembatalan. Migration 000017 menambahkan penolakan pada trigger database untuk pembuatan rekening saat siswa memiliki proses `IN_PROGRESS`; guard ini berlaku juga untuk INSERT langsung dan lintas tahun. Cancel, Readiness lintas rekening, dan Finalize kini tersedia secara internal; belum dihubungkan ke HTTP/UI.
 
 ## 2. Audit baseline: fakta implementasi yang belum sesuai
 
@@ -181,3 +181,9 @@ Keputusan berikut belum ditetapkan oleh pemilik dan harus dipastikan sebelum tah
 ## 12. Batas verifikasi
 
 Dokumen ini berdasarkan pembacaan source, schema, trigger, tests, dan kontrak pada baseline yang disebut di atas. Tidak ada kode, migration, database, fixture, atau tes yang diubah maupun dijalankan. State machine dan lock order adalah rancangan; tidak membuktikan sistem saat ini memenuhi aturan baru atau race telah terselesaikan.
+
+## Batas implementasi placement MQ-08-IMPL-05C
+
+Readiness dan Finalize menolak tanggal efektif yang sama dengan awal placement karena representasi rentang kosong belum disetujui. Keduanya juga menolak placement yang lebih baru setelah tanggal efektif dan transfer kelas yang masih PENDING. Penolakan tidak menggeser tanggal atau menghapus histori. Penanganan bisnis alternatif untuk kasus batas tersebut tetap memerlukan keputusan tersendiri.
+
+Finalize memakai satu UOW tulis, mengunci seluruh tahun terurut lalu rekening terurut, siswa, dan proses. Validasi Readiness diulang melalui repository UOW tersebut; hasil snapshot Readiness sebelumnya bukan izin finalisasi. Hanya placement yang berlaku pada tanggal efektif ditutup; saldo, ledger, settlement, dan cash movements dipertahankan.
