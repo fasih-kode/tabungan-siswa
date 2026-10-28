@@ -99,6 +99,65 @@ func (r *LeavingTransactionRequestRepository) CreateLeavingTransactionRequest(
 	return translateSettlementRepositoryError(err)
 }
 
+// CreateLeavingTransactionRequestForStudentLeaving menautkan permintaan ke proses aktif pada schema v16+.
+func (r *LeavingTransactionRequestRepository) CreateLeavingTransactionRequestForStudentLeaving(
+	ctx context.Context,
+	x domain.LeavingTransactionRequest,
+	studentLeavingRequestID uuid.UUID,
+) error {
+	const query = `
+		INSERT INTO leaving_transaction_requests (
+			` + leavingRequestInsertColumns + `,
+			student_leaving_request_id
+		)
+		SELECT
+			$1, $2, $3, $4, $5, $6, $7, $8,
+			$9, $10, $11, $12, $13, $14, $15,
+			leaving_request.id
+		FROM student_leaving_requests AS leaving_request
+		JOIN savings_accounts AS account
+		  ON account.student_id = leaving_request.student_id
+		WHERE leaving_request.id = $16
+		  AND leaving_request.status = 'IN_PROGRESS'
+		  AND account.id = $2
+		  AND account.academic_year_id = $3
+		  AND account.status = 'OPEN'
+	`
+
+	result, err := r.db.ExecContext(
+		ctx,
+		query,
+		x.ID,
+		x.SavingsAccountID,
+		x.AcademicYearID,
+		x.Type,
+		x.Amount,
+		x.TransactionDate,
+		x.Reason,
+		x.EvidenceReference,
+		x.RequestedBy,
+		x.RequestedAt,
+		x.Status,
+		x.DecidedBy,
+		x.DecidedAt,
+		nullableText(x.DecisionReason),
+		x.CompletedAt,
+		studentLeavingRequestID,
+	)
+	if err != nil {
+		return translateSettlementRepositoryError(err)
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("read linked leaving transaction request insert result: %w", err)
+	}
+	if rowsAffected == 0 {
+		return repository.ErrConflict
+	}
+	return nil
+}
+
 func (r *LeavingTransactionRequestRepository) GetLeavingTransactionRequest(
 	ctx context.Context,
 	id uuid.UUID,

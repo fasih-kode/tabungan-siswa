@@ -1,7 +1,7 @@
 # Amendment — Penyelesaian Keuangan sebelum Pengesahan Pindah Sekolah
 
 **Status aturan bisnis:** disetujui pemilik aplikasi untuk MQ-08-CONTRACT-02.
-**Status implementasi:** Start, Cancel, Readiness lintas rekening, dan Finalize tersedia secara internal, beserta settlement per rekening, pemeriksaan tautan, serta blokir pembuatan rekening saat proses aktif. Finalize MQ-08-IMPL-05C menunggu review supervisor. HTTP/UI proses dua tahap belum tersedia; belum siap dirilis end-to-end.
+**Status implementasi:** Start, Cancel, Readiness lintas rekening, Finalize, settlement per rekening, pemeriksaan tautan, dan blokir pembuatan rekening saat proses aktif tersedia secara internal. MQ-08-IMPL-06A menambahkan pembuatan permintaan transaksi terlambat tertaut saat proses masih IN_PROGRESS; validasi kaitan proses pada Decide/Execute historis belum tersedia dan menjadi ruang lingkup 06B. HTTP/UI proses dua tahap belum tersedia; belum siap dirilis end-to-end.
 **Cakupan:** urutan proses pindah sekolah, penyelesaian rekening, konfirmasi penyerahan, dan finalisasi status siswa.
 
 Amendment ini menggantikan urutan `LEFT`-sebelum-settlement pada [kontrak FASE 19](fase-19-student-http-contract.md), [amendment alur settlement pindah](student-leaving-settlement-ui-amendment.md), [amendment transaksi terlambat](late-transaction-request-amendment.md), dan ringkasan aturan lama di [BUSINESS_RULES.md](../BUSINESS_RULES.md). Dokumen-dokumen tersebut tetap menjadi bukti kontrak dan implementasi pada masanya; perubahan ini tidak menyatakan bahwa kode lama telah memenuhi aturan baru. Laporan audit historis tidak ditulis ulang.
@@ -173,7 +173,7 @@ Keputusan berikut belum ditetapkan oleh pemilik dan harus dipastikan sebelum tah
 
 1. Cara teknis menyerialisasi pembatalan yang sah terhadap settlement dan handover masih perlu dirancang; keputusan bisnisnya adalah pembatalan hanya sebelum `LEFT` dan setelah seluruh handover positif wajib direkonsiliasi.
 2. Cakupan clearance lintas tahun, perlakuan rekening `OPEN` pada tahun `CLOSED`, kalender tanggal kejadian, izin tanggal lampau/mendatang, dan transaksi biasa selama proses aktif telah diputuskan pada “Keputusan pemilik tambahan MQ-08-IMPL-04A” di atas. Implementasi pemeriksaan final masih belum selesai.
-3. Apakah permintaan transaksi terlambat baru boleh dibuat setelah proses mulai dan tetap mensyaratkan persetujuan Admin serta bukti? Rekomendasi: ya, memakai kontrol existing; apakah peninjau Admin boleh menyetujui sebelum siswa LEFT perlu dipastikan dari amendment implementasi.
+3. Permintaan transaksi terlambat tertaut dibuat setelah proses dimulai, tetap mensyaratkan alasan dan referensi bukti, lalu berstatus PENDING. MQ-08-IMPL-06A mempertahankan jalur persetujuan Admin yang ada tanpa mengubah Decide/Execute; sebelum penggunaannya diekspos, MQ-08-IMPL-06B harus menetapkan dan menegakkan validasi status proses serta kaitan request pada kedua operasi tersebut.
 4. Apa yang dilakukan bila saldo negatif/tidak seimbang, ada transaksi tidak teratribusi, atau settlement/reopen workflow memiliki keadaan yang belum direkonsiliasi?
 5. Apakah finalisasi mengunci semua tahun/rekening siswa atau hanya proses/request lalu memeriksa ulang melalui mekanisme lain? Detail harus disepakati lewat review concurrency.
 6. Bagaimana siklus baru dibuat oleh Wali pada tahun yang sama ketika constraint unik baseline masih membatasi satu rekening per siswa/tahun, sambil menjaga maksimal satu siklus OPEN? Kebijakan saldo awal tetap belum diputuskan.

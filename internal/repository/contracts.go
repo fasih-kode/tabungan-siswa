@@ -259,6 +259,9 @@ type TransactionRepository interface {
 
 type LeavingTransactionRequestRepository interface {
 	CreateLeavingTransactionRequest(context.Context, domain.LeavingTransactionRequest) error
+	// CreateLeavingTransactionRequestForStudentLeaving hanya tersedia pada schema v16+.
+	// Metode ini mengisi relasi proses pindah secara atomik saat INSERT.
+	CreateLeavingTransactionRequestForStudentLeaving(context.Context, domain.LeavingTransactionRequest, uuid.UUID) error
 	GetLeavingTransactionRequest(context.Context, uuid.UUID) (domain.LeavingTransactionRequest, error)
 	GetLeavingTransactionRequestForUpdate(context.Context, uuid.UUID) (domain.LeavingTransactionRequest, error)
 	ListLeavingTransactionRequests(context.Context, uuid.UUID, domain.LeavingTransactionRequestStatus) ([]domain.LeavingTransactionRequest, error)
