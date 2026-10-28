@@ -769,7 +769,7 @@ func (s *studentService) Update(
 		return UpdateStudentOutput{}, err
 	}
 
-	existing, err := repos.Students.GetByID(
+	existing, err := repos.Students.GetByIDForUpdate(
 		ctx,
 		input.StudentID,
 	)
@@ -821,65 +821,8 @@ func (s *studentService) Leave(
 		return LeaveStudentOutput{}, domain.ErrInvalidDateRange
 	}
 
-	uow, err := s.deps.UOW.Begin(ctx)
-	if err != nil {
-		return LeaveStudentOutput{}, fmt.Errorf(
-			"begin leave student transaction: %w",
-			err,
-		)
-	}
-
-	committed := false
-	defer func() {
-		if !committed {
-			_ = uow.Rollback()
-		}
-	}()
-
-	repos := uow.Repositories()
-
-	student, err := repos.Students.GetByIDForUpdate(
-		ctx,
-		input.StudentID,
-	)
-	if err != nil {
-		return LeaveStudentOutput{}, err
-	}
-	pending, err := repos.ClassTransferRequests.HasPendingByStudent(
-		ctx, input.StudentID,
-	)
-	if err != nil {
-		return LeaveStudentOutput{}, err
-	}
-	if pending {
-		return LeaveStudentOutput{}, domain.ErrInvalidTransition
-	}
-
-	if err := student.LeaveOn(input.LeavingDate); err != nil {
-		return LeaveStudentOutput{}, err
-	}
-	if _, err := repos.StudentClassHistories.CloseCurrentByStudentAndAcademicYear(
-		ctx, input.StudentID, input.AcademicYearID, input.LeavingDate,
-	); err != nil {
-		return LeaveStudentOutput{}, err
-	}
-
-	if err := repos.Students.Update(ctx, student); err != nil {
-		return LeaveStudentOutput{}, err
-	}
-
-	if err := uow.Commit(); err != nil {
-		return LeaveStudentOutput{}, fmt.Errorf(
-			"commit leave student transaction: %w",
-			err,
-		)
-	}
-
-	committed = true
-
-	return LeaveStudentOutput{
-		Student: &student,
-	}, nil
+	// Pengesahan status LEFT wajib melalui Finalize proses pindah dua tahap.
+	return LeaveStudentOutput{}, domain.ErrInvalidTransition
 }
 
 func (s *studentService) Reactivate(

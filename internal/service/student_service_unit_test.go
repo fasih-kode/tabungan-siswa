@@ -623,81 +623,14 @@ func TestStudentServiceCreateAdmin(t *testing.T) {
 }
 
 func TestStudentServiceLeave(t *testing.T) {
-	studentID := uuid.New()
-	student := newTestServiceStudent(
-		t,
-		studentID,
-		nil,
-		"NIS-1",
-		"NISN-1",
-		"Ahmad",
-		domain.StudentActive,
-	)
-
-	var updated domain.Student
-
-	repos := repository.RepositorySet{
-		Students: &studentServiceFakeStudentRepository{
-			getByIDFn: func(
-				context.Context,
-				uuid.UUID,
-			) (domain.Student, error) {
-				return student, nil
-			},
-			updateFn: func(
-				_ context.Context,
-				value domain.Student,
-			) error {
-				updated = value
-				return nil
-			},
-		},
-		StudentClassHistories: &studentServiceFakeStudentClassHistoryRepository{
-			closeFn: func(context.Context, uuid.UUID, uuid.UUID, time.Time) (domain.StudentClassHistory, error) {
-				return domain.StudentClassHistory{StudentID: studentID}, nil
-			},
-		},
-		ClassTransferRequests: &studentServiceFakeTransferRepository{},
-	}
-
-	uow := &studentServiceFakeUnitOfWork{
-		repos: repos,
-	}
-
-	svc := newStudentServiceForTest(
-		t,
-		repos,
-		&studentServiceFakeUnitOfWorkManager{
-			uow: uow,
-		},
-	)
-
-	got, err := svc.Leave(
-		context.Background(),
-		LeaveStudentInput{
-			Actor: Actor{
-				UserID: uuid.New(),
-				Role:   domain.RoleAdmin,
-			},
-			StudentID:      studentID,
-			AcademicYearID: uuid.New(),
-			LeavingDate:    time.Date(2026, 10, 14, 0, 0, 0, 0, time.UTC),
-		},
-	)
-	if err != nil {
-		t.Fatalf("Leave() error = %v", err)
-	}
-
-	if got.Student.Status != domain.StudentLeft {
-		t.Fatalf(
-			"status = %v, want %v",
-			got.Student.Status,
-			domain.StudentLeft,
-		)
-	}
-
-	if updated.Status != domain.StudentLeft {
-		t.Fatalf("updated status = %v, want LEFT", updated.Status)
+	// Dependency kosong akan gagal bila Leave mencoba membuka UOW atau membaca repository.
+	svc := &studentService{}
+	out, err := svc.Leave(context.Background(), LeaveStudentInput{
+		Actor:     Actor{UserID: uuid.New(), Role: domain.RoleAdmin},
+		StudentID: uuid.New(), AcademicYearID: uuid.New(), LeavingDate: time.Now(),
+	})
+	if !errors.Is(err, domain.ErrInvalidTransition) || out.Student != nil {
+		t.Fatalf("Leave() = %+v, %v; want invalid transition tanpa hasil", out, err)
 	}
 }
 
@@ -1486,7 +1419,7 @@ func TestStudentServiceUpdateRepositoryErrorRollsBack(t *testing.T) {
 	}
 }
 
-func TestStudentServiceLeaveRepositoryErrorRollsBack(t *testing.T) {
+func TestStudentServiceLeaveRejectsBeforeRepositoryAccess(t *testing.T) {
 	repositoryErr := errors.New("leave student repository error")
 	studentID := uuid.New()
 
@@ -1503,9 +1436,11 @@ func TestStudentServiceLeaveRepositoryErrorRollsBack(t *testing.T) {
 	repos := repository.RepositorySet{
 		Students: &studentServiceFakeStudentRepository{
 			getByIDFn: func(context.Context, uuid.UUID) (domain.Student, error) {
+				t.Fatal("Leave tidak boleh membaca repository")
 				return student, nil
 			},
 			updateFn: func(context.Context, domain.Student) error {
+				t.Fatal("Leave tidak boleh memperbarui repository")
 				return repositoryErr
 			},
 		},
@@ -1539,16 +1474,16 @@ func TestStudentServiceLeaveRepositoryErrorRollsBack(t *testing.T) {
 			LeavingDate:    time.Date(2026, 10, 14, 0, 0, 0, 0, time.UTC),
 		},
 	)
-	if !errors.Is(err, repositoryErr) {
-		t.Fatalf("Leave() error = %v, want %v", err, repositoryErr)
+	if !errors.Is(err, domain.ErrInvalidTransition) {
+		t.Fatalf("Leave() error = %v, want %v", err, domain.ErrInvalidTransition)
 	}
 
 	if uow.commitCount != 0 {
 		t.Fatalf("Commit() count = %d, want 0", uow.commitCount)
 	}
 
-	if uow.rollbackCount != 1 {
-		t.Fatalf("Rollback() count = %d, want 1", uow.rollbackCount)
+	if uow.rollbackCount != 0 {
+		t.Fatalf("Rollback() count = %d, want 0", uow.rollbackCount)
 	}
 }
 

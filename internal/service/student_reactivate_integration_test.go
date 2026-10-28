@@ -33,11 +33,7 @@ func TestStudentReactivateIntegrationValidatesPlacementAndStatus(t *testing.T) {
 	if _, err := f.students.Reactivate(ctx, input); !errors.Is(err, domain.ErrInvalidTransition) {
 		t.Fatalf("Reactivate(active student) error = %v, want invalid transition", err)
 	}
-	if _, err := f.students.Leave(ctx, service.LeaveStudentInput{
-		Actor: f.actor, StudentID: studentID, AcademicYearID: f.year.ID, LeavingDate: leaveDate,
-	}); err != nil {
-		t.Fatalf("Leave() error = %v", err)
-	}
+	seedHistoricalLeftStudent(t, ctx, f.db, studentID, f.year.ID, leaveDate)
 
 	otherYear := uuid.New()
 	invalidInputs := []struct {
@@ -83,11 +79,7 @@ func TestStudentReactivateIntegrationRollsBackHistoryWhenStudentUpdateFails(t *t
 	}
 	studentID := created.Student.ID
 	leaveDate := f.class.EffectiveDate.AddDate(0, 0, 60)
-	if _, err := f.students.Leave(ctx, service.LeaveStudentInput{
-		Actor: f.actor, StudentID: studentID, AcademicYearID: f.year.ID, LeavingDate: leaveDate,
-	}); err != nil {
-		t.Fatalf("Leave() error = %v", err)
-	}
+	seedHistoricalLeftStudent(t, ctx, f.db, studentID, f.year.ID, leaveDate)
 
 	failure := errors.New("injected student update failure")
 	manager := failingStudentUpdateManager{UnitOfWorkManager: f.manager, failure: failure}
@@ -221,11 +213,7 @@ func TestStudentReactivateIntegrationSerializesDepositAndWithdrawal(t *testing.T
 				}
 			}
 			leaveDate := f.class.EffectiveDate.AddDate(0, 0, 60)
-			if _, err := f.students.Leave(ctx, service.LeaveStudentInput{
-				Actor: f.actor, StudentID: studentID, AcademicYearID: f.year.ID, LeavingDate: leaveDate,
-			}); err != nil {
-				t.Fatalf("Leave() error = %v", err)
-			}
+			seedHistoricalLeftStudent(t, ctx, f.db, studentID, f.year.ID, leaveDate)
 
 			blockerConn, err := f.db.Conn(ctx)
 			if err != nil {
@@ -357,4 +345,23 @@ func assertTransactionAudits(ctx context.Context, db *sql.DB, transactions []dom
 		}
 	}
 	return nil
+}
+
+// seedHistoricalLeftStudent menyiapkan histori sebelum guard; ini bukan jalur lifecycle aplikasi.
+func seedHistoricalLeftStudent(t *testing.T, ctx context.Context, db *sql.DB, studentID, yearID uuid.UUID, date time.Time) {
+	t.Helper()
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tx.Rollback()
+	if _, err := tx.ExecContext(ctx, `UPDATE student_class_histories SET validity=daterange(lower(validity),$3::date,'[)') WHERE student_id=$1 AND academic_year_id=$2 AND validity @> $3::date`, studentID, yearID, date); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := tx.ExecContext(ctx, `UPDATE students SET status='LEFT',leaving_date=$2 WHERE id=$1`, studentID, date); err != nil {
+		t.Fatal(err)
+	}
+	if err := tx.Commit(); err != nil {
+		t.Fatal(err)
+	}
 }
