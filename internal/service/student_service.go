@@ -245,11 +245,16 @@ func configuredStudentPlacement(ctx context.Context, repos repository.Repository
 	if err != nil {
 		return domain.StudentClassHistory{}, err
 	}
+	return configuredStudentPlacementInYear(ctx, repos, studentID, year, classID)
+}
+
+// configuredStudentPlacementInYear memakai tahun terkunci agar pemanggil tidak meminta lock tahun setelah siswa.
+func configuredStudentPlacementInYear(ctx context.Context, repos repository.RepositorySet, studentID uuid.UUID, year domain.AcademicYear, classID uuid.UUID) (domain.StudentClassHistory, error) {
 	class, err := repos.Classes.GetByID(ctx, classID)
 	if err != nil {
 		return domain.StudentClassHistory{}, err
 	}
-	if class.AcademicYearID != yearID {
+	if class.AcademicYearID != year.ID {
 		return domain.StudentClassHistory{}, domain.ErrInvalidValue
 	}
 	if err := validateClassEffectiveDate(year, class.EffectiveDate); err != nil {
@@ -259,7 +264,7 @@ func configuredStudentPlacement(ctx context.Context, repos repository.Repository
 	if err != nil {
 		return domain.StudentClassHistory{}, err
 	}
-	return domain.NewStudentClassHistory(studentID, yearID, classID, period)
+	return domain.NewStudentClassHistory(studentID, year.ID, classID, period)
 }
 
 func (s *studentService) Get(
@@ -716,6 +721,10 @@ func (s *studentService) AssignClass(
 		}
 	}()
 	repos := uow.Repositories()
+	year, err := repos.AcademicYears.GetByIDForUpdate(ctx, input.AcademicYearID)
+	if err != nil {
+		return AssignStudentClassOutput{}, err
+	}
 	student, err := repos.Students.GetByIDForUpdate(ctx, input.StudentID)
 	if err != nil {
 		return AssignStudentClassOutput{}, err
@@ -723,7 +732,7 @@ func (s *studentService) AssignClass(
 	if !student.IsActive() {
 		return AssignStudentClassOutput{}, domain.ErrInvalidTransition
 	}
-	history, err := configuredStudentPlacement(ctx, repos, input.StudentID, input.AcademicYearID, input.ClassID)
+	history, err := configuredStudentPlacementInYear(ctx, repos, input.StudentID, year, input.ClassID)
 	if err != nil {
 		return AssignStudentClassOutput{}, err
 	}
