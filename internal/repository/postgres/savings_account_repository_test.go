@@ -471,6 +471,42 @@ type savingsAccountFixture struct {
 	academicYear domain.AcademicYear
 }
 
+func TestSavingsAccountRepository_ListByStudentAndForUpdate(t *testing.T) {
+	db := openTestDatabase(t)
+	ctx := context.Background()
+	fixture := newSavingsAccountFixture(t, db)
+	repo := postgres.NewSavingsAccountRepository(db)
+
+	empty, err := repo.ListByStudent(ctx, fixture.student.ID)
+	if err != nil || len(empty) != 0 {
+		t.Fatalf("ListByStudent(empty)=%v, %v", empty, err)
+	}
+
+	account, err := domain.NewSavingsAccount(fixture.student.ID, fixture.academicYear.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := repo.Create(ctx, account); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { deleteTestSavingsAccount(t, db, account.ID) })
+
+	listed, err := repo.ListByStudent(ctx, fixture.student.ID)
+	if err != nil || len(listed) != 1 || listed[0].ID != account.ID {
+		t.Fatalf("ListByStudent()=%v, %v", listed, err)
+	}
+
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tx.Rollback()
+	locked, err := postgres.NewSavingsAccountRepository(tx).ListByStudentForUpdate(ctx, fixture.student.ID)
+	if err != nil || len(locked) != 1 || locked[0].ID != account.ID {
+		t.Fatalf("ListByStudentForUpdate()=%v, %v", locked, err)
+	}
+}
+
 func newSavingsAccountFixture(
 	t *testing.T,
 	db *sql.DB,

@@ -220,6 +220,102 @@ func TestSavingsAndTransactionServicesIntegration_CrossServiceCommit(t *testing.
 	}
 }
 
+func TestLeavingTransactionRequestApprovalExecutesExactlyOnce(t *testing.T) {
+	db := openServiceScopeTestDatabase(t)
+	ctx := context.Background()
+	cleanupServiceScopeFixtures(t, db)
+	t.Cleanup(func() { cleanupServiceScopeFixtures(t, db) })
+	users := postgres.NewUserRepository(db)
+	students := postgres.NewStudentRepository(db)
+	years := postgres.NewAcademicYearRepository(db)
+	accounts := postgres.NewSavingsAccountRepository(db)
+	transactions := postgres.NewTransactionRepository(db)
+	requests := postgres.NewLeavingTransactionRequestRepository(db)
+	histories := postgres.NewStudentClassHistoryRepository(db)
+	assignments := postgres.NewTeacherClassAssignmentRepository(db)
+	audits := postgres.NewAuditRepository(db)
+	waliUser := newServiceScopeUser(t, domain.RoleWaliKelas)
+	adminUser := newServiceScopeUser(t, domain.RoleAdmin)
+	if err := users.Create(ctx, waliUser); err != nil {
+		t.Fatal(err)
+	}
+	if err := users.Create(ctx, adminUser); err != nil {
+		t.Fatal(err)
+	}
+	student := newServiceScopeStudent(t, "Late request "+uuid.NewString())
+	if err := students.Create(ctx, student); err != nil {
+		t.Fatal(err)
+	}
+	year := newServiceScopeAcademicYear(t, "Late request "+uuid.NewString())
+	if err := years.Create(ctx, year); err != nil {
+		t.Fatal(err)
+	}
+	assignFinancialIntegrationScope(t, db, waliUser.ID, student.ID, year.ID)
+	account, err := domain.NewSavingsAccount(student.ID, year.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := accounts.Create(ctx, account); err != nil {
+		t.Fatal(err)
+	}
+	leaveDate := year.StartDate.AddDate(0, 0, 20)
+	student.Status, student.LeavingDate = domain.StudentLeft, &leaveDate
+	if err := students.Update(ctx, student); err != nil {
+		t.Fatal(err)
+	}
+	manager := postgres.NewUnitOfWorkManager(db)
+	repos := repository.RepositorySet{Users: users, Students: students, AcademicYears: years, SavingsAccounts: accounts, Transactions: transactions, LeavingTransactionRequests: requests, StudentClassHistories: histories, TeacherClassAssignments: assignments, Settlements: postgres.NewSettlementRepository(db), AuditLogs: audits}
+	lateService, err := service.NewLeavingTransactionRequestService(service.Dependencies{Repositories: repos, UOW: manager})
+	if err != nil {
+		t.Fatal(err)
+	}
+	wali := service.Actor{UserID: waliUser.ID, Role: domain.RoleWaliKelas}
+	admin := service.Actor{UserID: adminUser.ID, Role: domain.RoleAdmin}
+	input := service.CreateLeavingTransactionRequestInput{Actor: wali, SavingsAccountID: account.ID, Type: domain.TransactionDeposit, Amount: domain.Money(12000), TransactionDate: year.StartDate.AddDate(0, 0, 10), Reason: "Bukti terlambat diserahkan", EvidenceReference: "KWT-" + uuid.NewString()}
+	created, err := lateService.Create(ctx, input)
+	if err != nil {
+		t.Fatalf("Create() error = %v", err)
+	}
+	if _, err := lateService.Create(ctx, input); err == nil {
+		t.Fatal("Create() accepted duplicate active evidence reference")
+	}
+	settlementService, err := service.NewSettlementService(service.Dependencies{Repositories: repos, UOW: manager})
+	if err != nil {
+		t.Fatal(err)
+	}
+	readiness, err := settlementService.YearReadiness(ctx, service.YearSettlementReadinessInput{Actor: admin, AcademicYearID: year.ID})
+	if err != nil || !readiness.PendingLateTransactions {
+		t.Fatalf("readiness pending late transaction = %t, err=%v", readiness.PendingLateTransactions, err)
+	}
+	if _, err := settlementService.SettleStudentLeaving(ctx, service.SettleStudentLeavingInput{Actor: wali, SavingsAccountID: account.ID, ExpectedBalance: 0}); !errors.Is(err, domain.ErrInvalidTransition) {
+		t.Fatalf("settlement with pending request error=%v", err)
+	}
+	if err := lateService.Decide(ctx, service.DecideLeavingTransactionRequestInput{Actor: admin, RequestID: created.Request.ID, Approve: true, Reason: "Bukti sesuai"}); err != nil {
+		t.Fatalf("Decide() error=%v", err)
+	}
+	tx, err := lateService.Execute(ctx, service.ExecuteLeavingTransactionRequestInput{Actor: wali, RequestID: created.Request.ID})
+	if err != nil {
+		t.Fatalf("Execute() error=%v", err)
+	}
+	if tx.LateRequestID == nil || *tx.LateRequestID != created.Request.ID {
+		t.Fatalf("transaction request link=%v, want %v", tx.LateRequestID, created.Request.ID)
+	}
+	if _, err := lateService.Execute(ctx, service.ExecuteLeavingTransactionRequestInput{Actor: wali, RequestID: created.Request.ID}); !errors.Is(err, domain.ErrInvalidTransition) {
+		t.Fatalf("second Execute() error=%v, want invalid transition", err)
+	}
+	if _, err := lateService.Create(ctx, input); !errors.Is(err, repository.ErrConflict) {
+		t.Fatalf("Create() with completed evidence error=%v, want conflict", err)
+	}
+	balanceTx, err := transactions.ListActiveBySavingsAccount(ctx, account.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	balance, err := domain.CalculateBalance(balanceTx)
+	if err != nil || balance.Amount != domain.Money(12000) {
+		t.Fatalf("ledger balance=%v err=%v", balance.Amount, err)
+	}
+}
+
 func TestSavingsAndTransactionServicesIntegration_CrossServiceRollbackIsAtomic(t *testing.T) {
 	db := openServiceScopeTestDatabase(t)
 	ctx := context.Background()
@@ -448,8 +544,8 @@ func TestTransactionServiceIntegration_DateBoundsConcurrentWithdrawalsAndLifecyc
 	if _, err := txService.Deposit(ctx, service.DepositInput{Actor: actor, SavingsAccountID: account.ID, Amount: 1_000, TransactionDate: endExclusiveDate}); !errors.Is(err, service.ErrTransactionDateOutOfAcademicYear) {
 		t.Fatalf("deposit on exclusive end date error = %v", err)
 	}
-	if _, err := txService.Deposit(ctx, service.DepositInput{Actor: adminActor, SavingsAccountID: account.ID, Amount: 1_000, TransactionDate: lastValidDate}); err != nil {
-		t.Fatalf("admin deposit without class scope on last valid date: %v", err)
+	if _, err := txService.Deposit(ctx, service.DepositInput{Actor: adminActor, SavingsAccountID: account.ID, Amount: 1_000, TransactionDate: lastValidDate}); !errors.Is(err, service.ErrForbidden) {
+		t.Fatalf("admin deposit error = %v, want forbidden", err)
 	}
 
 	withdrawalDate := year.StartDate.AddDate(0, 0, 2)
@@ -479,46 +575,25 @@ func TestTransactionServiceIntegration_DateBoundsConcurrentWithdrawalsAndLifecyc
 		t.Fatalf("backdated withdrawal invalidating a later balance error = %v, want negative balance", err)
 	}
 
-	// A deposit that has acquired both locks finishes before settlement can
-	// lock the same account; the resulting snapshot must include that deposit.
+	// A LEFT student cannot receive another deposit. The settlement preview and
+	// confirmation therefore use the unchanged ledger balance.
 	student.Status = domain.StudentLeft
 	student.UpdatedAt = time.Now().UTC()
 	if err := studentRepo.Update(ctx, student); err != nil {
 		t.Fatalf("mark student LEFT: %v", err)
 	}
-	depositReady, releaseDeposit := make(chan struct{}), make(chan struct{})
-	depositDone := make(chan error, 1)
-	go func() {
-		depositDone <- service.WithinTransaction(ctx, manager, func(txCtx context.Context, _ repository.RepositorySet) error {
-			if _, err := txService.Deposit(txCtx, service.DepositInput{Actor: actor, SavingsAccountID: account.ID, Amount: 5_000, TransactionDate: year.StartDate.AddDate(0, 0, 3)}); err != nil {
-				return err
-			}
-			close(depositReady)
-			<-releaseDeposit
-			return nil
-		})
-	}()
-	select {
-	case <-depositReady:
-	case <-ctx.Done():
-		t.Fatalf("deposit did not acquire account/year locks: %v", ctx.Err())
+	if _, err := txService.Deposit(ctx, service.DepositInput{Actor: actor, SavingsAccountID: account.ID, Amount: 5_000, TransactionDate: year.StartDate.AddDate(0, 0, 3)}); !errors.Is(err, domain.ErrInvalidTransition) {
+		t.Fatalf("deposit for LEFT student error = %v, want invalid transition", err)
 	}
-	settlementDone := make(chan error, 1)
-	go func() {
-		_, err := settlementService.SettleStudentLeaving(ctx, service.SettleStudentLeavingInput{Actor: actor, SavingsAccountID: account.ID})
-		settlementDone <- err
-	}()
-	select {
-	case err := <-settlementDone:
-		t.Fatalf("settlement completed while transaction held account lock: %v", err)
-	case <-time.After(150 * time.Millisecond):
+	latestPreview, err := settlementService.PreviewStudentLeaving(ctx, service.PreviewStudentLeavingInput{Actor: actor, SavingsAccountID: account.ID})
+	if err != nil {
+		t.Fatalf("preview after student departure: %v", err)
 	}
-	close(releaseDeposit)
-	if err := <-depositDone; err != nil {
-		t.Fatalf("commit locked deposit: %v", err)
+	if latestPreview.Balance != 25_000 {
+		t.Fatalf("balance after student departure = %d, want 25000", latestPreview.Balance)
 	}
-	if err := <-settlementDone; err != nil {
-		t.Fatalf("settle after deposit: %v", err)
+	if _, err := settlementService.SettleStudentLeaving(ctx, service.SettleStudentLeavingInput{Actor: actor, SavingsAccountID: account.ID, ExpectedBalance: latestPreview.Balance}); err != nil {
+		t.Fatalf("settle after student departure: %v", err)
 	}
 	settledAccount, err := accountRepo.GetByID(ctx, account.ID)
 	if err != nil || !settledAccount.IsSettled() {
@@ -532,8 +607,8 @@ func TestTransactionServiceIntegration_DateBoundsConcurrentWithdrawalsAndLifecyc
 	if err != nil {
 		t.Fatalf("list transactions after settlement: %v", err)
 	}
-	if settlement.Amount != passbook.Balance || settlement.Amount != 31_000 {
-		t.Fatalf("settlement snapshot=%d transaction balance=%d, want 31000", settlement.Amount, passbook.Balance)
+	if settlement.Amount != passbook.Balance || settlement.Amount != 25_000 {
+		t.Fatalf("settlement snapshot=%d transaction balance=%d, want 25000", settlement.Amount, passbook.Balance)
 	}
 
 	// The inverse interleaving: settlement holds the account lock first; a
@@ -559,7 +634,7 @@ func TestTransactionServiceIntegration_DateBoundsConcurrentWithdrawalsAndLifecyc
 	settlementTxDone := make(chan error, 1)
 	go func() {
 		settlementTxDone <- service.WithinTransaction(ctx, manager, func(txCtx context.Context, _ repository.RepositorySet) error {
-			if _, err := settlementService.SettleStudentLeaving(txCtx, service.SettleStudentLeavingInput{Actor: actor, SavingsAccountID: account2.ID}); err != nil {
+			if _, err := settlementService.SettleStudentLeaving(txCtx, service.SettleStudentLeavingInput{Actor: actor, SavingsAccountID: account2.ID, ExpectedBalance: 0}); err != nil {
 				return err
 			}
 			close(settlementReady)
@@ -640,7 +715,7 @@ func TestTransactionServiceIntegration_DateBoundsConcurrentWithdrawalsAndLifecyc
 	if err := <-closingDone; err != nil {
 		t.Fatalf("StartClosing after transaction commit: %v", err)
 	}
-	if _, err := txService.Deposit(ctx, service.DepositInput{Actor: adminActor, SavingsAccountID: account3.ID, Amount: 1_000, TransactionDate: lastValidDate}); !errors.Is(err, domain.ErrInvalidTransition) {
+	if _, err := txService.Deposit(ctx, service.DepositInput{Actor: actor, SavingsAccountID: account3.ID, Amount: 1_000, TransactionDate: lastValidDate}); !errors.Is(err, domain.ErrInvalidTransition) {
 		t.Fatalf("deposit in CLOSING year error = %v, want invalid transition", err)
 	}
 }

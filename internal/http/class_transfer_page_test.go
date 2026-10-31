@@ -122,7 +122,7 @@ func TestClassTransferPageListStudentPassesPaginationAndRenders(t *testing.T) {
 	if fake.listStudentInput.Actor != actor || fake.listStudentInput.StudentID != studentID || fake.listStudentInput.AcademicYearID != yearID || fake.listStudentInput.Options.Limit != 11 || fake.listStudentInput.Options.Offset != 10 {
 		t.Fatalf("ListByStudent input = %+v, want actor/student/year and lookahead limit/offset", fake.listStudentInput)
 	}
-	if !strings.Contains(recorder.Body.String(), "Transfer Kelas Siswa|WALI_KELAS|") || !strings.Contains(recorder.Body.String(), "next") || strings.Count(recorder.Body.String(), ":false") != 10 {
+	if !strings.Contains(recorder.Body.String(), "Perpindahan Kelas Siswa|WALI_KELAS|") || !strings.Contains(recorder.Body.String(), "next") || strings.Count(recorder.Body.String(), ":false") != 10 {
 		t.Fatalf("rendered list missing expected view model state: %s", recorder.Body.String())
 	}
 }

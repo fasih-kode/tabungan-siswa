@@ -4,8 +4,8 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>{{.Title}} - Tabungan Siswa</title>
-    <link rel="stylesheet" href="/static/css/app.css?v=20261019-toast">
+    <title>{{.Title}} - Tabungan Siswa</title><link rel="icon" type="image/svg+xml" href="/static/img/favicon.svg">
+    <link rel="stylesheet" href="/static/css/app.css?v=20261024-user-management-polish">
     <script src="/static/js/htmx.min.js" defer></script>
     <script src="/static/js/app.js?v=20261019-toast" defer></script>
 <script src="/static/js/instant-search.js?v=20261019-toast" defer></script></head>
@@ -37,7 +37,7 @@
 
     {{if eq .Role "ADMIN"}}
     {{if not .AcademicYear}}
-    <div class="flex justify-end"><button class="form-button-primary" type="button" data-modal-open="academic-year-modal">Tambah Tahun Ajaran</button></div>
+    <div class="flex justify-end"><button class="form-button-primary inline-flex items-center gap-2" type="button" data-modal-open="academic-year-modal">{{template "button-leading-icon" "add"}}Tambah Tahun Ajaran</button></div>
     <dialog id="academic-year-modal" class="app-modal" {{if .Error}}data-modal-show{{end}}>
         <div class="app-modal-panel">
             <div class="app-modal-header"><h2 class="text-lg font-semibold text-gray-800 dark:text-white">Tambah Tahun Ajaran</h2><button class="app-modal-close" type="button" data-modal-close aria-label="Tutup">&times;</button></div>
@@ -47,7 +47,7 @@
                 <div class="md:col-span-2"><label class="form-label" for="name">Nama</label><input class="form-input" id="name" name="name" required maxlength="100" value="{{.Name}}" placeholder="2026/2027"></div>
                 <div><label class="form-label" for="start_date">Tanggal Mulai</label><input class="form-input" id="start_date" name="start_date" type="date" required value="{{.StartDate}}"></div>
                 <div><label class="form-label" for="end_date">Tanggal Akhir</label><input class="form-input" id="end_date" name="end_date" type="date" required value="{{.EndDate}}"></div>
-                <div class="app-modal-actions md:col-span-2"><button class="form-button-secondary" type="button" data-modal-close>Batal</button><button class="form-button-primary" type="submit">Simpan Tahun Ajaran</button></div>
+                <div class="app-modal-actions md:col-span-2"><button class="form-button-secondary inline-flex items-center gap-2" type="button" data-modal-close>{{template "button-leading-icon" "cancel"}}Batal</button><button class="form-button-primary inline-flex items-center gap-2" type="submit">{{template "button-leading-icon" "save"}}Simpan Tahun Ajaran</button></div>
             </form>
         </div>
     </dialog>
@@ -65,13 +65,13 @@
         {{if eq .Role "ADMIN"}}
         <div class="mt-6 flex flex-wrap gap-3">
             {{if eq .AcademicYear.Status "OPEN"}}
-            <form method="post" action="/academic-years/{{.AcademicYear.ID}}/start-closing"><input type="hidden" name="csrf_token" value="{{.CSRFToken}}"><button class="form-button-primary" type="submit">Mulai Penutupan</button></form>
+            <form method="post" action="/academic-years/{{.AcademicYear.ID}}/start-closing"><input type="hidden" name="csrf_token" value="{{.CSRFToken}}"><button class="form-button-primary inline-flex items-center gap-2" type="submit">{{template "button-leading-icon" "confirm"}}Mulai Penutupan</button></form>
             {{end}}
             {{if .AcademicYear.CanClose}}
-            <form method="post" action="/academic-years/{{.AcademicYear.ID}}/close"><input type="hidden" name="csrf_token" value="{{.CSRFToken}}"><button class="form-button-primary" type="submit">Tutup Tahun Ajaran</button></form>
+            <form method="post" action="/academic-years/{{.AcademicYear.ID}}/close"><input type="hidden" name="csrf_token" value="{{.CSRFToken}}"><button class="form-button-primary inline-flex items-center gap-2" type="submit">{{template "button-leading-icon" "confirm"}}Tutup Tahun Ajaran</button></form>
             {{end}}
             {{if .AcademicYear.CanReopen}}
-            <form method="post" action="/academic-years/{{.AcademicYear.ID}}/reopen"><input type="hidden" name="csrf_token" value="{{.CSRFToken}}"><button class="form-button-primary" type="submit">Buka Kembali</button></form>
+            <form method="post" action="/academic-years/{{.AcademicYear.ID}}/reopen"><input type="hidden" name="csrf_token" value="{{.CSRFToken}}"><button class="form-button-primary inline-flex items-center gap-2" type="submit">{{template "button-leading-icon" "confirm"}}Buka Kembali</button></form>
             {{end}}
         </div>
         {{end}}

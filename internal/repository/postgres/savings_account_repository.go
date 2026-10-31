@@ -118,6 +118,70 @@ func (r *SavingsAccountRepository) GetByStudentAndAcademicYear(
 	)
 }
 
+func (r *SavingsAccountRepository) ListByStudent(
+	ctx context.Context,
+	studentID uuid.UUID,
+) ([]domain.SavingsAccount, error) {
+	return r.listByStudent(ctx, studentID, false)
+}
+
+func (r *SavingsAccountRepository) ListByStudentForUpdate(
+	ctx context.Context,
+	studentID uuid.UUID,
+) ([]domain.SavingsAccount, error) {
+	return r.listByStudent(ctx, studentID, true)
+}
+
+func (r *SavingsAccountRepository) listByStudent(
+	ctx context.Context,
+	studentID uuid.UUID,
+	forUpdate bool,
+) ([]domain.SavingsAccount, error) {
+	query := `
+		SELECT
+			id,
+			student_id,
+			academic_year_id,
+			status,
+			settled_at,
+			created_at,
+			updated_at
+		FROM savings_accounts
+		WHERE student_id = $1
+		ORDER BY id`
+	if forUpdate {
+		query += `
+		FOR UPDATE`
+	}
+
+	rows, err := r.db.QueryContext(ctx, query, studentID)
+	if err != nil {
+		return nil, fmt.Errorf("list savings accounts for student: %w", err)
+	}
+	defer rows.Close()
+
+	accounts := make([]domain.SavingsAccount, 0)
+	for rows.Next() {
+		var account domain.SavingsAccount
+		if err := rows.Scan(
+			&account.ID,
+			&account.StudentID,
+			&account.AcademicYearID,
+			&account.Status,
+			&account.SettledAt,
+			&account.CreatedAt,
+			&account.UpdatedAt,
+		); err != nil {
+			return nil, fmt.Errorf("scan savings account for student: %w", err)
+		}
+		accounts = append(accounts, account)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("list savings accounts for student: %w", err)
+	}
+	return accounts, nil
+}
+
 func (r *SavingsAccountRepository) GetByIDForUpdate(
 	ctx context.Context,
 	id uuid.UUID,
@@ -251,7 +315,7 @@ func translateSavingsAccountError(
 			return fmt.Errorf("%s: %w", operation, repository.ErrConflict)
 		case "23514":
 			switch pgErr.ConstraintName {
-			case "savings_accounts_academic_year_must_be_open", "savings_accounts_student_must_be_active", "savings_accounts_no_reopen_after_year_close":
+			case "savings_accounts_academic_year_must_be_open", "savings_accounts_student_must_be_active", "savings_accounts_no_reopen_after_year_close", "savings_accounts_student_leaving_in_progress":
 				return fmt.Errorf("%s: %w", operation, domain.ErrInvalidTransition)
 			}
 		}

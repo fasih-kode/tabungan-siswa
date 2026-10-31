@@ -245,11 +245,16 @@ func configuredStudentPlacement(ctx context.Context, repos repository.Repository
 	if err != nil {
 		return domain.StudentClassHistory{}, err
 	}
+	return configuredStudentPlacementInYear(ctx, repos, studentID, year, classID)
+}
+
+// configuredStudentPlacementInYear memakai tahun terkunci agar pemanggil tidak meminta lock tahun setelah siswa.
+func configuredStudentPlacementInYear(ctx context.Context, repos repository.RepositorySet, studentID uuid.UUID, year domain.AcademicYear, classID uuid.UUID) (domain.StudentClassHistory, error) {
 	class, err := repos.Classes.GetByID(ctx, classID)
 	if err != nil {
 		return domain.StudentClassHistory{}, err
 	}
-	if class.AcademicYearID != yearID {
+	if class.AcademicYearID != year.ID {
 		return domain.StudentClassHistory{}, domain.ErrInvalidValue
 	}
 	if err := validateClassEffectiveDate(year, class.EffectiveDate); err != nil {
@@ -259,7 +264,7 @@ func configuredStudentPlacement(ctx context.Context, repos repository.Repository
 	if err != nil {
 		return domain.StudentClassHistory{}, err
 	}
-	return domain.NewStudentClassHistory(studentID, yearID, classID, period)
+	return domain.NewStudentClassHistory(studentID, year.ID, classID, period)
 }
 
 func (s *studentService) Get(
@@ -716,6 +721,10 @@ func (s *studentService) AssignClass(
 		}
 	}()
 	repos := uow.Repositories()
+	year, err := repos.AcademicYears.GetByIDForUpdate(ctx, input.AcademicYearID)
+	if err != nil {
+		return AssignStudentClassOutput{}, err
+	}
 	student, err := repos.Students.GetByIDForUpdate(ctx, input.StudentID)
 	if err != nil {
 		return AssignStudentClassOutput{}, err
@@ -723,7 +732,7 @@ func (s *studentService) AssignClass(
 	if !student.IsActive() {
 		return AssignStudentClassOutput{}, domain.ErrInvalidTransition
 	}
-	history, err := configuredStudentPlacement(ctx, repos, input.StudentID, input.AcademicYearID, input.ClassID)
+	history, err := configuredStudentPlacementInYear(ctx, repos, input.StudentID, year, input.ClassID)
 	if err != nil {
 		return AssignStudentClassOutput{}, err
 	}
@@ -769,7 +778,7 @@ func (s *studentService) Update(
 		return UpdateStudentOutput{}, err
 	}
 
-	existing, err := repos.Students.GetByID(
+	existing, err := repos.Students.GetByIDForUpdate(
 		ctx,
 		input.StudentID,
 	)
@@ -821,65 +830,8 @@ func (s *studentService) Leave(
 		return LeaveStudentOutput{}, domain.ErrInvalidDateRange
 	}
 
-	uow, err := s.deps.UOW.Begin(ctx)
-	if err != nil {
-		return LeaveStudentOutput{}, fmt.Errorf(
-			"begin leave student transaction: %w",
-			err,
-		)
-	}
-
-	committed := false
-	defer func() {
-		if !committed {
-			_ = uow.Rollback()
-		}
-	}()
-
-	repos := uow.Repositories()
-
-	student, err := repos.Students.GetByIDForUpdate(
-		ctx,
-		input.StudentID,
-	)
-	if err != nil {
-		return LeaveStudentOutput{}, err
-	}
-	pending, err := repos.ClassTransferRequests.HasPendingByStudent(
-		ctx, input.StudentID,
-	)
-	if err != nil {
-		return LeaveStudentOutput{}, err
-	}
-	if pending {
-		return LeaveStudentOutput{}, domain.ErrInvalidTransition
-	}
-
-	if err := student.Leave(); err != nil {
-		return LeaveStudentOutput{}, err
-	}
-	if _, err := repos.StudentClassHistories.CloseCurrentByStudentAndAcademicYear(
-		ctx, input.StudentID, input.AcademicYearID, input.LeavingDate,
-	); err != nil {
-		return LeaveStudentOutput{}, err
-	}
-
-	if err := repos.Students.Update(ctx, student); err != nil {
-		return LeaveStudentOutput{}, err
-	}
-
-	if err := uow.Commit(); err != nil {
-		return LeaveStudentOutput{}, fmt.Errorf(
-			"commit leave student transaction: %w",
-			err,
-		)
-	}
-
-	committed = true
-
-	return LeaveStudentOutput{
-		Student: &student,
-	}, nil
+	// Pengesahan status LEFT wajib melalui Finalize proses pindah dua tahap.
+	return LeaveStudentOutput{}, domain.ErrInvalidTransition
 }
 
 func (s *studentService) Reactivate(
@@ -908,6 +860,13 @@ func (s *studentService) Reactivate(
 	}()
 
 	repos := uow.Repositories()
+	year, err := repos.AcademicYears.GetByIDForUpdate(
+		ctx,
+		input.AcademicYearID,
+	)
+	if err != nil {
+		return ReactivateStudentOutput{}, err
+	}
 	student, err := repos.Students.GetByIDForUpdate(ctx, input.StudentID)
 	if err != nil {
 		return ReactivateStudentOutput{}, err
@@ -915,7 +874,14 @@ func (s *studentService) Reactivate(
 	if err := student.Reactivate(); err != nil {
 		return ReactivateStudentOutput{}, err
 	}
-	history, err := studentPlacementAtDate(ctx, repos, input.StudentID, input.AcademicYearID, input.ClassID, input.EffectiveDate)
+	history, err := studentPlacementAtDateInYear(
+		ctx,
+		repos,
+		input.StudentID,
+		year,
+		input.ClassID,
+		input.EffectiveDate,
+	)
 	if err != nil {
 		return ReactivateStudentOutput{}, err
 	}
@@ -940,11 +906,32 @@ func studentPlacementAtDate(ctx context.Context, repos repository.RepositorySet,
 	if err != nil {
 		return domain.StudentClassHistory{}, err
 	}
+	return studentPlacementAtDateInYear(
+		ctx,
+		repos,
+		studentID,
+		year,
+		classID,
+		effectiveDate,
+	)
+}
+
+func studentPlacementAtDateInYear(
+	ctx context.Context,
+	repos repository.RepositorySet,
+	studentID uuid.UUID,
+	year domain.AcademicYear,
+	classID uuid.UUID,
+	effectiveDate time.Time,
+) (domain.StudentClassHistory, error) {
+	if studentID == uuid.Nil || year.ID == uuid.Nil || classID == uuid.Nil {
+		return domain.StudentClassHistory{}, domain.ErrInvalidID
+	}
 	class, err := repos.Classes.GetByID(ctx, classID)
 	if err != nil {
 		return domain.StudentClassHistory{}, err
 	}
-	if class.AcademicYearID != yearID {
+	if class.AcademicYearID != year.ID {
 		return domain.StudentClassHistory{}, domain.ErrInvalidValue
 	}
 	if err := validateClassEffectiveDate(year, class.EffectiveDate); err != nil {
@@ -960,7 +947,7 @@ func studentPlacementAtDate(ctx context.Context, repos repository.RepositorySet,
 	if err != nil {
 		return domain.StudentClassHistory{}, err
 	}
-	return domain.NewStudentClassHistory(studentID, yearID, classID, period)
+	return domain.NewStudentClassHistory(studentID, year.ID, classID, period)
 }
 
 func validateStudentUpdate(student domain.Student) error {

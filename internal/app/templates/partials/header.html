@@ -33,11 +33,11 @@
             </div>
             <div class="hidden min-w-0 sm:block">
                 <p class="max-w-40 truncate text-sm font-semibold text-gray-800 dark:text-white/90">{{.Username}}</p>
-                <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">{{.Role}}</p>
+                <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">{{if eq .Role "ADMIN"}}Administrator{{else if eq .Role "WALI_KELAS"}}Wali Kelas{{else if eq .Role "SISWA"}}Siswa{{else}}{{.Role}}{{end}}</p>
             </div>
             <form method="post" action="/logout" class="shrink-0">
                 <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
-                <button type="submit" class="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm font-medium text-gray-700 shadow-theme-xs transition hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300 dark:hover:bg-gray-800">
+                <button type="submit" class="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm font-medium text-gray-700 shadow-theme-xs transition hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300 dark:hover:bg-gray-800 inline-flex items-center gap-2">{{template "button-leading-icon" "logout"}}
                     Keluar
                 </button>
             </form>

@@ -40,3 +40,4 @@ pratinjau, dan penanganan pengecualian.
 - [Handover sesi dan status pekerjaan](docs/HANDOVER.md)
 - [Instruksi kerja Codex](AGENTS.md)
 - [Roadmap resmi](Roadmap_Resmi_Tabungan_Siswa.pdf)
+- [Kontrak FASE 25: Dashboard & Reporting](docs/contracts/fase-25-dashboard-reporting-contract.md)

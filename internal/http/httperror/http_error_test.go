@@ -86,37 +86,37 @@ func TestWriteUsesPublicStatusText(t *testing.T) {
 			name:       "bad request",
 			err:        domain.ErrInvalidValue,
 			wantStatus: http.StatusBadRequest,
-			wantBody:   "Bad Request\n",
+			wantBody:   "Permintaan tidak valid. Periksa kembali data yang dikirim.\n",
 		},
 		{
 			name:       "unauthorized",
 			err:        service.ErrInvalidCredentials,
 			wantStatus: http.StatusUnauthorized,
-			wantBody:   "Unauthorized\n",
+			wantBody:   "Silakan masuk kembali untuk melanjutkan.\n",
 		},
 		{
 			name:       "forbidden",
 			err:        service.ErrForbidden,
 			wantStatus: http.StatusForbidden,
-			wantBody:   "Forbidden\n",
+			wantBody:   "Anda tidak memiliki izin untuk mengakses halaman ini.\n",
 		},
 		{
 			name:       "not found",
 			err:        repository.ErrNotFound,
 			wantStatus: http.StatusNotFound,
-			wantBody:   "Not Found\n",
+			wantBody:   "Halaman atau data tidak ditemukan.\n",
 		},
 		{
 			name:       "conflict",
 			err:        repository.ErrConflict,
 			wantStatus: http.StatusConflict,
-			wantBody:   "Conflict\n",
+			wantBody:   "Data berubah atau bertentangan dengan kondisi saat ini. Muat ulang halaman lalu coba lagi.\n",
 		},
 		{
 			name:       "internal error does not leak detail",
 			err:        errors.New("database password leaked"),
 			wantStatus: http.StatusInternalServerError,
-			wantBody:   "Internal Server Error\n",
+			wantBody:   "Terjadi kesalahan pada server. Silakan coba lagi.\n",
 		},
 	}
 

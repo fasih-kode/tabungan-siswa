@@ -1,0 +1,2 @@
+ALTER TABLE leaving_transaction_requests
+    DROP CONSTRAINT leaving_transaction_requests_amount_integer_check;

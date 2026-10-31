@@ -8,14 +8,15 @@ import (
 )
 
 type Student struct {
-	ID        uuid.UUID
-	UserID    *uuid.UUID
-	NIS       *string
-	NISN      *string
-	Name      string
-	Status    StudentStatus
-	CreatedAt time.Time
-	UpdatedAt time.Time
+	ID          uuid.UUID
+	UserID      *uuid.UUID
+	NIS         *string
+	NISN        *string
+	Name        string
+	Status      StudentStatus
+	LeavingDate *time.Time
+	CreatedAt   time.Time
+	UpdatedAt   time.Time
 }
 
 func NewStudent(
@@ -61,11 +62,19 @@ func (s Student) IsGraduated() bool {
 }
 
 func (s *Student) Leave() error {
+	return s.LeaveOn(time.Time{})
+}
+
+func (s *Student) LeaveOn(leavingDate time.Time) error {
 	if s.Status != StudentActive {
 		return ErrInvalidTransition
 	}
 
 	s.Status = StudentLeft
+	if !leavingDate.IsZero() {
+		date := time.Date(leavingDate.Year(), leavingDate.Month(), leavingDate.Day(), 0, 0, 0, 0, time.UTC)
+		s.LeavingDate = &date
+	}
 	s.UpdatedAt = time.Now()
 
 	return nil

@@ -609,6 +609,7 @@ func TestSettlementServiceSettleStudentLeaving(t *testing.T) {
 	got, err := svc.SettleStudentLeaving(context.Background(), SettleStudentLeavingInput{
 		Actor:            Actor{UserID: financialTestTeacherID, Role: domain.RoleWaliKelas},
 		SavingsAccountID: account.ID,
+		ExpectedBalance:  50000,
 	})
 	if err != nil {
 		t.Fatalf("SettleStudentLeaving() error = %v", err)
@@ -627,6 +628,75 @@ func TestSettlementServiceSettleStudentLeaving(t *testing.T) {
 	}
 	if uow.commitCalls != 1 || uow.rollbackCalls != 0 {
 		t.Fatalf("Commit/Rollback = %d/%d, want 1/0", uow.commitCalls, uow.rollbackCalls)
+	}
+}
+
+func TestSettlementServicePreviewsStudentLeavingWhileYearIsOpen(t *testing.T) {
+	account := newSettlementTestAccount(t)
+	student := newSettlementTestStudent(account.StudentID, domain.StudentLeft)
+	year := newSettlementTestAcademicYear(t, account.AcademicYearID, domain.AcademicYearOpen)
+	transactions := []domain.Transaction{newSettlementTestTransaction(t, account.ID, domain.TransactionDeposit, 50000)}
+	repos := repository.RepositorySet{
+		SavingsAccounts: &settlementServiceFakeSavingsAccountRepository{getByIDFn: func(context.Context, uuid.UUID) (domain.SavingsAccount, error) { return account, nil }},
+		AcademicYears:   &settlementServiceFakeAcademicYearRepository{getByIDFn: func(context.Context, uuid.UUID) (domain.AcademicYear, error) { return year, nil }},
+		Students:        &settlementServiceFakeStudentRepository{getByIDFn: func(context.Context, uuid.UUID) (domain.Student, error) { return student, nil }},
+		Transactions:    &settlementServiceFakeTransactionRepository{listActiveFn: func(context.Context, uuid.UUID) ([]domain.Transaction, error) { return transactions, nil }},
+	}
+	svc := newScopedSettlementServiceForTest(t, repos, &settlementServiceFakeUnitOfWorkManager{})
+	got, err := svc.PreviewStudentLeaving(context.Background(), PreviewStudentLeavingInput{Actor: Actor{UserID: financialTestTeacherID, Role: domain.RoleWaliKelas}, SavingsAccountID: account.ID})
+	if err != nil {
+		t.Fatalf("PreviewStudentLeaving() error = %v", err)
+	}
+	if got.Balance != 50000 || got.Student == nil || !got.Student.IsLeft() {
+		t.Fatalf("PreviewStudentLeaving() = %+v, want LEFT student with balance 50000", got)
+	}
+}
+
+func TestSettlementServiceStudentLeavingPreviewRejectsGraduatedStudent(t *testing.T) {
+	account := newSettlementTestAccount(t)
+	year := newSettlementTestAcademicYear(t, account.AcademicYearID, domain.AcademicYearOpen)
+	repos := repository.RepositorySet{
+		SavingsAccounts: &settlementServiceFakeSavingsAccountRepository{getByIDFn: func(context.Context, uuid.UUID) (domain.SavingsAccount, error) { return account, nil }},
+		AcademicYears:   &settlementServiceFakeAcademicYearRepository{getByIDFn: func(context.Context, uuid.UUID) (domain.AcademicYear, error) { return year, nil }},
+		Students: &settlementServiceFakeStudentRepository{getByIDFn: func(context.Context, uuid.UUID) (domain.Student, error) {
+			return newSettlementTestStudent(account.StudentID, domain.StudentGraduated), nil
+		}},
+	}
+	svc := newScopedSettlementServiceForTest(t, repos, &settlementServiceFakeUnitOfWorkManager{})
+	_, err := svc.PreviewStudentLeaving(context.Background(), PreviewStudentLeavingInput{Actor: Actor{UserID: financialTestTeacherID, Role: domain.RoleWaliKelas}, SavingsAccountID: account.ID})
+	if !errors.Is(err, domain.ErrInvalidTransition) {
+		t.Fatalf("PreviewStudentLeaving() error = %v, want invalid transition for GRADUATED", err)
+	}
+}
+
+func TestSettlementServiceRejectsChangedStudentLeavingPreview(t *testing.T) {
+	account := newSettlementTestAccount(t)
+	student := newSettlementTestStudent(account.StudentID, domain.StudentLeft)
+	transactions := []domain.Transaction{newSettlementTestTransaction(t, account.ID, domain.TransactionDeposit, 50000)}
+	savingsRepo := &settlementServiceFakeSavingsAccountRepository{
+		getByIDFn:          func(context.Context, uuid.UUID) (domain.SavingsAccount, error) { return account, nil },
+		getByIDForUpdateFn: func(context.Context, uuid.UUID) (domain.SavingsAccount, error) { return account, nil },
+	}
+	settlementRepo := &settlementServiceFakeSettlementRepository{}
+	uow := &settlementServiceFakeUnitOfWork{repos: repository.RepositorySet{
+		SavingsAccounts: savingsRepo,
+		AcademicYears: &settlementServiceFakeAcademicYearRepository{getByIDFn: func(context.Context, uuid.UUID) (domain.AcademicYear, error) {
+			return newSettlementTestAcademicYear(t, account.AcademicYearID, domain.AcademicYearOpen), nil
+		}},
+		Students:     &settlementServiceFakeStudentRepository{getByIDFn: func(context.Context, uuid.UUID) (domain.Student, error) { return student, nil }},
+		Transactions: &settlementServiceFakeTransactionRepository{listActiveFn: func(context.Context, uuid.UUID) ([]domain.Transaction, error) { return transactions, nil }},
+		Settlements:  settlementRepo,
+		AuditLogs:    &settlementServiceFakeAuditRepository{},
+	}}
+	svc := newScopedSettlementServiceForTest(t, uow.repos, &settlementServiceFakeUnitOfWorkManager{uow: uow})
+	_, err := svc.SettleStudentLeaving(context.Background(), SettleStudentLeavingInput{
+		Actor: Actor{UserID: financialTestTeacherID, Role: domain.RoleWaliKelas}, SavingsAccountID: account.ID, ExpectedBalance: 49000,
+	})
+	if !errors.Is(err, repository.ErrConflict) {
+		t.Fatalf("SettleStudentLeaving() error = %v, want stale-preview conflict", err)
+	}
+	if savingsRepo.updateCalls != 0 || settlementRepo.createCalls != 0 || uow.rollbackCalls != 1 {
+		t.Fatalf("updates/settlements/rollbacks = %d/%d/%d, want 0/0/1", savingsRepo.updateCalls, settlementRepo.createCalls, uow.rollbackCalls)
 	}
 }
 

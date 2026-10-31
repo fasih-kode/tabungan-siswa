@@ -162,7 +162,7 @@ func TestEveryRenderedTableIncludesSharedPagination(t *testing.T) {
 			if len(tables) != 1 || len(pagers) != len(tables) {
 				t.Fatalf("tables=%d pagers=%d", len(tables), len(pagers))
 			}
-			if !strings.Contains(out.String(), "Previous") || !strings.Contains(out.String(), "Next") || !strings.Contains(out.String(), `aria-current="page"`) {
+			if !strings.Contains(out.String(), "Sebelumnya") || !strings.Contains(out.String(), "Berikutnya") || !strings.Contains(out.String(), `aria-current="page"`) {
 				t.Fatal("pagination controls missing")
 			}
 			if instantAncestor(pagers[0]) == nil {

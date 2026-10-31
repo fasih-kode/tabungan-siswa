@@ -57,22 +57,22 @@ func (h *ClassTransferPageHandler) ListStudent(w http.ResponseWriter, r *http.Re
 	}
 	actor, ok := service.ActorFromContext(r.Context())
 	if !ok {
-		http.Error(w, http.StatusText(http.StatusUnauthorized), http.StatusUnauthorized)
+		http.Error(w, localizedStatusMessage(http.StatusUnauthorized), http.StatusUnauthorized)
 		return
 	}
 	studentID, err := parsePathUUID(r.PathValue("student_id"))
 	if err != nil {
-		http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
+		http.Error(w, localizedStatusMessage(http.StatusBadRequest), http.StatusBadRequest)
 		return
 	}
 	yearID, err := parseQueryUUID(r, "academic_year_id")
 	if err != nil {
-		http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
+		http.Error(w, localizedStatusMessage(http.StatusBadRequest), http.StatusBadRequest)
 		return
 	}
 	page, limit, err := parsePageOptions(r)
 	if err != nil {
-		http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
+		http.Error(w, localizedStatusMessage(http.StatusBadRequest), http.StatusBadRequest)
 		return
 	}
 	output, err := h.transfers.ListByStudent(r.Context(), service.ListStudentTransfersInput{
@@ -85,10 +85,10 @@ func (h *ClassTransferPageHandler) ListStudent(w http.ResponseWriter, r *http.Re
 	}
 	vm, ok := h.baseViewModel(r, actor)
 	if !ok {
-		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		http.Error(w, localizedStatusMessage(http.StatusInternalServerError), http.StatusInternalServerError)
 		return
 	}
-	vm.Heading, vm.Description, vm.IsStudentList = "Transfer Kelas Siswa", "Riwayat dan pengajuan perpindahan kelas.", true
+	vm.Heading, vm.Description, vm.IsStudentList = "Perpindahan Kelas Siswa", "Riwayat dan pengajuan perpindahan kelas.", true
 	vm.StudentID, vm.AcademicYearID = studentID.String(), yearID.String()
 	if actor.Role == domain.RoleWaliKelas {
 		options, optionsErr := h.transfers.RequestOptions(r.Context(), service.RequestTransferOptionsInput{Actor: actor, StudentID: studentID, AcademicYearID: yearID})
@@ -115,7 +115,7 @@ func (h *ClassTransferPageHandler) ListStudent(w http.ResponseWriter, r *http.Re
 		return
 	}
 	if err := h.templates.ExecuteTemplate(w, "class-transfers", vm); err != nil {
-		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		http.Error(w, localizedStatusMessage(http.StatusInternalServerError), http.StatusInternalServerError)
 	}
 }
 
@@ -126,38 +126,38 @@ func (h *ClassTransferPageHandler) ListPending(w http.ResponseWriter, r *http.Re
 	}
 	actor, ok := service.ActorFromContext(r.Context())
 	if !ok {
-		http.Error(w, http.StatusText(http.StatusUnauthorized), http.StatusUnauthorized)
+		http.Error(w, localizedStatusMessage(http.StatusUnauthorized), http.StatusUnauthorized)
 		return
 	}
 	if actor.Role != domain.RoleAdmin {
-		http.Error(w, http.StatusText(http.StatusForbidden), http.StatusForbidden)
+		http.Error(w, localizedStatusMessage(http.StatusForbidden), http.StatusForbidden)
 		return
 	}
 	yearValue := strings.TrimSpace(r.URL.Query().Get("academic_year_id"))
 	if yearValue == "" {
 		vm, ok := h.baseViewModel(r, actor)
 		if !ok {
-			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+			http.Error(w, localizedStatusMessage(http.StatusInternalServerError), http.StatusInternalServerError)
 			return
 		}
-		vm.Heading, vm.Description = "Permintaan Transfer Kelas", "Pilih tahun ajaran untuk menampilkan permintaan pending."
+		vm.Heading, vm.Description = "Permintaan Pindah Kelas", "Pilih tahun ajaran untuk menampilkan permintaan yang menunggu keputusan."
 		vm.Page, vm.Limit = 1, defaultAcademicYearPageSize
 		if redirectMissingPage(w, r, vm.Pagination) {
 			return
 		}
 		if err := h.templates.ExecuteTemplate(w, "class-transfers", vm); err != nil {
-			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+			http.Error(w, localizedStatusMessage(http.StatusInternalServerError), http.StatusInternalServerError)
 		}
 		return
 	}
 	yearID, err := parseUUID(yearValue)
 	if err != nil {
-		http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
+		http.Error(w, localizedStatusMessage(http.StatusBadRequest), http.StatusBadRequest)
 		return
 	}
 	page, limit, err := parsePageOptions(r)
 	if err != nil {
-		http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
+		http.Error(w, localizedStatusMessage(http.StatusBadRequest), http.StatusBadRequest)
 		return
 	}
 	output, err := h.transfers.ListPending(r.Context(), service.ListPendingTransfersInput{
@@ -170,10 +170,10 @@ func (h *ClassTransferPageHandler) ListPending(w http.ResponseWriter, r *http.Re
 	}
 	vm, ok := h.baseViewModel(r, actor)
 	if !ok {
-		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		http.Error(w, localizedStatusMessage(http.StatusInternalServerError), http.StatusInternalServerError)
 		return
 	}
-	vm.Heading, vm.Description = "Permintaan Transfer Kelas", "Tinjau permintaan transfer yang masih menunggu keputusan."
+	vm.Heading, vm.Description = "Permintaan Pindah Kelas", "Tinjau permintaan pindah kelas yang masih menunggu keputusan."
 	vm.AcademicYearID, vm.Page, vm.Limit = yearID.String(), page, limit
 	vm.ListURL = "/class-transfer-requests/pending?academic_year_id=" + url.QueryEscape(yearID.String())
 	vm.Rows, vm.HasNext = transferRows(output.TransferRequests, limit)
@@ -183,7 +183,7 @@ func (h *ClassTransferPageHandler) ListPending(w http.ResponseWriter, r *http.Re
 		return
 	}
 	if err := h.templates.ExecuteTemplate(w, "class-transfers", vm); err != nil {
-		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		http.Error(w, localizedStatusMessage(http.StatusInternalServerError), http.StatusInternalServerError)
 	}
 }
 
@@ -194,12 +194,12 @@ func (h *ClassTransferPageHandler) Detail(w http.ResponseWriter, r *http.Request
 	}
 	actor, ok := service.ActorFromContext(r.Context())
 	if !ok {
-		http.Error(w, http.StatusText(http.StatusUnauthorized), http.StatusUnauthorized)
+		http.Error(w, localizedStatusMessage(http.StatusUnauthorized), http.StatusUnauthorized)
 		return
 	}
 	requestID, err := parsePathUUID(r.PathValue("id"))
 	if err != nil {
-		http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
+		http.Error(w, localizedStatusMessage(http.StatusBadRequest), http.StatusBadRequest)
 		return
 	}
 	output, err := h.transfers.Get(r.Context(), service.GetTransferInput{Actor: actor, TransferRequestID: requestID})
@@ -209,10 +209,10 @@ func (h *ClassTransferPageHandler) Detail(w http.ResponseWriter, r *http.Request
 	}
 	vm, ok := h.baseViewModel(r, actor)
 	if !ok {
-		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		http.Error(w, localizedStatusMessage(http.StatusInternalServerError), http.StatusInternalServerError)
 		return
 	}
-	vm.Heading, vm.Description, vm.IsDetail = "Detail Transfer Kelas", "Detail dan status permintaan transfer kelas.", true
+	vm.Heading, vm.Description, vm.IsDetail = "Detail Pindah Kelas", "Detail dan status permintaan pindah kelas.", true
 	vm.AcademicYearID = output.TransferRequest.AcademicYearID.String()
 	if actor.Role == domain.RoleAdmin {
 		vm.ListURL = "/class-transfer-requests/pending?academic_year_id=" + url.QueryEscape(vm.AcademicYearID)
@@ -225,7 +225,7 @@ func (h *ClassTransferPageHandler) Detail(w http.ResponseWriter, r *http.Request
 	}
 	vm.TransferRequestID = requestID.String()
 	if err := h.templates.ExecuteTemplate(w, "class-transfers", vm); err != nil {
-		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		http.Error(w, localizedStatusMessage(http.StatusInternalServerError), http.StatusInternalServerError)
 	}
 }
 
@@ -237,7 +237,7 @@ func (h *ClassTransferPageHandler) Request(w http.ResponseWriter, r *http.Reques
 	w.Header().Set("Cache-Control", "no-store")
 	actor, ok := service.ActorFromContext(r.Context())
 	if !ok {
-		http.Error(w, http.StatusText(http.StatusUnauthorized), http.StatusUnauthorized)
+		http.Error(w, localizedStatusMessage(http.StatusUnauthorized), http.StatusUnauthorized)
 		return
 	}
 	if actor.Role != domain.RoleWaliKelas {
@@ -245,7 +245,7 @@ func (h *ClassTransferPageHandler) Request(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	if err := parseClassTransferForm(w, r); err != nil {
-		http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
+		http.Error(w, localizedStatusMessage(http.StatusBadRequest), http.StatusBadRequest)
 		return
 	}
 	studentID, err1 := parseFormUUID(r, "student_id")
@@ -253,7 +253,7 @@ func (h *ClassTransferPageHandler) Request(w http.ResponseWriter, r *http.Reques
 	fromID, err3 := parseFormUUID(r, "from_class_id")
 	toID, err4 := parseFormUUID(r, "to_class_id")
 	if err1 != nil || err2 != nil || err3 != nil || err4 != nil {
-		http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
+		http.Error(w, localizedStatusMessage(http.StatusBadRequest), http.StatusBadRequest)
 		return
 	}
 	output, err := h.transfers.Request(r.Context(), service.RequestTransferInput{
@@ -275,21 +275,21 @@ func (h *ClassTransferPageHandler) Approve(w http.ResponseWriter, r *http.Reques
 	w.Header().Set("Cache-Control", "no-store")
 	actor, ok := service.ActorFromContext(r.Context())
 	if !ok {
-		http.Error(w, http.StatusText(http.StatusUnauthorized), http.StatusUnauthorized)
+		http.Error(w, localizedStatusMessage(http.StatusUnauthorized), http.StatusUnauthorized)
 		return
 	}
 	requestID, err := parsePathUUID(r.PathValue("id"))
 	if err != nil {
-		http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
+		http.Error(w, localizedStatusMessage(http.StatusBadRequest), http.StatusBadRequest)
 		return
 	}
 	if err := parseClassTransferForm(w, r); err != nil {
-		http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
+		http.Error(w, localizedStatusMessage(http.StatusBadRequest), http.StatusBadRequest)
 		return
 	}
 	effectiveDate, err := time.Parse("2006-01-02", strings.TrimSpace(r.PostForm.Get("effective_date")))
 	if err != nil {
-		http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
+		http.Error(w, localizedStatusMessage(http.StatusBadRequest), http.StatusBadRequest)
 		return
 	}
 	_, err = h.transfers.Approve(r.Context(), service.ApproveTransferInput{Actor: actor, TransferRequestID: requestID, EffectiveDate: effectiveDate})
@@ -308,16 +308,16 @@ func (h *ClassTransferPageHandler) Reject(w http.ResponseWriter, r *http.Request
 	w.Header().Set("Cache-Control", "no-store")
 	actor, ok := service.ActorFromContext(r.Context())
 	if !ok {
-		http.Error(w, http.StatusText(http.StatusUnauthorized), http.StatusUnauthorized)
+		http.Error(w, localizedStatusMessage(http.StatusUnauthorized), http.StatusUnauthorized)
 		return
 	}
 	requestID, err := parsePathUUID(r.PathValue("id"))
 	if err != nil {
-		http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
+		http.Error(w, localizedStatusMessage(http.StatusBadRequest), http.StatusBadRequest)
 		return
 	}
 	if err := parseClassTransferForm(w, r); err != nil {
-		http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
+		http.Error(w, localizedStatusMessage(http.StatusBadRequest), http.StatusBadRequest)
 		return
 	}
 	_, err = h.transfers.Reject(r.Context(), service.RejectTransferInput{
@@ -335,7 +335,7 @@ func (h *ClassTransferPageHandler) baseViewModel(r *http.Request, actor service.
 	if !ok {
 		return ClassTransferPageViewModel{}, false
 	}
-	return ClassTransferPageViewModel{Title: "Transfer Kelas", Role: string(actor.Role), Username: actor.Username, CSRFToken: token, ActiveNav: "class-transfers"}, true
+	return ClassTransferPageViewModel{Title: "Pindah Kelas", Role: string(actor.Role), Username: actor.Username, CSRFToken: token, ActiveNav: "class-transfers"}, true
 }
 
 func transferRows(requests []*domain.ClassTransferRequest, limit int) ([]ClassTransferRow, bool) {
@@ -347,7 +347,7 @@ func transferRows(requests []*domain.ClassTransferRequest, limit int) ([]ClassTr
 		row := ClassTransferRow{
 			ID: request.ID.String(), StudentID: request.StudentID.String(),
 			FromClassID: request.FromClassID.String(), ToClassID: request.ToClassID.String(),
-			Status: string(request.Status), RequestedAt: request.CreatedAt.Format("2006-01-02 15:04"),
+			Status: interfaceStatusLabel(string(request.Status)), RequestedAt: request.CreatedAt.Format("2006-01-02 15:04"),
 		}
 		if request.RejectionReason != nil {
 			row.RejectionReason = *request.RejectionReason

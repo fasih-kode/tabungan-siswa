@@ -4,6 +4,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/fasih/tabungan-siswa/internal/service"
@@ -27,8 +28,11 @@ func TestWriteDoesNotLeakError(t *testing.T) {
 	if recorder.Code != http.StatusInternalServerError {
 		t.Fatalf("status = %d, want %d", recorder.Code, http.StatusInternalServerError)
 	}
-	if recorder.Body.String() != "Internal Server Error\n" {
+	if recorder.Body.String() != "Terjadi kesalahan pada server. Silakan coba lagi.\n" {
 		t.Fatalf("body = %q, want generic error", recorder.Body.String())
+	}
+	if strings.Contains(recorder.Body.String(), "database password leaked") {
+		t.Fatal("response leaked internal error detail")
 	}
 	if got := recorder.Header().Get("Cache-Control"); got != "no-store" {
 		t.Fatalf("Cache-Control = %q, want no-store", got)

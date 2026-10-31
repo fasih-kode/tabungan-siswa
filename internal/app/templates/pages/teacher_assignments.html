@@ -4,8 +4,8 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>{{.Title}} - Tabungan Siswa</title>
-    <link rel="stylesheet" href="/static/css/app.css?v=20261019-toast">
+    <title>{{.Title}} - Tabungan Siswa</title><link rel="icon" type="image/svg+xml" href="/static/img/favicon.svg">
+    <link rel="stylesheet" href="/static/css/app.css?v=20261024-user-management-polish">
     <script src="/static/js/app.js?v=20261019-toast" defer></script>
 <script src="/static/js/instant-search.js?v=20261019-toast" defer></script></head>
 <body class="bg-gray-50 dark:bg-gray-900">
@@ -18,17 +18,17 @@
                 <div class="space-y-6">
                     <div class="flex flex-wrap items-end justify-between gap-4">
                         <div><h1 class="text-2xl font-semibold text-gray-800 dark:text-white">{{.Heading}}</h1><p class="mt-1 text-sm text-gray-500 dark:text-gray-400">{{.Description}}</p></div>
-                        {{if .AcademicYears}}<button class="form-button-primary" type="button" data-modal-open="teacher-assignment-modal">Tambah Penugasan</button>{{end}}
+                        {{if .AcademicYears}}<button class="form-button-primary inline-flex items-center gap-2" type="button" data-modal-open="teacher-assignment-modal">{{template "button-leading-icon" "add"}}Tambah Penugasan</button>{{end}}
                     </div>
                     {{if .Error}}<div role="alert" class="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{{.Error}}</div>{{end}}
 
                     <div id="assignment-directory" data-instant-region>
                     <section class="rounded-2xl border border-gray-200 bg-white p-5 shadow-theme-sm dark:border-gray-800 dark:bg-gray-800">
                         <form data-instant-filter method="get" action="/teacher-assignments" class="flex flex-wrap items-end gap-3">
-                            <div class="min-w-56 flex-1"><label class="form-label" for="assignment-year-filter">Filter tahun ajaran</label><select class="form-input" id="assignment-year-filter" name="academic_year_id" required>
-                                {{range .AcademicYears}}<option value="{{.ID}}" {{if eq $.AcademicYearID .ID}}selected{{end}}>{{.Name}}{{if eq .Status "OPEN"}} (Berjalan){{end}}</option>{{else}}<option value="">Belum ada tahun ajaran</option>{{end}}
+                            <div class="min-w-56 flex-1"><label class="form-label" for="assignment-year-filter">Pilih tahun ajaran</label><select class="form-input" id="assignment-year-filter" name="academic_year_id" required>
+                                {{range .AcademicYears}}<option value="{{.ID}}" {{if eq $.AcademicYearID .ID}}selected{{end}}>{{.Name}}{{if eq .Status "Terbuka"}} (Berjalan){{end}}</option>{{else}}<option value="">Belum ada tahun ajaran</option>{{end}}
                             </select></div>
-                            <noscript><button class="form-button-primary" type="submit">Tampilkan</button></noscript>
+                            <noscript><button class="form-button-primary inline-flex items-center gap-2" type="submit">{{template "button-leading-icon" "search"}}Tampilkan</button></noscript>
                         </form>
                     </section>
 
@@ -42,7 +42,7 @@
                         {{template "pagination" .Pagination}}
                     </section>
                     {{else}}
-                    <section class="rounded-2xl border border-dashed border-gray-300 bg-white p-10 text-center dark:border-gray-700 dark:bg-gray-800"><p class="text-sm text-gray-500">Belum ada tahun ajaran OPEN untuk menampilkan penugasan.</p></section>
+                    <section class="rounded-2xl border border-dashed border-gray-300 bg-white p-10 text-center dark:border-gray-700 dark:bg-gray-800"><p class="text-sm text-gray-500">Belum ada tahun ajaran terbuka untuk menampilkan penugasan.</p></section>
                     {{end}}
 
                     </div></div>
@@ -52,10 +52,10 @@
                             <div class="app-modal-header"><h2 class="text-lg font-semibold text-gray-800 dark:text-white">Tambah Penugasan Wali Kelas</h2><button class="app-modal-close" type="button" data-modal-close aria-label="Tutup">&times;</button></div>
                             <form method="post" action="/teacher-assignments" class="grid grid-cols-1 gap-4 p-5">
                                 <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
-                                <div><label class="form-label" for="assignment-academic-year">Tahun ajaran</label><select class="form-input" id="assignment-academic-year" name="academic_year_id" required>{{range .AcademicYears}}<option value="{{.ID}}" {{if eq $.AcademicYearID .ID}}selected{{end}}>{{.Name}}{{if eq .Status "OPEN"}} (Berjalan){{end}}</option>{{end}}</select></div>
+                                <div><label class="form-label" for="assignment-academic-year">Tahun ajaran</label><select class="form-input" id="assignment-academic-year" name="academic_year_id" required>{{range .AcademicYears}}<option value="{{.ID}}" {{if eq $.AcademicYearID .ID}}selected{{end}}>{{.Name}}{{if eq .Status "Terbuka"}} (Berjalan){{end}}</option>{{end}}</select></div>
                                 <div><label class="form-label" for="assignment-class">Kelas</label><select class="form-input" id="assignment-class" name="class_id" required><option value="">Pilih kelas</option>{{range .ClassOptions}}<option value="{{.ID}}" {{if eq $.ClassID .ID}}selected{{end}}>{{.Name}}</option>{{end}}</select></div>
                                 <div><label class="form-label" for="assignment-teacher">Wali kelas</label><select class="form-input" id="assignment-teacher" name="teacher_id" required><option value="">Pilih wali kelas</option>{{range .Teachers}}<option value="{{.ID}}" {{if eq $.TeacherID .ID}}selected{{end}}>{{.Name}}</option>{{end}}</select></div>
-                                <div class="app-modal-actions"><button class="form-button-secondary" type="button" data-modal-close>Batal</button><button class="form-button-primary" type="submit">Simpan Penugasan</button></div>
+                                <div class="app-modal-actions"><button class="form-button-secondary inline-flex items-center gap-2" type="button" data-modal-close>{{template "button-leading-icon" "cancel"}}Batal</button><button class="form-button-primary inline-flex items-center gap-2" type="submit">{{template "button-leading-icon" "save"}}Simpan Penugasan</button></div>
                             </form>
                         </div>
                     </dialog>

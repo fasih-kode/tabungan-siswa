@@ -355,7 +355,7 @@ func TestAuthenticationService_Authenticate(t *testing.T) {
 			wantErr: repositoryErr,
 		},
 		{
-			name: "inactive account returns generic credentials error",
+			name:  "inactive account returns generic credentials error",
 			input: AuthenticateInput{Username: "wali-01", Password: "correct-password"},
 			userRepo: &authenticationServiceFakeUserRepository{getByUsernameFn: func(context.Context, string) (domain.User, error) {
 				inactive := user

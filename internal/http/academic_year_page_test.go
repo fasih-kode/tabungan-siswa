@@ -179,7 +179,7 @@ func TestAcademicYearCreateConflictRendersExistingYears(t *testing.T) {
 	if recorder.Code != http.StatusConflict {
 		t.Fatalf("status = %d, want 409; body=%s", recorder.Code, recorder.Body.String())
 	}
-	for _, want := range []string{"Perubahan tidak dapat dilakukan", existing.Name, string(existing.Status)} {
+	for _, want := range []string{"Perubahan tidak dapat dilakukan", existing.Name, interfaceStatusLabel(string(existing.Status))} {
 		if !strings.Contains(recorder.Body.String(), want) {
 			t.Errorf("body %q does not contain %q", recorder.Body.String(), want)
 		}
@@ -231,12 +231,12 @@ func TestAcademicYearCloseFailureExplainsUnsettledAccounts(t *testing.T) {
 	if recorder.Code != http.StatusConflict {
 		t.Fatalf("status = %d, want 409; body=%s", recorder.Code, recorder.Body.String())
 	}
-	for _, want := range []string{"rekening tabungan yang belum diselesaikan", "Selesaikan settlement", year.Name} {
+	for _, want := range []string{"rekening tabungan yang belum diselesaikan", "Selesaikan penutupan semua rekening tabungan", year.Name} {
 		if !strings.Contains(recorder.Body.String(), want) {
 			t.Errorf("body %q does not contain %q", recorder.Body.String(), want)
 		}
 	}
-	if strings.TrimSpace(recorder.Body.String()) == http.StatusText(http.StatusConflict) {
+	if strings.TrimSpace(recorder.Body.String()) == localizedStatusMessage(http.StatusConflict) {
 		t.Fatal("transition failure rendered only the raw status text")
 	}
 }

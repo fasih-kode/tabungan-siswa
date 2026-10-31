@@ -324,6 +324,15 @@ func (s *academicYearService) Close(
 			return CloseAcademicYearOutput{}, ErrAcademicYearHasActiveSettlementWorkflow
 		}
 	}
+	if repos.LeavingTransactionRequests != nil {
+		pending, err := repos.LeavingTransactionRequests.HasPendingLeavingTransactionRequests(ctx, academicYear.ID)
+		if err != nil {
+			return CloseAcademicYearOutput{}, err
+		}
+		if pending {
+			return CloseAcademicYearOutput{}, ErrAcademicYearHasActiveSettlementWorkflow
+		}
+	}
 
 	if err := academicYear.Close(); err != nil {
 		return CloseAcademicYearOutput{}, err

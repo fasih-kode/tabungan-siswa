@@ -77,34 +77,34 @@ func (h *UserPageHandler) StudentOptions(w http.ResponseWriter, r *http.Request)
 	}
 	actor, ok := service.ActorFromContext(r.Context())
 	if !ok {
-		http.Error(w, http.StatusText(http.StatusUnauthorized), http.StatusUnauthorized)
+		http.Error(w, localizedStatusMessage(http.StatusUnauthorized), http.StatusUnauthorized)
 		return
 	}
 	if actor.Role != domain.RoleAdmin {
-		http.Error(w, http.StatusText(http.StatusForbidden), http.StatusForbidden)
+		http.Error(w, localizedStatusMessage(http.StatusForbidden), http.StatusForbidden)
 		return
 	}
 	classID, err := uuid.Parse(r.URL.Query().Get("class_id"))
 	if err != nil || classID == uuid.Nil {
-		http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
+		http.Error(w, localizedStatusMessage(http.StatusBadRequest), http.StatusBadRequest)
 		return
 	}
 	year, err := h.openAcademicYear(r, actor)
 	if err != nil {
-		http.Error(w, http.StatusText(httperror.Status(err)), httperror.Status(err))
+		http.Error(w, localizedStatusMessage(httperror.Status(err)), httperror.Status(err))
 		return
 	}
 	if year == nil {
-		http.Error(w, http.StatusText(http.StatusConflict), http.StatusConflict)
+		http.Error(w, localizedStatusMessage(http.StatusConflict), http.StatusConflict)
 		return
 	}
 	classOutput, err := h.classes.Get(r.Context(), service.GetClassInput{Actor: actor, ClassID: classID})
 	if err != nil {
-		http.Error(w, http.StatusText(httperror.Status(err)), httperror.Status(err))
+		http.Error(w, localizedStatusMessage(httperror.Status(err)), httperror.Status(err))
 		return
 	}
 	if classOutput.Class == nil || classOutput.Class.AcademicYearID != year.ID {
-		http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
+		http.Error(w, localizedStatusMessage(http.StatusBadRequest), http.StatusBadRequest)
 		return
 	}
 	output, err := h.students.List(r.Context(), service.ListStudentsInput{
@@ -112,7 +112,7 @@ func (h *UserPageHandler) StudentOptions(w http.ResponseWriter, r *http.Request)
 		Options: service.ListOptions{Limit: maxStudentsForLink, StudentStatus: string(domain.StudentActive)},
 	})
 	if err != nil {
-		http.Error(w, http.StatusText(httperror.Status(err)), httperror.Status(err))
+		http.Error(w, localizedStatusMessage(httperror.Status(err)), httperror.Status(err))
 		return
 	}
 	options := make([]UnlinkedStudentOption, 0, len(output.Students))
@@ -135,16 +135,16 @@ func (h *UserPageHandler) List(w http.ResponseWriter, r *http.Request) {
 	}
 	actor, ok := service.ActorFromContext(r.Context())
 	if !ok {
-		http.Error(w, http.StatusText(http.StatusUnauthorized), http.StatusUnauthorized)
+		http.Error(w, localizedStatusMessage(http.StatusUnauthorized), http.StatusUnauthorized)
 		return
 	}
 	if actor.Role != domain.RoleAdmin {
-		http.Error(w, http.StatusText(http.StatusForbidden), http.StatusForbidden)
+		http.Error(w, localizedStatusMessage(http.StatusForbidden), http.StatusForbidden)
 		return
 	}
 	page, limit, err := parsePageOptions(r)
 	if err != nil {
-		http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
+		http.Error(w, localizedStatusMessage(http.StatusBadRequest), http.StatusBadRequest)
 		return
 	}
 	if limit >= maxManagedUsers {
@@ -153,7 +153,7 @@ func (h *UserPageHandler) List(w http.ResponseWriter, r *http.Request) {
 	role := normalizeManagedRole(r.URL.Query().Get("role"))
 	vm, err := h.load(r, actor, role, page, limit)
 	if err != nil {
-		http.Error(w, http.StatusText(httperror.Status(err)), httperror.Status(err))
+		http.Error(w, localizedStatusMessage(httperror.Status(err)), httperror.Status(err))
 		return
 	}
 	if token := r.URL.Query().Get("credential"); token != "" {
@@ -161,17 +161,17 @@ func (h *UserPageHandler) List(w http.ResponseWriter, r *http.Request) {
 			vm.CreatedUsername = reveal.Username
 			vm.TemporaryPassword = reveal.Password
 			vm.PasswordChangeRequired = reveal.PasswordChangeRequired
-			vm.Notice = "Salin password sementara ini sekarang. Password hanya ditampilkan satu kali."
+			vm.Notice = "Salin kata sandi sementara ini sekarang. Kata sandi hanya ditampilkan satu kali."
 		}
 	} else if r.URL.Query().Get("student_created") == "1" {
 		vm.CreatedUsername = r.URL.Query().Get("username")
-		vm.Notice = "Akun siswa berhasil dibuat. Password sementara ditampilkan satu kali."
+		vm.Notice = "Akun siswa berhasil dibuat. Kata sandi sementara ditampilkan satu kali."
 	}
 	if redirectMissingPage(w, r, vm.Pagination) {
 		return
 	}
 	if err := h.templates.ExecuteTemplate(w, "users", vm); err != nil {
-		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		http.Error(w, localizedStatusMessage(http.StatusInternalServerError), http.StatusInternalServerError)
 	}
 }
 
@@ -183,16 +183,16 @@ func (h *UserPageHandler) Create(w http.ResponseWriter, r *http.Request) {
 	}
 	actor, ok := service.ActorFromContext(r.Context())
 	if !ok {
-		http.Error(w, http.StatusText(http.StatusUnauthorized), http.StatusUnauthorized)
+		http.Error(w, localizedStatusMessage(http.StatusUnauthorized), http.StatusUnauthorized)
 		return
 	}
 	if actor.Role != domain.RoleAdmin {
-		http.Error(w, http.StatusText(http.StatusForbidden), http.StatusForbidden)
+		http.Error(w, localizedStatusMessage(http.StatusForbidden), http.StatusForbidden)
 		return
 	}
 	r.Body = http.MaxBytesReader(w, r.Body, 16<<10)
 	if err := r.ParseForm(); err != nil {
-		http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
+		http.Error(w, localizedStatusMessage(http.StatusBadRequest), http.StatusBadRequest)
 		return
 	}
 	role := normalizeManagedRole(r.PostForm.Get("role"))
@@ -200,7 +200,7 @@ func (h *UserPageHandler) Create(w http.ResponseWriter, r *http.Request) {
 	studentID := strings.TrimSpace(r.PostForm.Get("student_id"))
 	classIDValue := strings.TrimSpace(r.PostForm.Get("class_id"))
 	if role != string(domain.RoleWaliKelas) && role != string(domain.RoleSiswa) {
-		h.formError(w, r, actor, role, fullName, studentID, http.StatusBadRequest, "Pilih role wali kelas atau siswa.")
+		h.formError(w, r, actor, role, fullName, studentID, http.StatusBadRequest, "Pilih jenis akun Wali Kelas atau Siswa.")
 		return
 	}
 	baseUsername := ""
@@ -219,7 +219,7 @@ func (h *UserPageHandler) Create(w http.ResponseWriter, r *http.Request) {
 		}
 		classID, err := uuid.Parse(classIDValue)
 		if err != nil || classID == uuid.Nil {
-			h.formError(w, r, actor, role, fullName, studentID, http.StatusBadRequest, "Pilih kelas pada tahun ajaran OPEN.")
+			h.formError(w, r, actor, role, fullName, studentID, http.StatusBadRequest, "Pilih kelas pada tahun ajaran yang terbuka.")
 			return
 		}
 		year, err := h.openAcademicYear(r, actor)
@@ -228,12 +228,12 @@ func (h *UserPageHandler) Create(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if year == nil {
-			h.formError(w, r, actor, role, fullName, studentID, http.StatusConflict, "Belum ada tahun ajaran berstatus OPEN.")
+			h.formError(w, r, actor, role, fullName, studentID, http.StatusConflict, "Belum ada tahun ajaran yang terbuka.")
 			return
 		}
 		class, err := h.classes.Get(r.Context(), service.GetClassInput{Actor: actor, ClassID: classID})
 		if err != nil || class.Class == nil || class.Class.AcademicYearID != year.ID {
-			h.formError(w, r, actor, role, fullName, studentID, http.StatusBadRequest, "Kelas harus berasal dari tahun ajaran OPEN.")
+			h.formError(w, r, actor, role, fullName, studentID, http.StatusBadRequest, "Kelas harus berasal dari tahun ajaran yang terbuka.")
 			return
 		}
 		placement, err := h.students.List(r.Context(), service.ListStudentsInput{Actor: actor, IncludePlacement: true, AcademicYearID: year.ID, ClassID: classID, Options: service.ListOptions{Limit: maxStudentsForLink, StudentStatus: string(domain.StudentActive)}})
@@ -248,7 +248,7 @@ func (h *UserPageHandler) Create(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		if student == nil {
-			h.formError(w, r, actor, role, fullName, studentID, http.StatusConflict, "Siswa harus aktif dan terdaftar pada kelas yang dipilih di tahun ajaran OPEN.")
+			h.formError(w, r, actor, role, fullName, studentID, http.StatusConflict, "Siswa harus aktif dan terdaftar di kelas pilihan pada tahun ajaran yang terbuka.")
 			return
 		}
 		if !student.IsActive() || student.UserID != nil || student.NIS == nil {
@@ -257,29 +257,29 @@ func (h *UserPageHandler) Create(w http.ResponseWriter, r *http.Request) {
 		}
 		baseUsername = usernameFromName(*student.NIS)
 		if baseUsername == "" {
-			h.formError(w, r, actor, role, fullName, studentID, http.StatusBadRequest, "NIS siswa tidak dapat digunakan sebagai username.")
+			h.formError(w, r, actor, role, fullName, studentID, http.StatusBadRequest, "NIS siswa tidak dapat digunakan sebagai nama pengguna.")
 			return
 		}
 	}
 	username, err := h.availableUsername(r, actor, baseUsername)
 	if err != nil {
-		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		http.Error(w, localizedStatusMessage(http.StatusInternalServerError), http.StatusInternalServerError)
 		return
 	}
 	temporaryPassword, err := generateTemporaryPassword()
 	if err != nil {
-		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		http.Error(w, localizedStatusMessage(http.StatusInternalServerError), http.StatusInternalServerError)
 		return
 	}
 	passwordHash, err := h.passwordHasher.Hash(temporaryPassword)
 	if err != nil {
-		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		http.Error(w, localizedStatusMessage(http.StatusInternalServerError), http.StatusInternalServerError)
 		return
 	}
 	passwordChangeRequired := role == string(domain.RoleWaliKelas)
 	credentialToken, err := h.credentialReveals.Put(actor.UserID, username, temporaryPassword, passwordChangeRequired)
 	if err != nil {
-		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		http.Error(w, localizedStatusMessage(http.StatusInternalServerError), http.StatusInternalServerError)
 		return
 	}
 	if role == string(domain.RoleWaliKelas) {
@@ -306,16 +306,16 @@ func (h *UserPageHandler) ResetPassword(w http.ResponseWriter, r *http.Request) 
 	}
 	actor, ok := service.ActorFromContext(r.Context())
 	if !ok {
-		http.Error(w, http.StatusText(http.StatusUnauthorized), http.StatusUnauthorized)
+		http.Error(w, localizedStatusMessage(http.StatusUnauthorized), http.StatusUnauthorized)
 		return
 	}
 	if actor.Role != domain.RoleAdmin {
-		http.Error(w, http.StatusText(http.StatusForbidden), http.StatusForbidden)
+		http.Error(w, localizedStatusMessage(http.StatusForbidden), http.StatusForbidden)
 		return
 	}
 	id, err := uuid.Parse(r.PathValue("id"))
 	if err != nil || id == uuid.Nil {
-		http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
+		http.Error(w, localizedStatusMessage(http.StatusBadRequest), http.StatusBadRequest)
 		return
 	}
 	output, err := h.users.Get(r.Context(), service.GetUserInput{Actor: actor, UserID: id})
@@ -324,23 +324,23 @@ func (h *UserPageHandler) ResetPassword(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	if output.User.Role != domain.RoleWaliKelas && output.User.Role != domain.RoleSiswa {
-		http.Error(w, http.StatusText(http.StatusForbidden), http.StatusForbidden)
+		http.Error(w, localizedStatusMessage(http.StatusForbidden), http.StatusForbidden)
 		return
 	}
 	temporaryPassword, err := generateTemporaryPassword()
 	if err != nil {
-		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		http.Error(w, localizedStatusMessage(http.StatusInternalServerError), http.StatusInternalServerError)
 		return
 	}
 	passwordHash, err := h.passwordHasher.Hash(temporaryPassword)
 	if err != nil {
-		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		http.Error(w, localizedStatusMessage(http.StatusInternalServerError), http.StatusInternalServerError)
 		return
 	}
 	passwordChangeRequired := true
 	credentialToken, err := h.credentialReveals.Put(actor.UserID, output.User.Username, temporaryPassword, passwordChangeRequired)
 	if err != nil {
-		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		http.Error(w, localizedStatusMessage(http.StatusInternalServerError), http.StatusInternalServerError)
 		return
 	}
 	_, err = h.users.Update(r.Context(), service.UpdateUserInput{Actor: actor, UserID: id, Username: output.User.Username, Role: output.User.Role, PasswordHash: passwordHash, PasswordChangeRequired: true, RevokeSessions: true})
@@ -359,26 +359,26 @@ func (h *UserPageHandler) UpdateManagedUser(w http.ResponseWriter, r *http.Reque
 	}
 	actor, ok := service.ActorFromContext(r.Context())
 	if !ok {
-		http.Error(w, http.StatusText(http.StatusUnauthorized), http.StatusUnauthorized)
+		http.Error(w, localizedStatusMessage(http.StatusUnauthorized), http.StatusUnauthorized)
 		return
 	}
 	if actor.Role != domain.RoleAdmin {
-		http.Error(w, http.StatusText(http.StatusForbidden), http.StatusForbidden)
+		http.Error(w, localizedStatusMessage(http.StatusForbidden), http.StatusForbidden)
 		return
 	}
 	id, err := uuid.Parse(r.PathValue("id"))
 	if err != nil || id == uuid.Nil {
-		http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
+		http.Error(w, localizedStatusMessage(http.StatusBadRequest), http.StatusBadRequest)
 		return
 	}
 	r.Body = http.MaxBytesReader(w, r.Body, 16<<10)
 	if err := r.ParseForm(); err != nil {
-		http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
+		http.Error(w, localizedStatusMessage(http.StatusBadRequest), http.StatusBadRequest)
 		return
 	}
 	username := strings.TrimSpace(r.PostForm.Get("username"))
 	if username == "" || len(username) > 128 {
-		http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
+		http.Error(w, localizedStatusMessage(http.StatusBadRequest), http.StatusBadRequest)
 		return
 	}
 	output, err := h.users.Get(r.Context(), service.GetUserInput{Actor: actor, UserID: id})
@@ -387,7 +387,7 @@ func (h *UserPageHandler) UpdateManagedUser(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	if output.User.Role != domain.RoleWaliKelas && output.User.Role != domain.RoleSiswa {
-		http.Error(w, http.StatusText(http.StatusForbidden), http.StatusForbidden)
+		http.Error(w, localizedStatusMessage(http.StatusForbidden), http.StatusForbidden)
 		return
 	}
 	_, err = h.users.Update(r.Context(), service.UpdateUserInput{Actor: actor, UserID: id, Username: username, Role: output.User.Role, PasswordHash: output.User.PasswordHash, PasswordChangeRequired: output.User.PasswordChangeRequired})
@@ -406,31 +406,31 @@ func (h *UserPageHandler) SetManagedUserActive(w http.ResponseWriter, r *http.Re
 	}
 	actor, ok := service.ActorFromContext(r.Context())
 	if !ok {
-		http.Error(w, http.StatusText(http.StatusUnauthorized), http.StatusUnauthorized)
+		http.Error(w, localizedStatusMessage(http.StatusUnauthorized), http.StatusUnauthorized)
 		return
 	}
 	if actor.Role != domain.RoleAdmin {
-		http.Error(w, http.StatusText(http.StatusForbidden), http.StatusForbidden)
+		http.Error(w, localizedStatusMessage(http.StatusForbidden), http.StatusForbidden)
 		return
 	}
 	id, err := uuid.Parse(r.PathValue("id"))
 	if err != nil || id == uuid.Nil {
-		http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
+		http.Error(w, localizedStatusMessage(http.StatusBadRequest), http.StatusBadRequest)
 		return
 	}
 	r.Body = http.MaxBytesReader(w, r.Body, 16<<10)
 	if err := r.ParseForm(); err != nil {
-		http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
+		http.Error(w, localizedStatusMessage(http.StatusBadRequest), http.StatusBadRequest)
 		return
 	}
 	active := r.PostForm.Get("active") == "true"
 	if r.PostForm.Get("active") != "true" && r.PostForm.Get("active") != "false" {
-		http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
+		http.Error(w, localizedStatusMessage(http.StatusBadRequest), http.StatusBadRequest)
 		return
 	}
 	activation, ok := h.users.(service.UserActivationService)
 	if !ok {
-		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		http.Error(w, localizedStatusMessage(http.StatusInternalServerError), http.StatusInternalServerError)
 		return
 	}
 	if err := activation.SetActive(r.Context(), service.SetUserActiveInput{Actor: actor, UserID: id, Active: active}); err != nil {
@@ -444,7 +444,7 @@ func (h *UserPageHandler) ChangePassword(w http.ResponseWriter, r *http.Request)
 	w.Header().Set("Cache-Control", "no-store")
 	actor, ok := service.ActorFromContext(r.Context())
 	if !ok {
-		http.Error(w, http.StatusText(http.StatusUnauthorized), http.StatusUnauthorized)
+		http.Error(w, localizedStatusMessage(http.StatusUnauthorized), http.StatusUnauthorized)
 		return
 	}
 	if r.Method == http.MethodGet || r.Method == http.MethodHead {
@@ -457,12 +457,12 @@ func (h *UserPageHandler) ChangePassword(w http.ResponseWriter, r *http.Request)
 	}
 	r.Body = http.MaxBytesReader(w, r.Body, 16<<10)
 	if err := r.ParseForm(); err != nil {
-		http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
+		http.Error(w, localizedStatusMessage(http.StatusBadRequest), http.StatusBadRequest)
 		return
 	}
 	current, next, confirm := r.PostForm.Get("current_password"), r.PostForm.Get("new_password"), r.PostForm.Get("confirm_password")
 	if current == "" || len([]byte(next)) < 12 || len([]byte(next)) > security.MaxPasswordBytes || next != confirm || next == current {
-		h.renderPasswordPage(w, r, actor, "Password baru harus berbeda dari password sementara, minimal 12 karakter, dan cocok dengan konfirmasi.", false)
+		h.renderPasswordPage(w, r, actor, "Kata sandi baru harus berbeda dari kata sandi sementara, minimal 12 karakter, dan cocok dengan konfirmasi.", false)
 		return
 	}
 	passwordHash, err := h.passwordHasher.Hash(next)
@@ -481,7 +481,7 @@ func (h *UserPageHandler) ChangePassword(w http.ResponseWriter, r *http.Request)
 			return
 		}
 		log.Printf("change password update failed: %v", err)
-		h.renderPasswordPage(w, r, actor, "Password belum berhasil diperbarui. Silakan coba lagi.", false)
+		h.renderPasswordPage(w, r, actor, "Kata sandi belum berhasil diperbarui. Silakan coba lagi.", false)
 		return
 	}
 	http.Redirect(w, r, "/account/password?updated=1", http.StatusSeeOther)
@@ -583,7 +583,7 @@ func (h *UserPageHandler) openAcademicYear(r *http.Request, actor service.Actor)
 func (h *UserPageHandler) formError(w http.ResponseWriter, r *http.Request, actor service.Actor, role, fullName, studentID string, status int, message string) {
 	vm, err := h.load(r, actor, role, 1, 20)
 	if err != nil {
-		http.Error(w, http.StatusText(httperror.Status(err)), httperror.Status(err))
+		http.Error(w, localizedStatusMessage(httperror.Status(err)), httperror.Status(err))
 		return
 	}
 	vm.Error, vm.FullName, vm.StudentID = message, fullName, studentID
@@ -600,7 +600,7 @@ func (h *UserPageHandler) renderFormError(w http.ResponseWriter, r *http.Request
 	}
 	message := "Akun tidak dapat dibuat. Periksa data yang dipilih."
 	if errors.Is(err, repository.ErrConflict) {
-		message = "Username sudah digunakan atau siswa sudah memiliki akun."
+		message = "Nama pengguna sudah digunakan atau siswa sudah memiliki akun."
 	}
 	h.formError(w, r, actor, role, fullName, studentID, status, message)
 }
@@ -608,13 +608,13 @@ func (h *UserPageHandler) renderFormError(w http.ResponseWriter, r *http.Request
 func (h *UserPageHandler) renderPasswordPage(w http.ResponseWriter, r *http.Request, actor service.Actor, message string, updated bool) {
 	description := "Perbarui kata sandi akun Anda."
 	if actor.PasswordChangeRequired {
-		description = "Akun ini menggunakan password sementara. Ganti password untuk melanjutkan menggunakan aplikasi."
+		description = "Akun ini menggunakan kata sandi sementara. Ganti kata sandi untuk melanjutkan menggunakan aplikasi."
 	}
-	vm := UserPageViewModel{Title: "Ganti Password", Heading: "Ganti Password", Description: description, Role: string(actor.Role), Username: actor.Username, ActiveNav: "change-password", Error: message, PasswordChangeRequired: actor.PasswordChangeRequired}
+	vm := UserPageViewModel{Title: "Ganti Kata Sandi", Heading: "Ganti Kata Sandi", Description: description, Role: string(actor.Role), Username: actor.Username, ActiveNav: "change-password", Error: message, PasswordChangeRequired: actor.PasswordChangeRequired}
 	if token, ok := middleware.CSRFToken(r); ok {
 		vm.CSRFToken = token
 	} else {
-		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		http.Error(w, localizedStatusMessage(http.StatusInternalServerError), http.StatusInternalServerError)
 		return
 	}
 	if updated {
@@ -622,7 +622,7 @@ func (h *UserPageHandler) renderPasswordPage(w http.ResponseWriter, r *http.Requ
 	}
 	if err := h.templates.ExecuteTemplate(w, "change-password", vm); err != nil {
 		log.Printf("render change password page for user %s: %v", actor.UserID, err)
-		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		http.Error(w, localizedStatusMessage(http.StatusInternalServerError), http.StatusInternalServerError)
 	}
 }
 

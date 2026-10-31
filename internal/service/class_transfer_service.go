@@ -103,7 +103,27 @@ func (s *classTransferService) Request(
 		return RequestTransferOutput{}, err
 	}
 
-	student, err := s.deps.Repositories.Students.GetByID(
+	uow, err := s.deps.UOW.Begin(ctx)
+	if err != nil {
+		return RequestTransferOutput{}, err
+	}
+
+	rollback := true
+	defer func() {
+		if rollback {
+			_ = uow.Rollback()
+		}
+	}()
+	repos := uow.Repositories()
+	// Lock tahun mendahului siswa agar searah dengan transisi tahun ajaran.
+	academicYear, err := repos.AcademicYears.GetByIDForShare(ctx, input.AcademicYearID)
+	if err != nil {
+		return RequestTransferOutput{}, err
+	}
+	if !academicYear.IsOpen() {
+		return RequestTransferOutput{}, domain.ErrInvalidTransition
+	}
+	student, err := repos.Students.GetByIDForUpdate(
 		ctx,
 		input.StudentID,
 	)
@@ -118,18 +138,11 @@ func (s *classTransferService) Request(
 		return RequestTransferOutput{}, ErrInvalidDependency
 	}
 
-	academicYear, err := s.deps.Repositories.AcademicYears.GetByID(
-		ctx,
-		input.AcademicYearID,
-	)
-	if err != nil {
+	if err := RequireStudentScope(ctx, repos, input.Actor, input.StudentID, input.AcademicYearID); err != nil {
 		return RequestTransferOutput{}, err
 	}
-	if !academicYear.IsOpen() {
-		return RequestTransferOutput{}, domain.ErrInvalidTransition
-	}
 
-	fromClass, err := s.deps.Repositories.Classes.GetByID(
+	fromClass, err := repos.Classes.GetByID(
 		ctx,
 		input.FromClassID,
 	)
@@ -137,7 +150,7 @@ func (s *classTransferService) Request(
 		return RequestTransferOutput{}, err
 	}
 
-	toClass, err := s.deps.Repositories.Classes.GetByID(
+	toClass, err := repos.Classes.GetByID(
 		ctx,
 		input.ToClassID,
 	)
@@ -153,7 +166,7 @@ func (s *classTransferService) Request(
 	}
 
 	currentHistory, err :=
-		s.deps.Repositories.StudentClassHistories.
+		repos.StudentClassHistories.
 			GetCurrentByStudentAndAcademicYear(
 				ctx,
 				input.StudentID,
@@ -187,29 +200,7 @@ func (s *classTransferService) Request(
 		return RequestTransferOutput{}, err
 	}
 
-	uow, err := s.deps.UOW.Begin(ctx)
-	if err != nil {
-		return RequestTransferOutput{}, err
-	}
-
-	rollback := true
-	defer func() {
-		if rollback {
-			_ = uow.Rollback()
-		}
-	}()
-	lockedStudent, err := uow.Repositories().Students.GetByIDForUpdate(
-		ctx,
-		input.StudentID,
-	)
-	if err != nil {
-		return RequestTransferOutput{}, err
-	}
-	if !lockedStudent.IsActive() {
-		return RequestTransferOutput{}, domain.ErrInvalidTransition
-	}
-
-	if err := uow.Repositories().ClassTransferRequests.Create(
+	if err := repos.ClassTransferRequests.Create(
 		ctx,
 		request,
 	); err != nil {
@@ -393,6 +384,12 @@ func (s *classTransferService) Approve(
 		return ApproveTransferOutput{}, domain.ErrInvalidValue
 	}
 
+	// Pre-read hanya menentukan row yang perlu dikunci; identitas diperiksa ulang di dalam UOW.
+	initialRequest, err := s.deps.Repositories.ClassTransferRequests.GetByID(ctx, input.TransferRequestID)
+	if err != nil {
+		return ApproveTransferOutput{}, err
+	}
+
 	uow, err := s.deps.UOW.Begin(ctx)
 	if err != nil {
 		return ApproveTransferOutput{}, err
@@ -407,6 +404,15 @@ func (s *classTransferService) Approve(
 
 	repos := uow.Repositories()
 
+	academicYear, err := repos.AcademicYears.GetByIDForShare(ctx, initialRequest.AcademicYearID)
+	if err != nil {
+		return ApproveTransferOutput{}, err
+	}
+	student, err := repos.Students.GetByIDForUpdate(ctx, initialRequest.StudentID)
+	if err != nil {
+		return ApproveTransferOutput{}, err
+	}
+
 	request, err :=
 		repos.ClassTransferRequests.GetByIDForUpdate(
 			ctx,
@@ -415,19 +421,19 @@ func (s *classTransferService) Approve(
 	if err != nil {
 		return ApproveTransferOutput{}, err
 	}
+	if request.ID != input.TransferRequestID ||
+		request.AcademicYearID != initialRequest.AcademicYearID ||
+		request.StudentID != initialRequest.StudentID {
+		return ApproveTransferOutput{}, repository.ErrConflict
+	}
 	if !request.IsPending() {
 		return ApproveTransferOutput{}, domain.ErrInvalidTransition
 	}
-
-	academicYear, err :=
-		repos.AcademicYears.GetByID(
-			ctx,
-			request.AcademicYearID,
-		)
-	if err != nil {
-		return ApproveTransferOutput{}, err
-	}
 	if !academicYear.IsOpen() {
+		return ApproveTransferOutput{}, domain.ErrInvalidTransition
+	}
+
+	if !student.IsActive() {
 		return ApproveTransferOutput{}, domain.ErrInvalidTransition
 	}
 
@@ -537,6 +543,12 @@ func (s *classTransferService) Reject(
 		return RejectTransferOutput{}, domain.ErrEmptyRejectionReason
 	}
 
+	// Pre-read hanya menentukan row yang perlu dikunci; identitas diperiksa ulang di dalam UOW.
+	initialRequest, err := s.deps.Repositories.ClassTransferRequests.GetByID(ctx, input.TransferRequestID)
+	if err != nil {
+		return RejectTransferOutput{}, err
+	}
+
 	uow, err := s.deps.UOW.Begin(ctx)
 	if err != nil {
 		return RejectTransferOutput{}, err
@@ -551,6 +563,11 @@ func (s *classTransferService) Reject(
 
 	repos := uow.Repositories()
 
+	academicYear, err := repos.AcademicYears.GetByIDForShare(ctx, initialRequest.AcademicYearID)
+	if err != nil {
+		return RejectTransferOutput{}, err
+	}
+
 	request, err :=
 		repos.ClassTransferRequests.GetByIDForUpdate(
 			ctx,
@@ -559,13 +576,13 @@ func (s *classTransferService) Reject(
 	if err != nil {
 		return RejectTransferOutput{}, err
 	}
+	if request.ID != input.TransferRequestID ||
+		request.AcademicYearID != initialRequest.AcademicYearID ||
+		request.StudentID != initialRequest.StudentID {
+		return RejectTransferOutput{}, repository.ErrConflict
+	}
 	if !request.IsPending() {
 		return RejectTransferOutput{}, domain.ErrInvalidTransition
-	}
-
-	academicYear, err := repos.AcademicYears.GetByID(ctx, request.AcademicYearID)
-	if err != nil {
-		return RejectTransferOutput{}, err
 	}
 	if !academicYear.IsOpen() {
 		return RejectTransferOutput{}, domain.ErrInvalidTransition

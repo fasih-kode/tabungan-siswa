@@ -70,7 +70,45 @@ document.querySelectorAll("[data-credential-reveal]").forEach((reveal) => {
 });
 placeToastRegion();
 
+function closeRowActionMenus(except = null) {
+  document.querySelectorAll("[data-row-action-menu][open]").forEach((menu) => {
+    if (menu !== except) menu.open = false;
+  });
+}
+
+function positionRowActionMenu(menu) {
+  const trigger = menu.querySelector("[data-row-action-toggle]");
+  const panel = menu.querySelector(".row-action-panel");
+  if (!trigger || !panel || !menu.open) return;
+
+  const triggerRect = trigger.getBoundingClientRect();
+  const panelRect = panel.getBoundingClientRect();
+  const gap = 8;
+  const margin = 8;
+  const top = triggerRect.bottom + panelRect.height + margin <= window.innerHeight
+    ? triggerRect.bottom + gap
+    : Math.max(margin, triggerRect.top - panelRect.height - gap);
+  const left = Math.max(margin, Math.min(triggerRect.right - panelRect.width, window.innerWidth - panelRect.width - margin));
+  panel.style.top = `${top}px`;
+  panel.style.left = `${left}px`;
+}
+
 document.addEventListener("click", (event) => {
+  const rowActionToggle = event.target.closest("[data-row-action-toggle]");
+  if (rowActionToggle) {
+    const menu = rowActionToggle.closest("[data-row-action-menu]");
+    closeRowActionMenus(menu);
+    window.requestAnimationFrame(() => positionRowActionMenu(menu));
+    return;
+  }
+
+  const rowActionItem = event.target.closest("[data-row-action-item]");
+  if (rowActionItem) {
+    rowActionItem.closest("[data-row-action-menu]").open = false;
+  }
+
+  if (!event.target.closest("[data-row-action-menu]")) closeRowActionMenus();
+
   const opener = event.target.closest("[data-modal-open]");
   if (opener) {
     const modal = document.getElementById(opener.dataset.modalOpen);
@@ -129,6 +167,17 @@ document.addEventListener("click", (event) => {
     event.target.close();
   }
 });
+
+document.addEventListener("keydown", (event) => {
+  if (event.key !== "Escape") return;
+  const openMenu = document.querySelector("[data-row-action-menu][open]");
+  if (!openMenu) return;
+  openMenu.open = false;
+  openMenu.querySelector("[data-row-action-toggle]")?.focus();
+});
+
+window.addEventListener("scroll", () => closeRowActionMenus(), true);
+window.addEventListener("resize", () => closeRowActionMenus());
 
 document.addEventListener("close", (event) => {
   if (event.target instanceof HTMLDialogElement && event.target.contains(toastRegion)) {

@@ -2,6 +2,8 @@
 
 > Keputusan pembuatan kelas/siswa, impor, daftar, dan penempatan pada dokumen ini telah diperbarui oleh [Alur kelas dan penempatan siswa](student-class-placement-workflow.md), 16 Oktober 2026. Jika rincian lama di bawah berbeda, dokumen alur tersebut menjadi acuan.
 
+> **Pindah sekolah:** keputusan MQ-08-CONTRACT-02 pada [amendment penyelesaian keuangan sebelum pengesahan pindah](student-transfer-financial-clearance-amendment.md) menggantikan urutan lama yang mengubah siswa menjadi `LEFT` sebelum penyelesaian tabungan. Ketentuan FASE 19 tetap merupakan catatan historis untuk implementasi lama.
+
 Status: VERIFIED — READY TO LOCK
 Decision approval: product owner, 2026-10-14.
 

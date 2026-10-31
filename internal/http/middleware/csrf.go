@@ -35,7 +35,7 @@ func (m *CSRFMiddleware) Protect(next http.Handler) http.Handler {
 
 		cookieToken, err := m.cookie.Read(r)
 		if err != nil {
-			http.Error(w, http.StatusText(http.StatusForbidden), http.StatusForbidden)
+			http.Error(w, "Anda tidak memiliki izin untuk mengakses halaman ini.", http.StatusForbidden)
 			return
 		}
 
@@ -46,7 +46,7 @@ func (m *CSRFMiddleware) Protect(next http.Handler) http.Handler {
 
 		if requestToken == "" ||
 			subtle.ConstantTimeCompare([]byte(cookieToken), []byte(requestToken)) != 1 {
-			http.Error(w, http.StatusText(http.StatusForbidden), http.StatusForbidden)
+			http.Error(w, "Anda tidak memiliki izin untuk mengakses halaman ini.", http.StatusForbidden)
 			return
 		}
 
@@ -61,12 +61,12 @@ func (m *CSRFMiddleware) ensureToken(w http.ResponseWriter, r *http.Request) (st
 
 	token, err := security.GenerateCSRFToken()
 	if err != nil {
-		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		http.Error(w, "Terjadi kesalahan pada server. Silakan coba lagi.", http.StatusInternalServerError)
 		return "", false
 	}
 
 	if err := m.cookie.Set(w, token); err != nil {
-		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		http.Error(w, "Terjadi kesalahan pada server. Silakan coba lagi.", http.StatusInternalServerError)
 		return "", false
 	}
 

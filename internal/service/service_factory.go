@@ -88,6 +88,10 @@ func NewServiceSet(deps Dependencies) (ServiceSet, error) {
 			err,
 		)
 	}
+	lateRequests, err := NewLeavingTransactionRequestService(deps)
+	if err != nil {
+		return ServiceSet{}, fmt.Errorf("construct late transaction request service: %w", err)
+	}
 
 	settlement, err := NewSettlementService(deps)
 	if err != nil {
@@ -105,18 +109,25 @@ func NewServiceSet(deps Dependencies) (ServiceSet, error) {
 		)
 	}
 
+	reporting, err := NewReportingService(deps)
+	if err != nil {
+		return ServiceSet{}, fmt.Errorf("construct reporting service: %w", err)
+	}
+
 	return ServiceSet{
-		Authentication:   authentication,
-		User:             user,
-		AcademicYear:     academicYear,
-		Class:            class,
-		Student:          student,
-		StudentPromotion: promotion,
-		ClassAssignment:  classAssignment,
-		ClassTransfer:    classTransfer,
-		SavingsAccount:   savingsAccount,
-		Transaction:      transaction,
-		Settlement:       settlement,
-		Audit:            audit,
+		Authentication:             authentication,
+		User:                       user,
+		AcademicYear:               academicYear,
+		Class:                      class,
+		Student:                    student,
+		StudentPromotion:           promotion,
+		ClassAssignment:            classAssignment,
+		ClassTransfer:              classTransfer,
+		SavingsAccount:             savingsAccount,
+		Transaction:                transaction,
+		LeavingTransactionRequests: lateRequests,
+		Settlement:                 settlement,
+		Audit:                      audit,
+		Reporting:                  reporting,
 	}, nil
 }

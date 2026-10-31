@@ -96,8 +96,8 @@ func verifySchema(ctx context.Context, db *sql.DB) error {
 	if err != nil {
 		return fmt.Errorf("read migration state: %w", err)
 	}
-	if version != 12 || dirty {
-		return fmt.Errorf("expected schema version 12 clean; got version %d dirty=%t", version, dirty)
+	if version != 13 || dirty {
+		return fmt.Errorf("expected schema version 13 clean; got version %d dirty=%t", version, dirty)
 	}
 	return nil
 }

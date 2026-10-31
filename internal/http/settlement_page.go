@@ -25,6 +25,7 @@ type SettlementReadinessRowVM struct{ StudentName, NIS, Class, Wali, Status, Bal
 type SettlementYearOptionVM struct{ ID, Name string }
 type SettlementGroupVM struct {
 	Wali, Class                              string
+	Status                                   string
 	Outstanding, AwaitingHandover, Completed int
 }
 type SettlementPageVM struct {
@@ -32,6 +33,7 @@ type SettlementPageVM struct {
 	AcademicYearID, YearName, YearStatus, Error, Notice                                                                                             string
 	Total, Outstanding, Settled, AwaitingHandover, Completed, Unattributed, PendingTransfers                                                        int
 	Ready                                                                                                                                           bool
+	PendingLateTransactions                                                                                                                         bool
 	Rows                                                                                                                                            []SettlementReadinessRowVM
 	Years                                                                                                                                           []SettlementYearOptionVM
 	Groups                                                                                                                                          []SettlementGroupVM
@@ -69,7 +71,7 @@ func (h *SettlementPageHandler) Overview(w http.ResponseWriter, r *http.Request)
 	}
 	actor, ok := service.ActorFromContext(r.Context())
 	if !ok {
-		http.Error(w, "Unauthorized", 401)
+		http.Error(w, localizedStatusMessage(401), 401)
 		return
 	}
 	out, err := h.years.List(r.Context(), service.ListAcademicYearsInput{Actor: actor, Options: service.ListOptions{Limit: 250}})
@@ -82,7 +84,7 @@ func (h *SettlementPageHandler) Overview(w http.ResponseWriter, r *http.Request)
 	if id != "" {
 		yearID, err = uuid.Parse(id)
 		if err != nil || yearID == uuid.Nil {
-			http.Error(w, "Bad Request", 400)
+			http.Error(w, localizedStatusMessage(400), 400)
 			return
 		}
 	} else {
@@ -93,7 +95,11 @@ func (h *SettlementPageHandler) Overview(w http.ResponseWriter, r *http.Request)
 			}
 		}
 	}
-	vm := SettlementPageVM{Title: "Pengawasan Tabungan", Heading: "Kesiapan Penutupan Tabungan", Description: "Pantau rekening, wali kelas penanggung jawab, penyerahan uang, dan hambatan tutup tahun.", Role: string(actor.Role), Username: actor.Username, ActiveNav: "savings", AcademicYearID: id}
+	heading, description, activeNav := "Proses Tutup Buku Tabungan", "Periksa rekening dan penyerahan uang dalam cakupan kelas Anda.", "savings"
+	if actor.Role == domain.RoleAdmin {
+		heading, description, activeNav = "Penutupan Tahun", "Lihat wali kelas yang masih memiliki rekening atau penyerahan uang yang menghambat penutupan tahun ajaran.", "year-end"
+	}
+	vm := SettlementPageVM{Title: heading, Heading: heading, Description: description, Role: string(actor.Role), Username: actor.Username, ActiveNav: activeNav, AcademicYearID: id}
 	if token, ok := middleware.CSRFToken(r); ok {
 		vm.CSRFToken = token
 	}
@@ -102,7 +108,7 @@ func (h *SettlementPageHandler) Overview(w http.ResponseWriter, r *http.Request)
 			vm.Years = append(vm.Years, SettlementYearOptionVM{ID: y.ID.String(), Name: y.Name})
 			if y.ID == yearID {
 				vm.YearName = y.Name
-				vm.YearStatus = string(y.Status)
+				vm.YearStatus = interfaceStatusLabel(string(y.Status))
 			}
 		}
 	}
@@ -114,19 +120,23 @@ func (h *SettlementPageHandler) Overview(w http.ResponseWriter, r *http.Request)
 			return
 		}
 		vm.Total, vm.Outstanding, vm.Settled, vm.AwaitingHandover, vm.Completed, vm.Unattributed, vm.PendingTransfers, vm.Ready = ready.Total, ready.Outstanding, ready.Settled, ready.AwaitingHandover, ready.Completed, ready.Unattributed, ready.PendingTransfers, ready.Ready
+		vm.PendingLateTransactions = ready.PendingLateTransactions
+		if ready.PendingLateTransactions {
+			vm.Notice = "Masih ada transaksi terlewat yang menunggu keputusan Admin atau pencatatan Wali. Selesaikan melalui menu Transaksi Terlewat sebelum penyelesaian rekening atau penutupan tahun."
+		}
 		vm.ReadinessLabel = "Kesiapan tahun ajaran"
 		if actor.Role == domain.RoleWaliKelas {
 			vm.ReadinessLabel = "Kesiapan cakupan Anda"
 		}
 		vm.TransferURL = "/class-transfer-requests/pending?academic_year_id=" + yearID.String()
 		for _, x := range ready.Rows {
-			row := SettlementReadinessRowVM{StudentName: x.Student.Name, NIS: stringValue(x.Student.NIS), Class: x.ClassName, Wali: x.WaliName, Status: string(x.Account.Status), Balance: formatRupiah(x.CurrentBalance), AccountURL: "/savings/" + x.Account.ID.String()}
+			row := SettlementReadinessRowVM{StudentName: x.Student.Name, NIS: stringValue(x.Student.NIS), Class: x.ClassName, Wali: x.WaliName, Status: interfaceStatusLabel(string(x.Account.Status)), Balance: formatRupiah(x.CurrentBalance), AccountURL: "/savings/" + x.Account.ID.String()}
 			if x.AttributionIssue {
 				row.Class = "Perlu pemeriksaan data"
 			}
 			if x.Account.IsOpen() {
 				row.Balance = formatRupiah(x.CurrentBalance)
-				if vm.YearStatus == string(domain.AcademicYearClosing) {
+				if vm.YearStatus == interfaceStatusLabel(string(domain.AcademicYearClosing)) {
 					row.PreviewURL = "/savings/" + x.Account.ID.String() + "/settlement-preview"
 				}
 			} else if x.Settlement != nil {
@@ -168,6 +178,10 @@ func (h *SettlementPageHandler) Overview(w http.ResponseWriter, r *http.Request)
 			}
 		}
 		for _, g := range groups {
+			g.Status = "Siap"
+			if g.Outstanding > 0 || g.AwaitingHandover > 0 {
+				g.Status = "Menghambat penutupan"
+			}
 			vm.Groups = append(vm.Groups, *g)
 		}
 		sort.Slice(vm.Groups, func(i, j int) bool {
@@ -186,12 +200,12 @@ func (h *SettlementPageHandler) Preview(w http.ResponseWriter, r *http.Request) 
 	}
 	actor, ok := service.ActorFromContext(r.Context())
 	if !ok {
-		http.Error(w, "Unauthorized", 401)
+		http.Error(w, localizedStatusMessage(401), 401)
 		return
 	}
 	id, err := uuid.Parse(r.PathValue("account_id"))
 	if err != nil || id == uuid.Nil {
-		http.Error(w, "Bad Request", 400)
+		http.Error(w, localizedStatusMessage(400), 400)
 		return
 	}
 	p, err := h.service.PreviewYearEnd(r.Context(), service.PreviewYearEndInput{Actor: actor, SavingsAccountID: id})
@@ -201,6 +215,64 @@ func (h *SettlementPageHandler) Preview(w http.ResponseWriter, r *http.Request) 
 	}
 	h.renderPreview(w, r, actor, id, p, "", http.StatusOK)
 }
+
+func (h *SettlementPageHandler) PreviewStudentLeaving(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet && r.Method != http.MethodHead {
+		methodNotAllowed(w, "GET, HEAD")
+		return
+	}
+	actor, ok := service.ActorFromContext(r.Context())
+	if !ok {
+		http.Error(w, localizedStatusMessage(http.StatusUnauthorized), http.StatusUnauthorized)
+		return
+	}
+	id, err := uuid.Parse(r.PathValue("account_id"))
+	if err != nil || id == uuid.Nil {
+		http.Error(w, localizedStatusMessage(http.StatusBadRequest), http.StatusBadRequest)
+		return
+	}
+	preview, err := h.service.PreviewStudentLeaving(r.Context(), service.PreviewStudentLeavingInput{Actor: actor, SavingsAccountID: id})
+	if err != nil {
+		httperror.Write(w, err)
+		return
+	}
+	h.renderStudentLeavingPreview(w, r, actor, id, preview, "", http.StatusOK)
+}
+
+func (h *SettlementPageHandler) SettleStudentLeaving(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		methodNotAllowed(w, http.MethodPost)
+		return
+	}
+	actor, ok := service.ActorFromContext(r.Context())
+	if !ok {
+		http.Error(w, localizedStatusMessage(http.StatusUnauthorized), http.StatusUnauthorized)
+		return
+	}
+	if err := parseSettlementForm(w, r); err != nil {
+		http.Error(w, localizedStatusMessage(http.StatusBadRequest), http.StatusBadRequest)
+		return
+	}
+	id, err := uuid.Parse(r.PathValue("account_id"))
+	amount, amountErr := strconv.ParseInt(r.PostForm.Get("expected_balance"), 10, 64)
+	if err != nil || id == uuid.Nil || amountErr != nil || amount < 0 {
+		http.Error(w, localizedStatusMessage(http.StatusBadRequest), http.StatusBadRequest)
+		return
+	}
+	out, err := h.service.SettleStudentLeaving(r.Context(), service.SettleStudentLeavingInput{Actor: actor, SavingsAccountID: id, ExpectedBalance: domain.Money(amount)})
+	if err != nil {
+		if errors.Is(err, repository.ErrConflict) {
+			preview, previewErr := h.service.PreviewStudentLeaving(r.Context(), service.PreviewStudentLeavingInput{Actor: actor, SavingsAccountID: id})
+			if previewErr == nil {
+				h.renderStudentLeavingPreview(w, r, actor, id, preview, "Saldo berubah sejak pratinjau. Periksa saldo terbaru dan konfirmasikan kembali.", http.StatusConflict)
+				return
+			}
+		}
+		httperror.Write(w, err)
+		return
+	}
+	http.Redirect(w, r, "/settlements/"+out.Settlement.ID.String()+"?notice=settled", http.StatusSeeOther)
+}
 func (h *SettlementPageHandler) Create(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		methodNotAllowed(w, http.MethodPost)
@@ -208,17 +280,17 @@ func (h *SettlementPageHandler) Create(w http.ResponseWriter, r *http.Request) {
 	}
 	actor, ok := service.ActorFromContext(r.Context())
 	if !ok {
-		http.Error(w, "Unauthorized", 401)
+		http.Error(w, localizedStatusMessage(401), 401)
 		return
 	}
 	if err := parseSettlementForm(w, r); err != nil {
-		http.Error(w, "Bad Request", 400)
+		http.Error(w, localizedStatusMessage(400), 400)
 		return
 	}
 	id, err := uuid.Parse(r.PathValue("account_id"))
 	amount, e := strconv.ParseInt(r.PostForm.Get("expected_balance"), 10, 64)
 	if err != nil || id == uuid.Nil || e != nil || amount < 0 {
-		http.Error(w, "Bad Request", 400)
+		http.Error(w, localizedStatusMessage(400), 400)
 		return
 	}
 	out, err := h.service.SettleYearEnd(r.Context(), service.SettleYearEndInput{Actor: actor, SavingsAccountID: id, ExpectedBalance: domain.Money(amount)})
@@ -242,16 +314,16 @@ func (h *SettlementPageHandler) Handover(w http.ResponseWriter, r *http.Request)
 	}
 	actor, ok := service.ActorFromContext(r.Context())
 	if !ok {
-		http.Error(w, "Unauthorized", 401)
+		http.Error(w, localizedStatusMessage(401), 401)
 		return
 	}
 	if err := parseSettlementForm(w, r); err != nil {
-		http.Error(w, "Bad Request", 400)
+		http.Error(w, localizedStatusMessage(400), 400)
 		return
 	}
 	id, err := uuid.Parse(r.PathValue("settlement_id"))
 	if err != nil || id == uuid.Nil || r.PostForm.Get("confirm_handover") != "1" {
-		http.Error(w, "Bad Request", 400)
+		http.Error(w, localizedStatusMessage(400), 400)
 		return
 	}
 	ref := strings.TrimSpace(r.PostForm.Get("receipt_reference"))
@@ -272,12 +344,12 @@ func (h *SettlementPageHandler) Detail(w http.ResponseWriter, r *http.Request) {
 	}
 	actor, ok := service.ActorFromContext(r.Context())
 	if !ok {
-		http.Error(w, "Unauthorized", 401)
+		http.Error(w, localizedStatusMessage(401), 401)
 		return
 	}
 	id, err := uuid.Parse(r.PathValue("settlement_id"))
 	if err != nil || id == uuid.Nil {
-		http.Error(w, "Bad Request", 400)
+		http.Error(w, localizedStatusMessage(400), 400)
 		return
 	}
 	out, err := h.service.Get(r.Context(), service.GetSettlementInput{Actor: actor, SettlementID: id})
@@ -290,18 +362,18 @@ func (h *SettlementPageHandler) Detail(w http.ResponseWriter, r *http.Request) {
 	if executedBy == "" {
 		executedBy = s.ExecutedBy.String()
 	}
-	vm := SettlementPageVM{Title: "Detail Settlement", Heading: "Detail Settlement", Description: "Bukti penyelesaian dan penyerahan uang.", Role: string(actor.Role), Username: actor.Username, ActiveNav: "savings", IsDetail: true, SettlementID: s.ID.String(), SettlementType: string(s.Type), Amount: formatRupiah(s.Amount), ExecutedBy: executedBy, ExecutedAt: s.ExecutedAt.Format(time.RFC3339)}
+	vm := SettlementPageVM{Title: "Detail Penyelesaian Tabungan", Heading: "Detail Penyelesaian Tabungan", Description: "Bukti penyelesaian tabungan dan penyerahan uang.", Role: string(actor.Role), Username: actor.Username, ActiveNav: "savings", IsDetail: true, SettlementID: s.ID.String(), SettlementType: string(s.Type), Amount: formatRupiah(s.Amount), ExecutedBy: executedBy, ExecutedAt: s.ExecutedAt.Format(time.RFC3339)}
 	if out.Account != nil {
 		year, e := h.years.Get(r.Context(), service.GetAcademicYearInput{Actor: actor, AcademicYearID: out.Account.AcademicYearID})
 		if e == nil && year.AcademicYear != nil {
-			vm.YearState = string(year.AcademicYear.Status)
+			vm.YearState = interfaceStatusLabel(string(year.AcademicYear.Status))
 			vm.CanRequestReopen = actor.Role == domain.RoleWaliKelas && year.AcademicYear.IsClosed() && out.Account.IsSettled() && s.Type == domain.SettlementRegularYearEnd
 			vm.CanExecuteReopen = actor.Role == domain.RoleWaliKelas && year.AcademicYear.IsClosed() && out.Account.IsSettled()
 		}
 	}
 	if out.ReopenRequest != nil {
 		vm.ReopenRequestID = out.ReopenRequest.ID.String()
-		vm.ReopenRequestStatus = string(out.ReopenRequest.Status)
+		vm.ReopenRequestStatus = interfaceStatusLabel(string(out.ReopenRequest.Status))
 		vm.ReopenRequestReason = out.ReopenRequest.Reason
 		if name := out.ActorNames[out.ReopenRequest.RequestedBy]; name != "" {
 			vm.ReopenRequestReason = name + ": " + vm.ReopenRequestReason
@@ -338,14 +410,14 @@ func (h *SettlementPageHandler) Detail(w http.ResponseWriter, r *http.Request) {
 		if movementActor == "" {
 			movementActor = m.ConfirmedBy.String()
 		}
-		vm.Movements = append(vm.Movements, SettlementMovementVM{Kind: string(m.Kind), Amount: formatRupiah(m.Amount), Actor: movementActor, At: m.ConfirmedAt.Format(time.RFC3339), Reference: ref})
+		vm.Movements = append(vm.Movements, SettlementMovementVM{Kind: interfaceSettlementMovementLabel(string(m.Kind)), Amount: formatRupiah(m.Amount), Actor: movementActor, At: m.ConfirmedAt.Format(time.RFC3339), Reference: ref})
 	}
 	for _, item := range out.History {
 		name := out.ActorNames[item.ExecutedBy]
 		if name == "" {
 			name = item.ExecutedBy.String()
 		}
-		vm.History = append(vm.History, SettlementHistoryVM{Type: string(item.Type), Amount: formatRupiah(item.Amount), Status: string(item.Status), ExecutedBy: name, ExecutedAt: item.ExecutedAt.Format(time.RFC3339)})
+		vm.History = append(vm.History, SettlementHistoryVM{Type: interfaceSettlementTypeLabel(string(item.Type)), Amount: formatRupiah(item.Amount), Status: interfaceStatusLabel(string(item.Status)), ExecutedBy: name, ExecutedAt: item.ExecutedAt.Format(time.RFC3339)})
 	}
 	vm.Delivered = formatRupiah(delivered)
 	vm.CashStatus = "Terkonfirmasi"
@@ -361,7 +433,7 @@ func (h *SettlementPageHandler) Detail(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if r.URL.Query().Get("notice") == "settled" {
-		vm.Notice = "Settlement berhasil dicatat."
+		vm.Notice = "Penyelesaian tabungan berhasil dicatat."
 	}
 	if r.URL.Query().Get("notice") == "handover_confirmed" {
 		vm.Notice = "Penyerahan uang berhasil dikonfirmasi."
@@ -385,16 +457,16 @@ func (h *SettlementPageHandler) RequestReopen(w http.ResponseWriter, r *http.Req
 	}
 	actor, ok := service.ActorFromContext(r.Context())
 	if !ok {
-		http.Error(w, "Unauthorized", 401)
+		http.Error(w, localizedStatusMessage(401), 401)
 		return
 	}
 	if err := parseSettlementForm(w, r); err != nil {
-		http.Error(w, "Bad Request", 400)
+		http.Error(w, localizedStatusMessage(400), 400)
 		return
 	}
 	id, err := uuid.Parse(r.PathValue("settlement_id"))
 	if err != nil || id == uuid.Nil {
-		http.Error(w, "Bad Request", 400)
+		http.Error(w, localizedStatusMessage(400), 400)
 		return
 	}
 	_, err = h.service.RequestReopen(r.Context(), service.RequestSettlementReopenInput{Actor: actor, SettlementID: id, Reason: r.PostForm.Get("reason")})
@@ -411,17 +483,17 @@ func (h *SettlementPageHandler) DecideReopen(w http.ResponseWriter, r *http.Requ
 	}
 	actor, ok := service.ActorFromContext(r.Context())
 	if !ok {
-		http.Error(w, "Unauthorized", 401)
+		http.Error(w, localizedStatusMessage(401), 401)
 		return
 	}
 	if err := parseSettlementForm(w, r); err != nil {
-		http.Error(w, "Bad Request", 400)
+		http.Error(w, localizedStatusMessage(400), 400)
 		return
 	}
 	id, err := uuid.Parse(r.PathValue("request_id"))
 	decision := r.PostForm.Get("decision")
 	if err != nil || id == uuid.Nil || (decision != "approve" && decision != "reject") {
-		http.Error(w, "Bad Request", 400)
+		http.Error(w, localizedStatusMessage(400), 400)
 		return
 	}
 	out, err := h.service.DecideReopen(r.Context(), service.DecideSettlementReopenInput{Actor: actor, RequestID: id, Approve: decision == "approve", Reason: r.PostForm.Get("reason")})
@@ -438,16 +510,16 @@ func (h *SettlementPageHandler) Reopen(w http.ResponseWriter, r *http.Request) {
 	}
 	actor, ok := service.ActorFromContext(r.Context())
 	if !ok {
-		http.Error(w, "Unauthorized", 401)
+		http.Error(w, localizedStatusMessage(401), 401)
 		return
 	}
 	if err := parseSettlementForm(w, r); err != nil {
-		http.Error(w, "Bad Request", 400)
+		http.Error(w, localizedStatusMessage(400), 400)
 		return
 	}
 	id, err := uuid.Parse(r.PathValue("settlement_id"))
 	if err != nil || id == uuid.Nil {
-		http.Error(w, "Bad Request", 400)
+		http.Error(w, localizedStatusMessage(400), 400)
 		return
 	}
 	out, err := h.service.Reopen(r.Context(), service.ReopenSettlementInput{Actor: actor, SettlementID: id})
@@ -467,7 +539,7 @@ func parseSettlementForm(w http.ResponseWriter, r *http.Request) error {
 }
 func (h *SettlementPageHandler) render(w http.ResponseWriter, vm SettlementPageVM) {
 	if err := h.templates.ExecuteTemplate(w, "settlement-page", vm); err != nil {
-		http.Error(w, "Internal Server Error", 500)
+		http.Error(w, localizedStatusMessage(500), 500)
 	}
 }
 
@@ -478,11 +550,11 @@ func (h *SettlementPageHandler) renderPreview(w http.ResponseWriter, r *http.Req
 		ok = token != ""
 	}
 	if !ok {
-		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		http.Error(w, localizedStatusMessage(http.StatusInternalServerError), http.StatusInternalServerError)
 		return
 	}
 	vm := SettlementPageVM{
-		Title: "Pratinjau Settlement", Heading: "Konfirmasi Settlement",
+		Title: "Pratinjau Penyelesaian Tabungan", Heading: "Konfirmasi Penyelesaian Tabungan",
 		Description: "Tinjau saldo buku penuh sebelum menyelesaikan rekening.",
 		Role:        string(actor.Role), Username: actor.Username, ActiveNav: "savings",
 		IsPreview: true, CanSettle: actor.Role == domain.RoleWaliKelas,
@@ -492,7 +564,35 @@ func (h *SettlementPageHandler) renderPreview(w http.ResponseWriter, r *http.Req
 	}
 	var body bytes.Buffer
 	if err := h.templates.ExecuteTemplate(&body, "settlement-page", vm); err != nil {
-		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		http.Error(w, localizedStatusMessage(http.StatusInternalServerError), http.StatusInternalServerError)
+		return
+	}
+	w.WriteHeader(status)
+	_, _ = w.Write(body.Bytes())
+}
+
+func (h *SettlementPageHandler) renderStudentLeavingPreview(w http.ResponseWriter, r *http.Request, actor service.Actor, id uuid.UUID, preview service.PreviewYearEndOutput, message string, status int) {
+	token, ok := middleware.CSRFToken(r)
+	if !ok && r.Method == http.MethodPost {
+		token = r.PostForm.Get("csrf_token")
+		ok = token != ""
+	}
+	if !ok {
+		http.Error(w, localizedStatusMessage(http.StatusInternalServerError), http.StatusInternalServerError)
+		return
+	}
+	vm := SettlementPageVM{
+		Title: "Penyelesaian Siswa Pindah Sekolah", Heading: "Penyelesaian Tabungan Pindah Sekolah",
+		Description: "Tinjau saldo buku tabungan siswa yang pindah sebelum menyelesaikannya.",
+		Role:        string(actor.Role), Username: actor.Username, ActiveNav: "savings", IsPreview: true,
+		CanSettle: actor.Role == domain.RoleWaliKelas, SettlementType: string(domain.SettlementStudentLeaving),
+		AccountID: id.String(), ExpectedBalance: strconv.FormatInt(int64(preview.Balance), 10),
+		Amount: formatRupiah(preview.Balance), StudentName: preview.Student.Name,
+		CSRFToken: token, PreviewedAt: preview.PreviewedAt.Format(time.RFC3339), Error: message,
+	}
+	var body bytes.Buffer
+	if err := h.templates.ExecuteTemplate(&body, "settlement-page", vm); err != nil {
+		http.Error(w, localizedStatusMessage(http.StatusInternalServerError), http.StatusInternalServerError)
 		return
 	}
 	w.WriteHeader(status)
@@ -502,7 +602,7 @@ func (h *SettlementPageHandler) renderPreview(w http.ResponseWriter, r *http.Req
 func validateSettlementRequestForm(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if err := parseSettlementForm(w, r); err != nil {
-			http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
+			http.Error(w, localizedStatusMessage(http.StatusBadRequest), http.StatusBadRequest)
 			return
 		}
 		next.ServeHTTP(w, r)

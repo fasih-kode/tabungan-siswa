@@ -53,6 +53,41 @@ func TestAcademicYearTemplateRendersAcademicContentForAdminAndWali(t *testing.T)
 	}
 }
 
+func TestReportsIndexRendersCardWithIconForEachReport(t *testing.T) {
+	templates, err := template.ParseFS(templateFiles, "templates/layouts/*.html", "templates/partials/*.html", "templates/auth/*.html", "templates/pages/*.html")
+	if err != nil {
+		t.Fatal(err)
+	}
+	view := httpapp.ReportingPageViewModel{
+		Title: "Laporan", Heading: "Laporan", IsIndex: true,
+		Links: []httpapp.ReportLink{
+			{Title: "Laporan Siswa", URL: "/reports/students", Icon: "students"},
+			{Title: "Laporan Kelas", URL: "/reports/classes", Icon: "classes"},
+			{Title: "Laporan Tahun Ajaran", URL: "/reports/academic-year", Icon: "academic-year"},
+			{Title: "Laporan Penyelesaian Tabungan", URL: "/reports/settlements", Icon: "settlement"},
+		},
+	}
+	var out strings.Builder
+	if err := templates.ExecuteTemplate(&out, "reports", view); err != nil {
+		t.Fatal(err)
+	}
+	body := out.String()
+	if got := strings.Count(body, `class="report-link-card`); got != 4 {
+		t.Errorf("report card count = %d, want 4", got)
+	}
+	if got := strings.Count(body, `class="report-link-icon`); got != 4 {
+		t.Errorf("report icon count = %d, want 4", got)
+	}
+	if got := strings.Count(body, `class="form-button-primary mt-4 inline-flex items-center gap-2"`); got != 4 {
+		t.Errorf("primary report button count = %d, want 4", got)
+	}
+	for _, href := range []string{"/reports/students", "/reports/classes", "/reports/academic-year", "/reports/settlements"} {
+		if !strings.Contains(body, `href="`+href+`"`) {
+			t.Errorf("report card missing link %q", href)
+		}
+	}
+}
+
 func TestChangePasswordTemplateRendersForStudent(t *testing.T) {
 	templates, err := template.ParseFS(templateFiles, "templates/layouts/*.html", "templates/partials/*.html", "templates/auth/*.html", "templates/pages/*.html")
 	if err != nil {
@@ -66,6 +101,32 @@ func TestChangePasswordTemplateRendersForStudent(t *testing.T) {
 	for _, want := range []string{"Ganti Password", "siswa-test", `action="/account/password"`, `name="current_password"`, `name="new_password"`, `name="confirm_password"`} {
 		if !strings.Contains(out.String(), want) {
 			t.Errorf("change-password page missing %q", want)
+		}
+	}
+}
+
+func TestUserDirectoryGroupsRowActionsInOverflowMenu(t *testing.T) {
+	templates, err := template.ParseFS(templateFiles, "templates/layouts/*.html", "templates/partials/*.html", "templates/auth/*.html", "templates/pages/*.html")
+	if err != nil {
+		t.Fatal(err)
+	}
+	view := httpapp.UserPageViewModel{
+		Title: "Pengguna", Heading: "Pengguna", Role: "ADMIN", RoleFilter: "WALI_KELAS", CSRFToken: "csrf",
+		Users: []httpapp.ManagedUserRow{{ID: "wali-1", Username: "wali-uji", Role: "WALI_KELAS", Active: true}},
+	}
+	var out strings.Builder
+	if err := templates.ExecuteTemplate(&out, "users", view); err != nil {
+		t.Fatal(err)
+	}
+	body := out.String()
+	for _, want := range []string{
+		`data-row-action-menu`, `aria-label="Aksi untuk wali-uji"`, `class="row-action-panel"`,
+		`class="mt-5" data-instant-results`, `text-right text-xs font-medium uppercase tracking-wider text-gray-500">Aksi</th>`, `px-5 py-2.5 text-sm font-medium`,
+		"Ubah nama pengguna", `data-modal-open="user-edit-wali-1"`, `id="user-edit-wali-1"`,
+		`name="username"`, "Nama pengguna baru", "Simpan Perubahan", "Nonaktifkan akun", "Atur ulang kata sandi",
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("user row action menu missing %q", want)
 		}
 	}
 }
@@ -119,7 +180,7 @@ func TestStudentDetailShowsTransferLinkOnlyToWaliKelas(t *testing.T) {
 		if err := templates.ExecuteTemplate(&out, "students", view); err != nil {
 			t.Fatal(err)
 		}
-		got := strings.Contains(out.String(), "Ajukan transfer kelas")
+		got := strings.Contains(out.String(), "Ajukan pindah kelas")
 		if got != tc.want {
 			t.Errorf("role %s transfer button visible=%v, want %v", tc.role, got, tc.want)
 		}
@@ -153,25 +214,35 @@ func TestSavingsTemplateRendersAccountCreationAndPassbook(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	list := httpapp.SavingsPageViewModel{Title: "Tabungan", Heading: "Tabungan Siswa", Description: "Siklus", Role: "WALI_KELAS", Username: "wali", CSRFToken: "csrf", AcademicYearID: "year", Years: []httpapp.SavingsYearOption{{ID: "year", Name: "2026/2027"}}, Rows: []httpapp.SavingsDirectoryRow{{StudentID: "student", Name: "Ani", StudentStatus: "ACTIVE", CanCreate: true}}}
+	list := httpapp.SavingsPageViewModel{Title: "Tabungan", Heading: "Tabungan Siswa", Description: "Siklus", Role: "WALI_KELAS", Username: "wali", CSRFToken: "csrf", AcademicYearID: "year", Years: []httpapp.SavingsYearOption{{ID: "year", Name: "2026/2027"}}, Rows: []httpapp.SavingsDirectoryRow{{StudentID: "student", Name: "Ani", StudentStatus: "LEFT", AccountID: "account", AccountStatus: "OPEN", Balance: "Rp. 15.000", LeavingSettlementURL: "/savings/account/leaving-settlement-preview"}}}
 	var out strings.Builder
 	if err := templates.ExecuteTemplate(&out, "savings", list); err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"2026/2027", "Buka tabungan", `action="/savings"`, `name="csrf_token"`} {
+	for _, want := range []string{"2026/2027", "Perlu penyelesaian", "Proses pindah sekolah", "/leaving-settlement-preview", `action="/savings"`, `name="csrf_token"`} {
 		if !strings.Contains(out.String(), want) {
 			t.Errorf("savings list missing %q", want)
 		}
 	}
-	detail := httpapp.SavingsPageViewModel{Title: "Tabungan", Heading: "Tabungan Siswa", Description: "Siklus", Role: "WALI_KELAS", Username: "wali", CSRFToken: "csrf", IsDetail: true, CanTransact: true, AccountID: "account", StudentName: "Ani", AccountStatus: "OPEN", YearName: "2026/2027", Balance: "Rp 15.000", TransactionURL: "/savings/account/transactions", TransactionDate: "2026-08-01", MinTransactionDate: "2026-07-01", MaxTransactionDate: "2027-06-30", Passbook: []httpapp.SavingsPassbookRow{{Date: "2026-08-01", Type: "Setor", Amount: "Rp 15.000", Balance: "Rp 15.000"}}}
+	detail := httpapp.SavingsPageViewModel{Title: "Tabungan", Heading: "Tabungan Siswa", Description: "Siklus", Role: "WALI_KELAS", Username: "wali", CSRFToken: "csrf", IsDetail: true, CanTransact: true, CanSettleLeaving: true, LeavingSettlementURL: "/savings/account/leaving-settlement-preview", AccountID: "account", StudentName: "Ani", AccountStatus: "OPEN", YearName: "2026/2027", Balance: "Rp. 15.000", TransactionURL: "/savings/account/transactions", TransactionDate: "2026-08-01", MinTransactionDate: "2026-07-01", MaxTransactionDate: "2027-06-30", Passbook: []httpapp.SavingsPassbookRow{{Date: "2026-08-01", Type: "Setor", Amount: "Rp. 15.000", Balance: "Rp. 15.000"}}}
 	out.Reset()
 	if err := templates.ExecuteTemplate(&out, "savings", detail); err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"Buku", "Saldo berjalan", "2026-08-01", "Rp 15.000", "action=\"/savings/account/transactions/deposits\"", "action=\"/savings/account/transactions/withdrawals\"", "name=\"csrf_token\""} {
+	for _, want := range []string{"Buku", "Saldo berjalan", "2026-08-01", "Rp. 15.000", "action=\"/savings/account/transactions/deposits\"", "action=\"/savings/account/transactions/withdrawals\"", "Perlu penyelesaian pindah sekolah", "/leaving-settlement-preview", `id="deposit-amount"`, `id="withdrawal-amount"`, `data-rupiah-input`, `rupiah-input.js`, "name=\"csrf_token\""} {
 		if !strings.Contains(out.String(), want) {
 			t.Errorf("passbook detail missing %q", want)
 		}
+	}
+	detail.CanSettleLeaving = false
+	detail.CanTransact = false
+	detail.Graduated = true
+	out.Reset()
+	if err := templates.ExecuteTemplate(&out, "savings", detail); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out.String(), "Tabungan siswa lulus diselesaikan melalui proses penutupan tahun ajaran.") || strings.Contains(out.String(), "leaving-settlement-preview") {
+		t.Fatalf("graduated student should use regular year closing, body=%s", out.String())
 	}
 }
 
@@ -181,14 +252,21 @@ func TestTransactionTemplateRendersListAndDetail(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, view := range []httpapp.TransactionPageViewModel{
-		{Title: "Transaksi", Heading: "Transaksi Tabungan", Role: "ADMIN", Username: "admin", AccountID: "account", StudentName: "Ani", YearName: "2026/2027", AccountStatus: "OPEN", AccountBalance: "Rp 42.000", Rows: []httpapp.TransactionPageRow{{ID: "transaction", Date: "2026-10-01", Type: "Setoran", Amount: "Rp 42.000", Balance: "Rp 42.000"}}},
-		{Title: "Transaksi", Heading: "Transaksi Tabungan", Role: "SISWA", Username: "siswa", IsDetail: true, TransactionID: "transaction", AccountID: "account", StudentName: "Ani", YearName: "2026/2027", TransactionDate: "2026-10-01", TransactionType: "Setoran", Amount: "Rp 42.000", RecordedAt: "2026-10-01T10:00:00Z"},
+		{Title: "Transaksi", Heading: "Transaksi Tabungan", Role: "ADMIN", Username: "admin", AccountID: "account", StudentName: "Ani", YearName: "2026/2027", AccountStatus: "OPEN", AccountBalance: "Rp. 42.000", Rows: []httpapp.TransactionPageRow{{ID: "transaction", Date: "2026-10-01", Type: "Setoran", Amount: "Rp. 42.000", Balance: "Rp. 42.000"}}},
+		{Title: "Transaksi", Heading: "Transaksi Tabungan", Role: "WALI_KELAS", Username: "wali", IsDetail: true, CanWrite: true, TransactionID: "transaction", AccountID: "account", StudentName: "Ani", YearName: "2026/2027", TransactionDate: "2026-10-01", TransactionType: "Setoran", Amount: "Rp. 42.000", AmountValue: "42000", RecordedAt: "2026-10-01T10:00:00Z"},
 	} {
 		var out strings.Builder
 		if err := templates.ExecuteTemplate(&out, "transactions", view); err != nil {
 			t.Fatal(err)
 		}
 		body := out.String()
+		if view.CanWrite {
+			for _, want := range []string{`name="amount"`, `data-rupiah-input`, `rupiah-input.js`} {
+				if !strings.Contains(body, want) {
+					t.Errorf("transaction detail missing %q", want)
+				}
+			}
+		}
 		for _, want := range []string{"Ani", "2026/2027", "Detail Transaksi", "Riwayat Transaksi"} {
 			// The list and detail have separate content by design.
 			if want == "Detail Transaksi" && !view.IsDetail || want == "Riwayat Transaksi" && view.IsDetail {
@@ -208,12 +286,12 @@ func TestSavingsTemplateEmptyAndSettledStates(t *testing.T) {
 	}
 	for _, status := range []string{"OPEN", "SETTLED"} {
 		t.Run(status, func(t *testing.T) {
-			vm := httpapp.SavingsPageViewModel{Title: "Tabungan", Role: "ADMIN", IsDetail: true, StudentName: "Ani", AccountStatus: status, Balance: "Rp 0"}
+			vm := httpapp.SavingsPageViewModel{Title: "Tabungan", Role: "ADMIN", IsDetail: true, StudentName: "Ani", AccountStatus: status, Balance: "Rp. 0"}
 			var out strings.Builder
 			if err := templates.ExecuteTemplate(&out, "savings", vm); err != nil {
 				t.Fatal(err)
 			}
-			for _, want := range []string{"Siklus " + status, "Rp 0", "Belum ada transaksi pada siklus tabungan ini."} {
+			for _, want := range []string{"Siklus " + status, "Rp. 0", "Belum ada transaksi pada siklus tabungan ini."} {
 				if !strings.Contains(out.String(), want) {
 					t.Errorf("missing %q", want)
 				}
@@ -224,7 +302,7 @@ func TestSavingsTemplateEmptyAndSettledStates(t *testing.T) {
 		})
 	}
 	t.Run("settled directory", func(t *testing.T) {
-		vm := httpapp.SavingsPageViewModel{Title: "Tabungan", Role: "ADMIN", AcademicYearID: "year", Rows: []httpapp.SavingsDirectoryRow{{Name: "Ani", AccountID: "settled-account", AccountStatus: "SETTLED", Balance: "Rp 0"}}}
+		vm := httpapp.SavingsPageViewModel{Title: "Tabungan", Role: "ADMIN", AcademicYearID: "year", Rows: []httpapp.SavingsDirectoryRow{{Name: "Ani", AccountID: "settled-account", AccountStatus: "SETTLED", Balance: "Rp. 0"}}}
 		var out strings.Builder
 		if err := templates.ExecuteTemplate(&out, "savings", vm); err != nil {
 			t.Fatal(err)
@@ -257,16 +335,16 @@ func TestSettlementTemplateRendersActorNamesAndHistory(t *testing.T) {
 	}
 	view := httpapp.SettlementPageVM{
 		Title: "Detail Settlement", Heading: "Detail Settlement", Role: "ADMIN", Username: "admin-test",
-		IsDetail: true, StudentName: "Siswa Uji", SettlementType: "REGULAR_YEAR_END", Amount: "Rp 12.500",
+		IsDetail: true, StudentName: "Siswa Uji", SettlementType: "REGULAR_YEAR_END", Amount: "Rp. 12.500",
 		ExecutedBy: "admin-pelaksana", ExecutedAt: "2026-10-20T10:00:00Z",
-		History:   []httpapp.SettlementHistoryVM{{Type: "REGULAR_YEAR_END", Amount: "Rp 12.500", Status: "COMPLETED", ExecutedBy: "admin-pelaksana", ExecutedAt: "2026-10-20T10:00:00Z"}},
-		Movements: []httpapp.SettlementMovementVM{{Kind: "HANDOVER", Amount: "Rp 12.500", Actor: "wali-penerima", At: "2026-10-20T10:01:00Z"}},
+		History:   []httpapp.SettlementHistoryVM{{Type: "REGULAR_YEAR_END", Amount: "Rp. 12.500", Status: "COMPLETED", ExecutedBy: "admin-pelaksana", ExecutedAt: "2026-10-20T10:00:00Z"}},
+		Movements: []httpapp.SettlementMovementVM{{Kind: "HANDOVER", Amount: "Rp. 12.500", Actor: "wali-penerima", At: "2026-10-20T10:01:00Z"}},
 	}
 	var out strings.Builder
 	if err := templates.ExecuteTemplate(&out, "settlement-page", view); err != nil {
 		t.Fatalf("ExecuteTemplate() error = %v", err)
 	}
-	for _, want := range []string{"Siswa Uji", "admin-pelaksana", "Riwayat settlement akun", "wali-penerima"} {
+	for _, want := range []string{"Siswa Uji", "admin-pelaksana", "Riwayat penyelesaian tabungan", "wali-penerima"} {
 		if !strings.Contains(out.String(), want) {
 			t.Errorf("settlement template does not contain %q", want)
 		}
@@ -280,14 +358,14 @@ func TestSettlementPreviewShowsStaleBalanceWarning(t *testing.T) {
 	}
 	view := httpapp.SettlementPageVM{
 		Title: "Pratinjau Settlement", Heading: "Konfirmasi Settlement", Role: "WALI_KELAS", Username: "wali-test",
-		IsPreview: true, CanSettle: true, StudentName: "Siswa Uji", Amount: "Rp 23.000", ExpectedBalance: "23000",
+		IsPreview: true, CanSettle: true, StudentName: "Siswa Uji", Amount: "Rp. 23.000", ExpectedBalance: "23000",
 		PreviewedAt: "2026-10-20T10:05:00Z", Error: "Saldo berubah sejak pratinjau.",
 	}
 	var out strings.Builder
 	if err := templates.ExecuteTemplate(&out, "settlement-page", view); err != nil {
 		t.Fatalf("ExecuteTemplate() error = %v", err)
 	}
-	for _, want := range []string{"Saldo berubah sejak pratinjau.", "Rp 23.000", `name="expected_balance" value="23000"`} {
+	for _, want := range []string{"Saldo berubah sejak pratinjau.", "Rp. 23.000", `name="expected_balance" value="23000"`} {
 		if !strings.Contains(out.String(), want) {
 			t.Errorf("settlement preview does not contain %q", want)
 		}
@@ -307,6 +385,7 @@ func TestSettlementOverviewTemplateEmptyReadyAndBlockedStates(t *testing.T) {
 		{name: "empty", view: httpapp.SettlementPageVM{Title: "Pengawasan Tabungan", Heading: "Kesiapan", Role: "ADMIN", AcademicYearID: "year", TransferURL: "/class-transfer-requests/pending?academic_year_id=year", ReadinessLabel: "Kesiapan tahun ajaran"}, want: "Belum ada rekening dalam cakupan."},
 		{name: "admin ready", view: httpapp.SettlementPageVM{Title: "Pengawasan Tabungan", Heading: "Kesiapan", Role: "ADMIN", AcademicYearID: "year", TransferURL: "/class-transfer-requests/pending?academic_year_id=year", ReadinessLabel: "Kesiapan tahun ajaran", Ready: true}, want: "Siap ditutup"},
 		{name: "wali blocked", view: httpapp.SettlementPageVM{Title: "Pengawasan Tabungan", Heading: "Kesiapan", Role: "WALI_KELAS", AcademicYearID: "year", TransferURL: "/class-transfer-requests/pending?academic_year_id=year", ReadinessLabel: "Kesiapan cakupan Anda", PendingTransfers: 1}, want: "Belum siap"},
+		{name: "wali waits for admin to start closing", view: httpapp.SettlementPageVM{Title: "Pengawasan Tabungan", Heading: "Kesiapan", Role: "WALI_KELAS", AcademicYearID: "year", YearName: "2026/2027", YearStatus: "Terbuka"}, want: "Minta Admin membuka halaman Tahun Ajaran, memilih 2026/2027, lalu klik <strong>Mulai Penutupan</strong>"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			var out strings.Builder
@@ -327,15 +406,15 @@ func TestSettlementDetailTemplateIsReadOnlyForStudent(t *testing.T) {
 	}
 	view := httpapp.SettlementPageVM{
 		Title: "Detail Settlement", Heading: "Detail Settlement", Role: "SISWA", Username: "siswa-test",
-		IsDetail: true, StudentName: "Siswa Uji", SettlementID: "settlement-id", Amount: "Rp 12.500",
-		History: []httpapp.SettlementHistoryVM{{Type: "REGULAR_YEAR_END", Amount: "Rp 12.500", Status: "COMPLETED", ExecutedBy: "wali-test", ExecutedAt: "2026-10-20T10:00:00Z"}},
+		IsDetail: true, StudentName: "Siswa Uji", SettlementID: "settlement-id", Amount: "Rp. 12.500",
+		History: []httpapp.SettlementHistoryVM{{Type: "REGULAR_YEAR_END", Amount: "Rp. 12.500", Status: "COMPLETED", ExecutedBy: "wali-test", ExecutedAt: "2026-10-20T10:00:00Z"}},
 	}
 	var out strings.Builder
 	if err := templates.ExecuteTemplate(&out, "settlement-page", view); err != nil {
 		t.Fatalf("ExecuteTemplate() error = %v", err)
 	}
 	body := out.String()
-	for _, want := range []string{"Siswa Uji", "Riwayat settlement akun", "wali-test"} {
+	for _, want := range []string{"Siswa Uji", "Riwayat penyelesaian tabungan", "wali-test"} {
 		if !strings.Contains(body, want) {
 			t.Errorf("student settlement detail does not contain %q", want)
 		}

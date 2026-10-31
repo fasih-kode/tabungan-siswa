@@ -41,7 +41,8 @@ func (r *TransactionRepository) Create(
 			status,
 			created_by,
 			created_at,
-			updated_at
+			updated_at,
+			late_request_id
 		)
 		VALUES (
 			$1,
@@ -52,7 +53,8 @@ func (r *TransactionRepository) Create(
 			$6,
 			$7,
 			$8,
-			$9
+			$9,
+			$10
 		)
 	`
 
@@ -68,6 +70,7 @@ func (r *TransactionRepository) Create(
 		transaction.CreatedBy,
 		transaction.CreatedAt,
 		transaction.UpdatedAt,
+		transaction.LateRequestID,
 	)
 	if err != nil {
 		return translateTransactionError(
@@ -93,7 +96,8 @@ func (r *TransactionRepository) GetByID(
 			status,
 			created_by,
 			created_at,
-			updated_at
+			updated_at,
+			late_request_id
 		FROM transactions
 		WHERE id = $1
 	`
@@ -116,7 +120,8 @@ func (r *TransactionRepository) ListBySavingsAccount(
 			status,
 			created_by,
 			created_at,
-			updated_at
+			updated_at,
+			late_request_id
 		FROM transactions
 		WHERE savings_account_id = $1
 		ORDER BY transaction_date DESC, created_at DESC, id DESC
@@ -146,7 +151,8 @@ func (r *TransactionRepository) ListActiveBySavingsAccount(
 			status,
 			created_by,
 			created_at,
-			updated_at
+			updated_at,
+			late_request_id
 		FROM transactions
 		WHERE savings_account_id = $1
 			AND status = $2
@@ -167,7 +173,7 @@ func (r *TransactionRepository) ListAllBySavingsAccount(
 ) ([]domain.Transaction, error) {
 	const query = `
 		SELECT id, savings_account_id, type, amount, transaction_date, status,
-		       created_by, created_at, updated_at
+		       created_by, created_at, updated_at, late_request_id
 		FROM transactions
 		WHERE savings_account_id = $1
 		ORDER BY transaction_date ASC, created_at ASC, id ASC
@@ -347,6 +353,7 @@ type transactionScanner interface {
 func scanTransaction(scanner transactionScanner) (domain.Transaction, error) {
 	var transaction domain.Transaction
 	var amount string
+	var lateRequestID uuid.NullUUID
 
 	err := scanner.Scan(
 		&transaction.ID,
@@ -358,6 +365,7 @@ func scanTransaction(scanner transactionScanner) (domain.Transaction, error) {
 		&transaction.CreatedBy,
 		&transaction.CreatedAt,
 		&transaction.UpdatedAt,
+		&lateRequestID,
 	)
 	if err != nil {
 		return domain.Transaction{}, err
@@ -369,6 +377,9 @@ func scanTransaction(scanner transactionScanner) (domain.Transaction, error) {
 	}
 
 	transaction.Amount = money
+	if lateRequestID.Valid {
+		transaction.LateRequestID = &lateRequestID.UUID
+	}
 
 	return transaction, nil
 }

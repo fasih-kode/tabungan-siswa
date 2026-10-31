@@ -100,6 +100,7 @@ type StudentRepository interface {
 }
 
 type StudentClassHistoryRepository interface {
+	HasPlacementStartingAfter(context.Context, uuid.UUID, time.Time) (bool, error)
 	Create(ctx context.Context, history domain.StudentClassHistory) error
 	GetByID(
 		ctx context.Context,
@@ -205,6 +206,10 @@ type SavingsAccountRepository interface {
 		studentID uuid.UUID,
 		academicYearID uuid.UUID,
 	) (domain.SavingsAccount, error)
+	ListByStudent(context.Context, uuid.UUID) ([]domain.SavingsAccount, error)
+	// ListByStudentForUpdate mengunci seluruh rekening siswa berdasarkan ID.
+	// Pemanggil harus lebih dahulu mengunci semua tahun terkait.
+	ListByStudentForUpdate(context.Context, uuid.UUID) ([]domain.SavingsAccount, error)
 
 	// GetByIDForUpdate harus dijalankan oleh repository
 	// yang terikat pada transaction aktif.
@@ -252,10 +257,69 @@ type TransactionRepository interface {
 	) error
 }
 
+type LeavingTransactionRequestRepository interface {
+	CreateLeavingTransactionRequest(context.Context, domain.LeavingTransactionRequest) error
+	// GetStudentLeavingRequestID mengembalikan nil bila tidak ada tautan, termasuk pada schema v15.
+	GetStudentLeavingRequestID(context.Context, uuid.UUID) (*uuid.UUID, error)
+	// CreateLeavingTransactionRequestForStudentLeaving hanya tersedia pada schema v16+.
+	// Metode ini mengisi relasi proses pindah secara atomik saat INSERT.
+	CreateLeavingTransactionRequestForStudentLeaving(context.Context, domain.LeavingTransactionRequest, uuid.UUID) error
+	GetLeavingTransactionRequest(context.Context, uuid.UUID) (domain.LeavingTransactionRequest, error)
+	GetLeavingTransactionRequestForUpdate(context.Context, uuid.UUID) (domain.LeavingTransactionRequest, error)
+	ListLeavingTransactionRequests(context.Context, uuid.UUID, domain.LeavingTransactionRequestStatus) ([]domain.LeavingTransactionRequest, error)
+	// ListBySavingsAccount membaca seluruh status permintaan historis rekening,
+	// termasuk permintaan yang belum memiliki relasi ke proses pindah.
+	ListBySavingsAccount(context.Context, uuid.UUID) ([]domain.LeavingTransactionRequest, error)
+	// ListByStudentLeavingRequest membaca langsung berdasarkan FK dan tetap mengembalikan
+	// relasi rekening/tahun yang tidak konsisten agar caller dapat menolaknya.
+	// Proses yang tidak ditemukan menghasilkan repository.ErrNotFound.
+	ListByStudentLeavingRequest(context.Context, uuid.UUID) ([]domain.LeavingTransactionRequest, error)
+	UpdateLeavingTransactionRequest(context.Context, domain.LeavingTransactionRequest) error
+	HasPendingLeavingTransactionRequests(context.Context, uuid.UUID) (bool, error)
+	HasPendingForSavingsAccount(context.Context, uuid.UUID) (bool, error)
+	HasEvidenceReference(context.Context, uuid.UUID, string) (bool, error)
+}
+
+// StudentLeavingRequestRepository mengelola proses pindah administratif.
+// Pemanggil harus menetapkan urutan lock lintas siswa, tahun ajaran, rekening,
+// dan proses sebelum memakai operasi ForUpdate dalam UOW.
+type StudentLeavingRequestRepository interface {
+	Create(context.Context, domain.StudentLeavingRequest) error
+	GetByID(context.Context, uuid.UUID) (domain.StudentLeavingRequest, error)
+	GetByIDForUpdate(context.Context, uuid.UUID) (domain.StudentLeavingRequest, error)
+	GetInProgressByStudent(context.Context, uuid.UUID) (domain.StudentLeavingRequest, error)
+	GetInProgressByStudentForUpdate(context.Context, uuid.UUID) (domain.StudentLeavingRequest, error)
+	ListByStudent(context.Context, uuid.UUID) ([]domain.StudentLeavingRequest, error)
+	// ListFinancialLinkIssues memeriksa konsistensi relasi keuangan pada schema v16.
+	ListFinancialLinkIssues(context.Context, uuid.UUID) ([]StudentLeavingFinancialLinkIssue, error)
+	Update(context.Context, domain.StudentLeavingRequest) error
+}
+
+type StudentLeavingFinancialLinkIssueType string
+
+const (
+	StudentLeavingSettlementStudentMismatch  StudentLeavingFinancialLinkIssueType = "SETTLEMENT_STUDENT_MISMATCH"
+	StudentLeavingSettlementTypeMismatch     StudentLeavingFinancialLinkIssueType = "SETTLEMENT_TYPE_MISMATCH"
+	StudentLeavingLateRequestStudentMismatch StudentLeavingFinancialLinkIssueType = "LATE_REQUEST_STUDENT_MISMATCH"
+	StudentLeavingLateRequestYearMismatch    StudentLeavingFinancialLinkIssueType = "LATE_REQUEST_YEAR_MISMATCH"
+)
+
+// StudentLeavingFinancialLinkIssue mengidentifikasi satu relasi keuangan yang tidak konsisten.
+type StudentLeavingFinancialLinkIssue struct {
+	Type     StudentLeavingFinancialLinkIssueType
+	RecordID uuid.UUID
+}
+
 type SettlementRepository interface {
 	Create(
 		ctx context.Context,
 		settlement domain.SavingsSettlement,
+	) error
+	// CreateForStudentLeavingRequest membuat settlement pindah yang tertaut pada schema v16.
+	CreateForStudentLeavingRequest(
+		ctx context.Context,
+		settlement domain.SavingsSettlement,
+		studentLeavingRequestID uuid.UUID,
 	) error
 	GetByID(
 		ctx context.Context,
@@ -270,6 +334,9 @@ type SettlementRepository interface {
 		savingsAccountID uuid.UUID,
 		options ListOptions,
 	) ([]domain.SavingsSettlement, error)
+	// ListByStudentLeavingRequest membaca settlement pindah yang terhubung
+	// melalui relasi schema v16; settlement akhir tahun tidak disertakan.
+	ListByStudentLeavingRequest(context.Context, uuid.UUID) ([]domain.SavingsSettlement, error)
 	Update(
 		ctx context.Context,
 		settlement domain.SavingsSettlement,
@@ -341,20 +408,59 @@ type ListTotalsRepository interface {
 	Transfers(ctx context.Context, studentID, yearID uuid.UUID, pendingOnly bool) (int, error)
 }
 
+// ReportingRepository menyediakan agregasi khusus reporting dalam satu
+// academic year. Actor scope wajib diterapkan pada query, bukan oleh pemanggil.
+type ReportingRepository interface {
+	Dashboard(ctx context.Context, yearID, userID uuid.UUID, role domain.UserRole) (DashboardMetrics, error)
+	StudentReport(ctx context.Context, yearID, userID uuid.UUID, role domain.UserRole) ([]StudentReportRow, error)
+	ClassReport(ctx context.Context, yearID, userID uuid.UUID, role domain.UserRole) ([]ClassReportRow, error)
+	SettlementReport(ctx context.Context, yearID, userID uuid.UUID, role domain.UserRole) ([]SettlementReportRow, error)
+}
+
+type DashboardMetrics struct {
+	Students, Classes, Accounts, SettledAccounts int
+	Balance, Deposits, Withdrawals               domain.Money
+}
+
+type StudentReportRow struct {
+	StudentID, ClassID, AccountID  uuid.UUID
+	StudentName, NIS, ClassName    string
+	AccountStatus                  domain.SavingsAccountStatus
+	Balance, Deposits, Withdrawals domain.Money
+}
+
+type ClassReportRow struct {
+	ClassID                        uuid.UUID
+	ClassName                      string
+	Students, Accounts, Settled    int
+	Balance, Deposits, Withdrawals domain.Money
+}
+
+type SettlementReportRow struct {
+	StudentID, ClassID, AccountID         uuid.UUID
+	StudentName, NIS, ClassName           string
+	AccountStatus                         domain.SavingsAccountStatus
+	SettlementState                       string
+	Balance, SettlementAmount, HandedOver domain.Money
+}
+
 type RepositorySet struct {
-	ListTotals              ListTotalsRepository
-	Users                   UserRepository
-	Sessions                SessionRepository
-	AcademicYears           AcademicYearRepository
-	Classes                 ClassRepository
-	Students                StudentRepository
-	StudentClassHistories   StudentClassHistoryRepository
-	TeacherClassAssignments TeacherClassAssignmentRepository
-	ClassTransferRequests   ClassTransferRequestRepository
-	SavingsAccounts         SavingsAccountRepository
-	Transactions            TransactionRepository
-	Settlements             SettlementRepository
-	AuditLogs               AuditRepository
+	ListTotals                 ListTotalsRepository
+	Reporting                  ReportingRepository
+	Users                      UserRepository
+	Sessions                   SessionRepository
+	AcademicYears              AcademicYearRepository
+	Classes                    ClassRepository
+	Students                   StudentRepository
+	StudentClassHistories      StudentClassHistoryRepository
+	TeacherClassAssignments    TeacherClassAssignmentRepository
+	ClassTransferRequests      ClassTransferRequestRepository
+	SavingsAccounts            SavingsAccountRepository
+	Transactions               TransactionRepository
+	LeavingTransactionRequests LeavingTransactionRequestRepository
+	StudentLeavingRequests     StudentLeavingRequestRepository
+	Settlements                SettlementRepository
+	AuditLogs                  AuditRepository
 }
 
 // UnitOfWork merepresentasikan satu transaction boundary.
@@ -376,4 +482,9 @@ type UnitOfWork interface {
 // Service hanya bergantung pada kontrak ini.
 type UnitOfWorkManager interface {
 	Begin(ctx context.Context) (UnitOfWork, error)
+}
+
+// ReadOnlySnapshotUnitOfWorkManager menyediakan pembacaan konsisten tanpa lock tulis.
+type ReadOnlySnapshotUnitOfWorkManager interface {
+	BeginReadOnlySnapshot(ctx context.Context) (UnitOfWork, error)
 }

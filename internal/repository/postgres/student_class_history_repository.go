@@ -320,3 +320,12 @@ func translateStudentClassHistoryError(operation string, err error) error {
 
 	return fmt.Errorf("%s: %w", operation, err)
 }
+
+func (r *StudentClassHistoryRepository) HasPlacementStartingAfter(ctx context.Context, studentID uuid.UUID, date time.Time) (bool, error) {
+	const query = `SELECT EXISTS (SELECT 1 FROM student_class_histories WHERE student_id=$1 AND lower(validity)>$2::date)`
+	var exists bool
+	if err := r.db.QueryRowContext(ctx, query, studentID, date).Scan(&exists); err != nil {
+		return false, fmt.Errorf("check later student placement: %w", err)
+	}
+	return exists, nil
+}

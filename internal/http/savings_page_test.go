@@ -90,7 +90,7 @@ func (*savingsPageClassesFake) List(context.Context, service.ListClassesInput) (
 
 func newSavingsPageHandlerForTest(t *testing.T, accounts service.SavingsAccountService, students service.StudentService, years service.AcademicYearService) *SavingsPageHandler {
 	t.Helper()
-	tmpl := template.Must(template.New("savings").Parse(`{{define "savings"}}{{.Heading}}|{{.AcademicYearID}}|{{.SettlementURL}}|{{.StudentName}}|{{.Balance}}{{range .Rows}}|{{.Name}}:{{.AccountID}}:{{.Balance}}:{{.CanCreate}}{{end}}{{range .Passbook}}|{{.Type}}:{{.Amount}}:{{.Balance}}{{end}}{{end}}`))
+	tmpl := template.Must(template.New("savings").Parse(`{{define "savings"}}{{.Heading}}|{{.AcademicYearID}}|{{.SettlementURL}}|{{.StudentName}}|{{.Balance}}|{{.CanTransact}}|{{.CanSettleLeaving}}:{{.LeavingSettlementURL}}{{range .Rows}}|{{.Name}}:{{.AccountID}}:{{.Balance}}:{{.CanCreate}}:{{.AccountStatus}}:{{.LeavingSettlementURL}}{{end}}{{range .Passbook}}|{{.Type}}:{{.Amount}}:{{.Balance}}{{end}}{{end}}`))
 	h, err := NewSavingsPageHandler(accounts, students, years, &savingsPageClassesFake{}, tmpl)
 	if err != nil {
 		t.Fatal(err)
@@ -98,12 +98,27 @@ func newSavingsPageHandlerForTest(t *testing.T, accounts service.SavingsAccountS
 	return h
 }
 
+func TestSavingsPageHidesLeavingSettlementWhenYearIsClosed(t *testing.T) {
+	yearID, studentID := uuid.New(), uuid.New()
+	year := &domain.AcademicYear{ID: yearID, Name: "2025/2026", Status: domain.AcademicYearClosed}
+	student := &domain.Student{ID: studentID, Name: "Ani", Status: domain.StudentLeft}
+	account := domain.SavingsAccount{ID: uuid.New(), StudentID: studentID, AcademicYearID: yearID, Status: domain.SavingsAccountOpen}
+	students := &savingsPageStudentsFake{students: []*domain.Student{student}, placements: map[uuid.UUID]service.StudentPlacement{studentID: {Class: "VII A"}}}
+	h := newSavingsPageHandlerForTest(t, &savingsPageAccountsFake{account: account}, students, &savingsPageYearsFake{years: []*domain.AcademicYear{year}, get: year})
+	req := requestWithActor(http.MethodGet, "/savings?academic_year_id="+yearID.String(), service.Actor{UserID: uuid.New(), Role: domain.RoleWaliKelas})
+	recorder := httptest.NewRecorder()
+	withCSRFForTest(http.HandlerFunc(h.List)).ServeHTTP(recorder, req)
+	if recorder.Code != http.StatusOK || !strings.Contains(recorder.Body.String(), "Penyelesaian tertunda (tahun ditutup)") || strings.Contains(recorder.Body.String(), "/leaving-settlement-preview") {
+		t.Fatalf("closed year leaving row status/body=%d/%s", recorder.Code, recorder.Body.String())
+	}
+}
+
 func TestSavingsPageListScopesRosterAndShowsAccountOrCreateAction(t *testing.T) {
 	yearID, studentID, missingID := uuid.New(), uuid.New(), uuid.New()
 	year := &domain.AcademicYear{ID: yearID, Name: "2026/2027", Status: domain.AcademicYearOpen}
 	account := domain.SavingsAccount{ID: uuid.New(), StudentID: studentID, AcademicYearID: yearID, Status: domain.SavingsAccountOpen}
 	accounts := &savingsPageAccountsFake{account: account, missingStudent: missingID}
-	students := &savingsPageStudentsFake{students: []*domain.Student{{ID: studentID, Name: "Ani", Status: domain.StudentActive}, {ID: missingID, Name: "Budi", Status: domain.StudentActive}}, placements: map[uuid.UUID]service.StudentPlacement{studentID: {Class: "VII A"}, missingID: {Class: "VII A"}}}
+	students := &savingsPageStudentsFake{students: []*domain.Student{{ID: studentID, Name: "Ani", Status: domain.StudentLeft}, {ID: missingID, Name: "Budi", Status: domain.StudentActive}}, placements: map[uuid.UUID]service.StudentPlacement{studentID: {Class: "VII A"}, missingID: {Class: "VII A"}}}
 	h := newSavingsPageHandlerForTest(t, accounts, students, &savingsPageYearsFake{years: []*domain.AcademicYear{year}, get: year})
 	req := requestWithActor(http.MethodGet, "/savings", service.Actor{UserID: uuid.New(), Role: domain.RoleWaliKelas})
 	recorder := httptest.NewRecorder()
@@ -115,7 +130,7 @@ func TestSavingsPageListScopesRosterAndShowsAccountOrCreateAction(t *testing.T) 
 		t.Fatalf("student query was not scoped by year/role: %+v", students.listInput)
 	}
 	body := recorder.Body.String()
-	if !strings.Contains(body, "Ani:") || !strings.Contains(body, "Rp 1.250.000") || !strings.Contains(body, "Budi::") || !strings.Contains(body, ":true") || !strings.Contains(body, "/savings?view=settlement&amp;academic_year_id="+yearID.String()) {
+	if !strings.Contains(body, "Ani:") || !strings.Contains(body, "Rp. 1.250.000") || !strings.Contains(body, "Budi::") || !strings.Contains(body, ":true") || !strings.Contains(body, "/leaving-settlement-preview") || !strings.Contains(body, "/savings?view=settlement&amp;academic_year_id="+yearID.String()) {
 		t.Fatalf("list did not render account and eligible create state: %s", body)
 	}
 }
@@ -136,15 +151,33 @@ func TestSavingsPageListAllowsAdmin(t *testing.T) {
 	if recorder.Code != http.StatusOK {
 		t.Fatalf("Admin savings page status=%d body=%s", recorder.Code, recorder.Body.String())
 	}
-	if students.listInput.Actor.Role != domain.RoleAdmin || students.listInput.IncludePlacement || students.listInput.AcademicYearID != uuid.Nil {
-		t.Fatalf("Admin student query was not made without teacher placement scope: %+v", students.listInput)
+	if students.listInput.Actor.Role != domain.RoleAdmin || !students.listInput.IncludePlacement || students.listInput.AcademicYearID != yearID {
+		t.Fatalf("Admin roster query was not scoped to the selected year's placement: %+v", students.listInput)
+	}
+}
+
+func TestSavingsPageAdminCanFilterAccountHoldersByHistoricalClass(t *testing.T) {
+	yearID, classID, studentID := uuid.New(), uuid.New(), uuid.New()
+	year := &domain.AcademicYear{ID: yearID, Name: "2024/2025", Status: domain.AcademicYearClosed}
+	student := &domain.Student{ID: studentID, Name: "Ani", Status: domain.StudentLeft}
+	students := &savingsPageStudentsFake{students: []*domain.Student{student}, placements: map[uuid.UUID]service.StudentPlacement{studentID: {Class: "IV A", ClassID: classID}}}
+	accounts := &savingsPageAccountsFake{account: domain.SavingsAccount{ID: uuid.New(), StudentID: studentID, AcademicYearID: yearID, Status: domain.SavingsAccountSettled}}
+	h := newSavingsPageHandlerForTest(t, accounts, students, &savingsPageYearsFake{years: []*domain.AcademicYear{year}, get: year})
+	req := requestWithActor(http.MethodGet, "/savings?academic_year_id="+yearID.String()+"&class_id="+classID.String()+"&account_only=1", service.Actor{UserID: uuid.New(), Role: domain.RoleAdmin})
+	recorder := httptest.NewRecorder()
+	withCSRFForTest(http.HandlerFunc(h.List)).ServeHTTP(recorder, req)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("Admin historical savings page status=%d body=%s", recorder.Code, recorder.Body.String())
+	}
+	if students.listInput.AcademicYearID != yearID || students.listInput.ClassID != classID || !students.listInput.IncludePlacement || !strings.Contains(recorder.Body.String(), "Ani:") {
+		t.Fatalf("historical class/account filters were not applied, query=%+v body=%s", students.listInput, recorder.Body.String())
 	}
 }
 
 func TestSavingsPageCreateAndDetail(t *testing.T) {
 	studentID, yearID := uuid.New(), uuid.New()
 	year := &domain.AcademicYear{ID: yearID, Name: "2026/2027", Status: domain.AcademicYearOpen}
-	student := &domain.Student{ID: studentID, Name: "Ani"}
+	student := &domain.Student{ID: studentID, Name: "Ani", Status: domain.StudentLeft}
 	account := domain.SavingsAccount{ID: uuid.New(), StudentID: studentID, AcademicYearID: yearID, Status: domain.SavingsAccountOpen}
 	accounts := &savingsPageAccountsFake{account: account}
 	h := newSavingsPageHandlerForTest(t, accounts, &savingsPageStudentsFake{getStudent: student}, &savingsPageYearsFake{get: year})
@@ -163,8 +196,23 @@ func TestSavingsPageCreateAndDetail(t *testing.T) {
 	detailReq.SetPathValue("id", account.ID.String())
 	detailRecorder := httptest.NewRecorder()
 	withCSRFForTest(http.HandlerFunc(h.Detail)).ServeHTTP(detailRecorder, detailReq)
-	if detailRecorder.Code != http.StatusOK || accounts.getInput.SavingsAccountID != account.ID || accounts.passbookInput.SavingsAccountID != account.ID || !strings.Contains(detailRecorder.Body.String(), "Ani") || !strings.Contains(detailRecorder.Body.String(), "Setor:Rp 1.250.000:Rp 1.250.000") {
+	if detailRecorder.Code != http.StatusOK || accounts.getInput.SavingsAccountID != account.ID || accounts.passbookInput.SavingsAccountID != account.ID || !strings.Contains(detailRecorder.Body.String(), "Ani") || !strings.Contains(detailRecorder.Body.String(), "Setor:Rp. 1.250.000:Rp. 1.250.000") || !strings.Contains(detailRecorder.Body.String(), "/leaving-settlement-preview") {
 		t.Fatalf("Detail status/body=%d/%s", detailRecorder.Code, detailRecorder.Body.String())
+	}
+}
+
+func TestSavingsPageAdminDetailIsReadOnly(t *testing.T) {
+	studentID, yearID := uuid.New(), uuid.New()
+	year := &domain.AcademicYear{ID: yearID, Name: "2026/2027", Status: domain.AcademicYearOpen}
+	student := &domain.Student{ID: studentID, Name: "Ani", Status: domain.StudentActive}
+	account := domain.SavingsAccount{ID: uuid.New(), StudentID: studentID, AcademicYearID: yearID, Status: domain.SavingsAccountOpen}
+	h := newSavingsPageHandlerForTest(t, &savingsPageAccountsFake{account: account}, &savingsPageStudentsFake{getStudent: student}, &savingsPageYearsFake{get: year})
+	req := requestWithActor(http.MethodGet, "/savings/"+account.ID.String(), service.Actor{UserID: uuid.New(), Role: domain.RoleAdmin})
+	req.SetPathValue("id", account.ID.String())
+	recorder := httptest.NewRecorder()
+	withCSRFForTest(http.HandlerFunc(h.Detail)).ServeHTTP(recorder, req)
+	if recorder.Code != http.StatusOK || !strings.Contains(recorder.Body.String(), "|false|") {
+		t.Fatalf("Admin detail should be read-only, status/body=%d/%s", recorder.Code, recorder.Body.String())
 	}
 }
 

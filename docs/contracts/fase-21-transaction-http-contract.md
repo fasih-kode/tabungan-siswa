@@ -14,6 +14,8 @@ Product owner approval: 2026-10-20. The three decisions in §11 were approved:
 the scope and role matrix, effective-date chronological balance semantics for
 backdated transactions, and FASE 22 ownership of transaction corrections.
 
+> Interaksi transaksi dengan proses pindah sekolah diperbarui oleh [amendment penyelesaian keuangan sebelum pengesahan pindah](student-transfer-financial-clearance-amendment.md). Kontrak ini tetap mengatur transaksi rutin dan otorisasi; amendment tersebut belum mengubah status `ACTIVE` selama proses pindah berlangsung dan belum diimplementasikan.
+
 ## 1. Goal and boundary
 
 Deliver the first usable financial transaction vertical slice for each savings

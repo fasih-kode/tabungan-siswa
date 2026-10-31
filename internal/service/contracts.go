@@ -742,6 +742,46 @@ type TransactionService interface {
 	Cancel(ctx context.Context, input CancelTransactionInput) (CancelTransactionOutput, error)
 }
 
+type LeavingTransactionRequestService interface {
+	Create(ctx context.Context, input CreateLeavingTransactionRequestInput) (LeavingTransactionRequestOutput, error)
+	List(ctx context.Context, input ListLeavingTransactionRequestsInput) (ListLeavingTransactionRequestsOutput, error)
+	Decide(ctx context.Context, input DecideLeavingTransactionRequestInput) error
+	Execute(ctx context.Context, input ExecuteLeavingTransactionRequestInput) (domain.Transaction, error)
+}
+
+type CreateLeavingTransactionRequestInput struct {
+	Actor                     Actor
+	SavingsAccountID          uuid.UUID
+	Type                      domain.TransactionType
+	Amount                    domain.Money
+	TransactionDate           time.Time
+	Reason, EvidenceReference string
+}
+type ListLeavingTransactionRequestsInput struct {
+	Actor          Actor
+	AcademicYearID uuid.UUID
+	Status         domain.LeavingTransactionRequestStatus
+}
+type DecideLeavingTransactionRequestInput struct {
+	Actor     Actor
+	RequestID uuid.UUID
+	Approve   bool
+	Reason    string
+}
+type ExecuteLeavingTransactionRequestInput struct {
+	Actor     Actor
+	RequestID uuid.UUID
+}
+type LeavingTransactionRequestOutput struct {
+	Request domain.LeavingTransactionRequest
+	Account domain.SavingsAccount
+	Student domain.Student
+	Year    domain.AcademicYear
+}
+type ListLeavingTransactionRequestsOutput struct {
+	Rows []LeavingTransactionRequestOutput
+}
+
 type DepositInput struct {
 	Actor            Actor
 	SavingsAccountID uuid.UUID
@@ -820,9 +860,37 @@ type SettlementService interface {
 	RequestReopen(ctx context.Context, input RequestSettlementReopenInput) (RequestSettlementReopenOutput, error)
 	DecideReopen(ctx context.Context, input DecideSettlementReopenInput) (DecideSettlementReopenOutput, error)
 	SettleStudentLeaving(ctx context.Context, input SettleStudentLeavingInput) (SettleStudentLeavingOutput, error)
+	PreviewStudentLeaving(ctx context.Context, input PreviewStudentLeavingInput) (PreviewYearEndOutput, error)
 	Get(ctx context.Context, input GetSettlementInput) (GetSettlementOutput, error)
 	List(ctx context.Context, input ListSettlementsInput) (ListSettlementsOutput, error)
 	Reopen(ctx context.Context, input ReopenSettlementInput) (ReopenSettlementOutput, error)
+}
+
+type ReportingService interface {
+	Dashboard(ctx context.Context, actor Actor) (DashboardOutput, error)
+	StudentReport(ctx context.Context, actor Actor) (StudentReportOutput, error)
+	ClassReport(ctx context.Context, actor Actor) (ClassReportOutput, error)
+	AcademicYearReport(ctx context.Context, actor Actor) (DashboardOutput, error)
+	SettlementReport(ctx context.Context, actor Actor) (SettlementReportOutput, error)
+}
+
+type DashboardOutput struct {
+	AcademicYear *domain.AcademicYear
+	Metrics      repository.DashboardMetrics
+	Recent       []domain.Transaction
+}
+
+type StudentReportOutput struct {
+	AcademicYear *domain.AcademicYear
+	Rows         []repository.StudentReportRow
+}
+type ClassReportOutput struct {
+	AcademicYear *domain.AcademicYear
+	Rows         []repository.ClassReportRow
+}
+type SettlementReportOutput struct {
+	AcademicYear *domain.AcademicYear
+	Rows         []repository.SettlementReportRow
 }
 
 type SettleYearEndInput struct {
@@ -876,6 +944,7 @@ type YearSettlementReadinessOutput struct {
 	Rows                                                                                     []repository.SettlementReadinessAccount
 	Total, Outstanding, Settled, AwaitingHandover, Completed, Unattributed, PendingTransfers int
 	Ready                                                                                    bool
+	PendingLateTransactions                                                                  bool
 }
 
 type SettleYearEndOutput struct {
@@ -884,6 +953,12 @@ type SettleYearEndOutput struct {
 }
 
 type SettleStudentLeavingInput struct {
+	Actor            Actor
+	SavingsAccountID uuid.UUID
+	ExpectedBalance  domain.Money
+}
+
+type PreviewStudentLeavingInput struct {
 	Actor            Actor
 	SavingsAccountID uuid.UUID
 }

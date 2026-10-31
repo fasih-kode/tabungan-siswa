@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none">
+  <defs>
+    <linearGradient id="brand" x1="5" y1="4" x2="59" y2="61" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#5268FF"/>
+      <stop offset="1" stop-color="#4036C9"/>
+    </linearGradient>
+    <linearGradient id="coin" x1="37" y1="7" x2="55" y2="27" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFE28A"/>
+      <stop offset="1" stop-color="#FFB83F"/>
+    </linearGradient>
+  </defs>
+  <rect x="2" y="2" width="60" height="60" rx="19" fill="url(#brand)"/>
+  <path d="M13.5 25.5h10.2c3.6 0 6.3 1.1 8.3 3.1v20.8c-2-2-4.7-3.1-8.3-3.1H13.5V25.5Z" stroke="#fff" stroke-width="3.2" stroke-linejoin="round"/>
+  <path d="M50.5 25.5H40.3c-3.6 0-6.3 1.1-8.3 3.1v20.8c2-2 4.7-3.1 8.3-3.1h10.2V25.5Z" stroke="#fff" stroke-width="3.2" stroke-linejoin="round"/>
+  <path d="M18.5 32h7M18.5 38h7M38.5 32h4.2" stroke="#DCE4FF" stroke-width="2.4" stroke-linecap="round"/>
+  <circle cx="46" cy="17" r="10" fill="url(#coin)" stroke="#4036C9" stroke-width="2.4"/>
+  <text x="46" y="20" fill="#76501A" font-family="Arial, sans-serif" font-size="8.5" font-weight="700" text-anchor="middle">Rp</text>
+</svg>

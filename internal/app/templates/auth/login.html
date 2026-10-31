@@ -3,8 +3,9 @@
     <div class="flex min-h-[calc(100vh-5rem)] items-center justify-center">
         <div class="w-full max-w-md">
             <div class="mb-8 text-center">
-                <a href="/login" class="inline-flex items-center text-2xl font-semibold text-gray-800 dark:text-white">
-                    Tabungan Siswa
+                <a href="/login" class="inline-flex items-center justify-center gap-3 text-2xl font-semibold text-gray-800 dark:text-white">
+                    <img class="h-14 w-14" src="/static/img/tabungan-siswa.svg" alt="" width="56" height="56">
+                    <span>Tabungan Siswa</span>
                 </a>
 
                 <h1 class="mt-6 text-2xl font-semibold text-gray-800 dark:text-white">
@@ -22,7 +23,7 @@
 
                     <div>
                         <label for="username" class="form-label">
-                            Username
+                            Nama pengguna
                         </label>
 
                         <input
@@ -37,7 +38,7 @@
 
                     <div>
                         <label for="password" class="form-label">
-                            Password
+                            Kata sandi
                         </label>
 
                         <input
@@ -52,8 +53,8 @@
 
                     <button
                         type="submit"
-                        class="form-button-primary w-full"
-                    >
+                        class="form-button-primary w-full inline-flex items-center gap-2"
+                    >{{template "button-leading-icon" "confirm"}}
                         Masuk
                     </button>
                 </form>

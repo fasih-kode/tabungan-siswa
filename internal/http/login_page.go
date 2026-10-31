@@ -32,21 +32,21 @@ func (h *LoginPageHandler) Get(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		http.Error(
 			w,
-			http.StatusText(http.StatusInternalServerError),
+			localizedStatusMessage(http.StatusInternalServerError),
 			http.StatusInternalServerError,
 		)
 		return
 	}
 
 	viewModel := LoginPageViewModel{
-		Title:     "Login",
+		Title:     "Masuk",
 		CSRFToken: csrfToken,
 	}
 
 	if err := h.templates.ExecuteTemplate(w, "auth", viewModel); err != nil {
 		http.Error(
 			w,
-			http.StatusText(http.StatusInternalServerError),
+			localizedStatusMessage(http.StatusInternalServerError),
 			http.StatusInternalServerError,
 		)
 	}

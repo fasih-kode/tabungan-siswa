@@ -47,3 +47,14 @@ FASE 23 menetapkan pratinjau dari ledger aktif penuh, settlement per akun, konfi
 ## Aturan yang belum dikonfirmasi
 
 Kebutuhan yang tidak ditemukan di kontrak atau implementasi yang dapat diverifikasi tidak ditambahkan di sini. Minta keputusan pemilik produk sebelum menerapkannya.
+
+## Ringkasan dan laporan FASE 25
+
+Keputusan FASE 25 yang disetujui owner: dashboard/laporan mengikuti satu tahun yang belum `CLOSED` (`OPEN` atau `CLOSING`); setor/tarik menjumlah nominal transaksi `ACTIVE`; laporan tersedia sebagai tabel web. Lihat [kontrak FASE 25](contracts/fase-25-dashboard-reporting-contract.md) untuk scope role, konteks penempatan, dan definisi report. Angka saldo tetap mengikuti ledger dan otorisasi finansial yang telah dikunci.
+
+- Pindah sekolah dan penyelesaian tabungan adalah dua tahap. Admin memulai proses saat siswa belum `LEFT`; Wali yang berwenang menyelesaikan rekening relevan dan mengonfirmasi penyerahan bila saldo positif; backend memvalidasi kewajiban sebelum Admin mengesahkan pindah, mengubah status menjadi `LEFT`, dan menutup riwayat placement. Siswa tanpa rekening tidak dipaksa membuat rekening. Detail terbaru ada pada [amendment penyelesaian keuangan sebelum pengesahan pindah](contracts/student-transfer-financial-clearance-amendment.md), yang menggantikan urutan lama.
+- Hanya Wali Kelas yang dapat mencatat setoran/penarikan. Transaksi baru mensyaratkan siswa `ACTIVE`; siswa `LEFT` atau `GRADUATED` tidak dapat menerima transaksi baru. Koreksi transaksi yang sudah ada tetap mengikuti scope, alasan, status rekening/tahun, dan audit FASE 22.
+- Rekening siswa `GRADUATED` yang masih terbuka diselesaikan pada proses tutup tahun ajaran reguler. Admin tetap tidak melakukan mutasi keuangan; Wali tetap menangani transaksi, settlement, dan penyerahan sesuai scope.
+- Untuk uang yang benar-benar terjadi sebelum pindah tetapi terlewat dicatat, Wali mengajukan permintaan dengan alasan dan referensi bukti; Admin memutuskan dengan alasan; hanya Wali mencatat rincian yang disetujui, satu kali. Dalam alur pindah baru, permintaan harus terkait proses aktif, memakai tanggal kejadian efektif pindah, dan diselesaikan sebelum settlement rekening. Permintaan `PENDING`/`APPROVED` menghambat settlement/finalisasi. Kontrol dan kompatibilitas histori diatur oleh [amendment transaksi terlambat](contracts/late-transaction-request-amendment.md) bersama amendment pindah terbaru.
+
+Sumber keputusan: [amendment permintaan transaksi terlewat](contracts/late-transaction-request-amendment.md).
