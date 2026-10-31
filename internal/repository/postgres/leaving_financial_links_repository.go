@@ -86,12 +86,7 @@ func (r *LeavingTransactionRequestRepository) ListByStudentLeavingRequest(
 			late_request.decision_reason,
 			late_request.completed_at
 		FROM leaving_transaction_requests AS late_request
-		JOIN savings_accounts AS account
-		  ON account.id = late_request.savings_account_id
-		JOIN student_leaving_requests AS leaving_request
-		  ON leaving_request.id = late_request.student_leaving_request_id
-		 AND leaving_request.student_id = account.student_id
-		WHERE leaving_request.id = $1
+		WHERE late_request.student_leaving_request_id = $1
 		ORDER BY late_request.requested_at DESC, late_request.id DESC
 	`
 

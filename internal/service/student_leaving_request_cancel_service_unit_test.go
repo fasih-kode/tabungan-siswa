@@ -99,6 +99,19 @@ type cancelUnitSettlementRepository struct {
 	calls       *[]string
 }
 
+type cancelUnitLateRequestRepository struct {
+	repository.LeavingTransactionRequestRepository
+	requests []domain.LeavingTransactionRequest
+	calls    *[]string
+}
+
+func (r cancelUnitLateRequestRepository) ListByStudentLeavingRequest(context.Context, uuid.UUID) ([]domain.LeavingTransactionRequest, error) {
+	if r.calls != nil {
+		*r.calls = append(*r.calls, "late-requests")
+	}
+	return r.requests, nil
+}
+
 func (r cancelUnitSettlementRepository) ListByStudentLeavingRequest(context.Context, uuid.UUID) ([]domain.SavingsSettlement, error) {
 	*r.calls = append(*r.calls, "settlements")
 	return r.settlements, nil
@@ -137,7 +150,7 @@ func TestStudentLeavingCancelUnitLockOrderAndAudit(t *testing.T) {
 		t.Fatalf("Cancel() output=%+v", output)
 	}
 	orderedYears := studentLeavingYearIDs(f.request.AcademicYearID, f.accounts.accounts)
-	want := []string{"request-pre-read", "accounts-list", "year-lock:" + orderedYears[0].String(), "year-lock:" + orderedYears[1].String(), "accounts-lock", "student-lock", "request-lock", "accounts-list", "integrity", "settlements", "request-update", "audit"}
+	want := []string{"request-pre-read", "accounts-list", "year-lock:" + orderedYears[0].String(), "year-lock:" + orderedYears[1].String(), "accounts-lock", "student-lock", "request-lock", "accounts-list", "late-requests", "integrity", "settlements", "request-update", "audit"}
 	if !reflect.DeepEqual(f.calls, want) {
 		t.Fatalf("call order=%v, want %v", f.calls, want)
 	}
@@ -171,6 +184,42 @@ func TestStudentLeavingCancelUnitRejectsUnauthorizedActorBeforeTransaction(t *te
 	if f.manager.beginCount != 0 {
 		t.Fatalf("UOW Begin calls=%d, want 0", f.manager.beginCount)
 	}
+}
+
+func TestStudentLeavingCancellationLateRequestValidation(t *testing.T) {
+	studentID, yearID, accountID, processID := uuid.New(), uuid.New(), uuid.New(), uuid.New()
+	process := domain.StudentLeavingRequest{ID: processID, StudentID: studentID}
+	account := domain.SavingsAccount{ID: accountID, StudentID: studentID, AcademicYearID: yearID}
+	validRequest := domain.LeavingTransactionRequest{ID: uuid.New(), SavingsAccountID: accountID, AcademicYearID: yearID}
+	cases := []struct {
+		name     string
+		request  domain.LeavingTransactionRequest
+		wantFail bool
+	}{
+		{name: "PENDING memblokir", request: withLateRequestStatus(validRequest, domain.LeavingTransactionPending), wantFail: true},
+		{name: "APPROVED memblokir", request: withLateRequestStatus(validRequest, domain.LeavingTransactionApproved), wantFail: true},
+		{name: "REJECTED terminal", request: withLateRequestStatus(validRequest, domain.LeavingTransactionRejected)},
+		{name: "COMPLETED terminal", request: withLateRequestStatus(validRequest, domain.LeavingTransactionCompleted)},
+		{name: "rekening siswa lain ditolak", request: func() domain.LeavingTransactionRequest { x := validRequest; x.SavingsAccountID = uuid.New(); return x }(), wantFail: true},
+		{name: "tahun rekening berbeda ditolak", request: func() domain.LeavingTransactionRequest { x := validRequest; x.AcademicYearID = uuid.New(); return x }(), wantFail: true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			repo := cancelUnitLateRequestRepository{requests: []domain.LeavingTransactionRequest{tc.request}}
+			err := validateStudentLeavingCancellationLateRequests(context.Background(), repository.RepositorySet{LeavingTransactionRequests: repo}, process, []domain.SavingsAccount{account})
+			if tc.wantFail && !errors.Is(err, domain.ErrInvalidTransition) {
+				t.Fatalf("validation error=%v, want ErrInvalidTransition", err)
+			}
+			if !tc.wantFail && err != nil {
+				t.Fatalf("validation error=%v, want nil", err)
+			}
+		})
+	}
+}
+
+func withLateRequestStatus(request domain.LeavingTransactionRequest, status domain.LeavingTransactionRequestStatus) domain.LeavingTransactionRequest {
+	request.Status = status
+	return request
 }
 
 func TestStudentLeavingCancellationHandoverValidation(t *testing.T) {
@@ -239,12 +288,13 @@ func newCancelUnitFixture(t *testing.T) *cancelUnitFixture {
 	f.accounts = savingsRepo
 	f.audits = &cancelUnitAuditRepository{calls: &f.calls}
 	repos := repository.RepositorySet{
-		AcademicYears:          cancelUnitAcademicYearRepository{years: map[uuid.UUID]domain.AcademicYear{yearID: year, otherYearID: otherYear}, calls: &f.calls},
-		SavingsAccounts:        savingsRepo,
-		Students:               cancelUnitStudentRepository{student: domain.Student{ID: studentID, Status: domain.StudentActive}, calls: &f.calls},
-		StudentLeavingRequests: requestRepo,
-		Settlements:            cancelUnitSettlementRepository{calls: &f.calls},
-		AuditLogs:              f.audits,
+		AcademicYears:              cancelUnitAcademicYearRepository{years: map[uuid.UUID]domain.AcademicYear{yearID: year, otherYearID: otherYear}, calls: &f.calls},
+		SavingsAccounts:            savingsRepo,
+		Students:                   cancelUnitStudentRepository{student: domain.Student{ID: studentID, Status: domain.StudentActive}, calls: &f.calls},
+		StudentLeavingRequests:     requestRepo,
+		LeavingTransactionRequests: cancelUnitLateRequestRepository{calls: &f.calls},
+		Settlements:                cancelUnitSettlementRepository{calls: &f.calls},
+		AuditLogs:                  f.audits,
 	}
 	// Pembacaan ulang setelah lock siswa harus menunjukkan himpunan yang sama.
 	manager := &studentServiceFakeUnitOfWorkManager{}

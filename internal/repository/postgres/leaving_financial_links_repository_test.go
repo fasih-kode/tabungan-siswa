@@ -231,6 +231,17 @@ func TestLeavingFinancialLinksRepositoryV16(t *testing.T) {
 	if got, want := lateRequestIDsOf(gotFirstRequests), []uuid.UUID{lateLatest.ID, lateFirst.ID}; !equalUUIDs(got, want) {
 		t.Fatalf("first process late requests = %v, want linked rows in newest-first order %v", got, want)
 	}
+	linkedRequestID, err := lateRequestRepo.GetStudentLeavingRequestID(ctx, lateFirst.ID)
+	if err != nil || linkedRequestID == nil || *linkedRequestID != firstLeaving.ID {
+		t.Fatalf("GetStudentLeavingRequestID(linked) = %v, %v; want %s", linkedRequestID, err, firstLeaving.ID)
+	}
+	historicalRequestID, err := lateRequestRepo.GetStudentLeavingRequestID(ctx, lateOld.ID)
+	if err != nil || historicalRequestID != nil {
+		t.Fatalf("GetStudentLeavingRequestID(historical) = %v, %v; want nil link", historicalRequestID, err)
+	}
+	if _, err := lateRequestRepo.GetStudentLeavingRequestID(ctx, uuid.New()); !errors.Is(err, repository.ErrNotFound) {
+		t.Fatalf("GetStudentLeavingRequestID(missing) error = %v; want ErrNotFound", err)
+	}
 	for _, request := range gotFirstRequests {
 		if request.DecidedBy != nil || request.DecidedAt != nil || request.CompletedAt != nil {
 			t.Fatalf("pending linked request nullable decision metadata = %#v; want nil", request)
@@ -296,6 +307,101 @@ func TestLeavingFinancialLinksRepositoryEmptyAndMissingProcessV16(t *testing.T) 
 	requests, err := postgres.NewLeavingTransactionRequestRepository(db).ListByStudentLeavingRequest(ctx, leaving.ID)
 	if err != nil || requests == nil || len(requests) != 0 {
 		t.Fatalf("ListByStudentLeavingRequest(empty late requests) = %#v, %v; want non-nil empty slice", requests, err)
+	}
+}
+
+func TestGetStudentLeavingRequestIDSupportsSchemaV15(t *testing.T) {
+	db := openTestDatabase(t)
+	ctx := context.Background()
+	var version int
+	var dirty bool
+	if err := db.QueryRowContext(ctx, `SELECT version, dirty FROM schema_migrations LIMIT 1`).Scan(&version, &dirty); err != nil {
+		t.Fatal(err)
+	}
+	if version != 15 || dirty {
+		t.Skipf("requires clean schema v15; found version=%d dirty=%t", version, dirty)
+	}
+
+	fixture := newSettlementFixture(t, db)
+	lateRequest, err := domain.NewLeavingTransactionRequest(
+		fixture.account.ID, fixture.year.ID, domain.TransactionDeposit, 1_000,
+		fixture.year.StartDate, "Request historis", "MQ08-V15-"+uuid.NewString(), fixture.user.ID,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	repo := postgres.NewLeavingTransactionRequestRepository(db)
+	if err := repo.CreateLeavingTransactionRequest(ctx, lateRequest); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if _, err := db.ExecContext(ctx, `DELETE FROM leaving_transaction_requests WHERE id=$1`, lateRequest.ID); err != nil {
+			t.Errorf("delete historical late request fixture: %v", err)
+		}
+	})
+
+	linkedID, err := repo.GetStudentLeavingRequestID(ctx, lateRequest.ID)
+	if err != nil || linkedID != nil {
+		t.Fatalf("GetStudentLeavingRequestID(v15) = %v, %v; want nil relation", linkedID, err)
+	}
+}
+
+func TestListLateRequestsForStudentLeavingDoesNotHideStudentMismatch(t *testing.T) {
+	db := openTestDatabase(t)
+	requireSchemaVersion17(t, db)
+	ctx := context.Background()
+	first := newSettlementFixture(t, db)
+	secondUser := newTestUser(t)
+	if err := postgres.NewUserRepository(db).Create(ctx, secondUser); err != nil {
+		t.Fatal(err)
+	}
+	secondStudent := newTestStudentWithUserID(t, "Siswa relasi tidak konsisten", secondUser.ID)
+	if err := postgres.NewStudentRepository(db).Create(ctx, secondStudent); err != nil {
+		t.Fatal(err)
+	}
+	secondAccount, err := domain.NewSavingsAccount(secondStudent.ID, first.year.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := postgres.NewSavingsAccountRepository(db).Create(ctx, secondAccount); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if _, err := db.ExecContext(ctx, `DELETE FROM savings_accounts WHERE id=$1`, secondAccount.ID); err != nil {
+			t.Errorf("delete second account fixture: %v", err)
+		}
+		if _, err := db.ExecContext(ctx, `DELETE FROM students WHERE id=$1`, secondStudent.ID); err != nil {
+			t.Errorf("delete second student fixture: %v", err)
+		}
+		if _, err := db.ExecContext(ctx, `DELETE FROM users WHERE id=$1`, secondUser.ID); err != nil {
+			t.Errorf("delete second user fixture: %v", err)
+		}
+	})
+	leaving := newFinancialLinksLeavingRequest(t, postgres.NewStudentLeavingRequestRepository(db), first.student.ID, first.year.ID, first.user.ID)
+	lateRequest, err := domain.NewLeavingTransactionRequest(
+		secondAccount.ID, first.year.ID, domain.TransactionDeposit, 1_000,
+		first.year.StartDate, "Permintaan dengan relasi tidak konsisten", "MQ08-MISMATCH-"+uuid.NewString(), secondUser.ID,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	lateRepo := postgres.NewLeavingTransactionRequestRepository(db)
+	if err := lateRepo.CreateLeavingTransactionRequest(ctx, lateRequest); err != nil {
+		t.Fatal(err)
+	}
+	linkFinancialRow(t, db, "leaving_transaction_requests", lateRequest.ID, leaving.ID)
+	t.Cleanup(func() {
+		if _, err := db.ExecContext(ctx, `DELETE FROM leaving_transaction_requests WHERE id=$1`, lateRequest.ID); err != nil {
+			t.Errorf("delete mismatched request fixture: %v", err)
+		}
+		if _, err := db.ExecContext(ctx, `DELETE FROM student_leaving_requests WHERE id=$1`, leaving.ID); err != nil {
+			t.Errorf("delete leaving request fixture: %v", err)
+		}
+	})
+
+	rows, err := lateRepo.ListByStudentLeavingRequest(ctx, leaving.ID)
+	if err != nil || len(rows) != 1 || rows[0].ID != lateRequest.ID {
+		t.Fatalf("ListByStudentLeavingRequest() = %#v, %v; must expose mismatched linked row for caller validation", rows, err)
 	}
 }
 

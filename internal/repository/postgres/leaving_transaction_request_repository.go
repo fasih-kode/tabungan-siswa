@@ -171,6 +171,32 @@ func (r *LeavingTransactionRequestRepository) GetLeavingTransactionRequest(
 	)
 }
 
+// GetStudentLeavingRequestID membaca relasi bila tersedia tanpa mengubah kontrak schema v15.
+func (r *LeavingTransactionRequestRepository) GetStudentLeavingRequestID(
+	ctx context.Context,
+	id uuid.UUID,
+) (*uuid.UUID, error) {
+	var raw sql.NullString
+	err := r.db.QueryRowContext(
+		ctx,
+		`SELECT to_jsonb(request)->>'student_leaving_request_id'
+		 FROM leaving_transaction_requests AS request
+		 WHERE request.id = $1`,
+		id,
+	).Scan(&raw)
+	if err != nil {
+		return nil, translateSettlementRepositoryError(err)
+	}
+	if !raw.Valid {
+		return nil, nil
+	}
+	requestID, err := uuid.Parse(raw.String)
+	if err != nil {
+		return nil, fmt.Errorf("parse linked student leaving request id: %w", err)
+	}
+	return &requestID, nil
+}
+
 func (r *LeavingTransactionRequestRepository) GetLeavingTransactionRequestForUpdate(
 	ctx context.Context,
 	id uuid.UUID,

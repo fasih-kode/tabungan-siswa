@@ -50,7 +50,8 @@ func (s *studentLeavingRequestService) Cancel(
 	}()
 	repos := uow.Repositories()
 	if repos.AcademicYears == nil || repos.SavingsAccounts == nil || repos.Students == nil ||
-		repos.StudentLeavingRequests == nil || repos.Settlements == nil || repos.AuditLogs == nil {
+		repos.StudentLeavingRequests == nil || repos.LeavingTransactionRequests == nil ||
+		repos.Settlements == nil || repos.AuditLogs == nil {
 		return CancelStudentLeavingRequestOutput{}, ErrInvalidDependency
 	}
 
@@ -98,6 +99,9 @@ func (s *studentLeavingRequestService) Cancel(
 	}
 	if !sameStudentLeavingAccounts(lockedAccounts, orderedStudentLeavingAccounts(currentAccounts)) {
 		return CancelStudentLeavingRequestOutput{}, repository.ErrConflict
+	}
+	if err := validateStudentLeavingCancellationLateRequests(ctx, repos, request, lockedAccounts); err != nil {
+		return CancelStudentLeavingRequestOutput{}, err
 	}
 
 	if err := validateStudentLeavingCancellationFinance(ctx, repos, request, lockedAccounts); err != nil {
@@ -148,6 +152,32 @@ func (s *studentLeavingRequestService) Cancel(
 	}
 	committed = true
 	return CancelStudentLeavingRequestOutput{Request: &request}, nil
+}
+
+func validateStudentLeavingCancellationLateRequests(
+	ctx context.Context,
+	repos repository.RepositorySet,
+	request domain.StudentLeavingRequest,
+	accounts []domain.SavingsAccount,
+) error {
+	requests, err := repos.LeavingTransactionRequests.ListByStudentLeavingRequest(ctx, request.ID)
+	if err != nil {
+		return err
+	}
+	accountsByID := make(map[uuid.UUID]domain.SavingsAccount, len(accounts))
+	for _, account := range accounts {
+		accountsByID[account.ID] = account
+	}
+	for _, lateRequest := range requests {
+		account, ok := accountsByID[lateRequest.SavingsAccountID]
+		if !ok || account.StudentID != request.StudentID || account.AcademicYearID != lateRequest.AcademicYearID {
+			return domain.ErrInvalidTransition
+		}
+		if lateRequest.Status == domain.LeavingTransactionPending || lateRequest.Status == domain.LeavingTransactionApproved {
+			return domain.ErrInvalidTransition
+		}
+	}
+	return nil
 }
 
 func orderedStudentLeavingAccounts(accounts []domain.SavingsAccount) []domain.SavingsAccount {

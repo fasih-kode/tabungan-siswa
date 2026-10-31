@@ -259,6 +259,8 @@ type TransactionRepository interface {
 
 type LeavingTransactionRequestRepository interface {
 	CreateLeavingTransactionRequest(context.Context, domain.LeavingTransactionRequest) error
+	// GetStudentLeavingRequestID mengembalikan nil bila tidak ada tautan, termasuk pada schema v15.
+	GetStudentLeavingRequestID(context.Context, uuid.UUID) (*uuid.UUID, error)
 	// CreateLeavingTransactionRequestForStudentLeaving hanya tersedia pada schema v16+.
 	// Metode ini mengisi relasi proses pindah secara atomik saat INSERT.
 	CreateLeavingTransactionRequestForStudentLeaving(context.Context, domain.LeavingTransactionRequest, uuid.UUID) error
@@ -268,7 +270,8 @@ type LeavingTransactionRequestRepository interface {
 	// ListBySavingsAccount membaca seluruh status permintaan historis rekening,
 	// termasuk permintaan yang belum memiliki relasi ke proses pindah.
 	ListBySavingsAccount(context.Context, uuid.UUID) ([]domain.LeavingTransactionRequest, error)
-	// ListByStudentLeavingRequest membaca relasi yang tersedia mulai schema v16.
+	// ListByStudentLeavingRequest membaca langsung berdasarkan FK dan tetap mengembalikan
+	// relasi rekening/tahun yang tidak konsisten agar caller dapat menolaknya.
 	// Proses yang tidak ditemukan menghasilkan repository.ErrNotFound.
 	ListByStudentLeavingRequest(context.Context, uuid.UUID) ([]domain.LeavingTransactionRequest, error)
 	UpdateLeavingTransactionRequest(context.Context, domain.LeavingTransactionRequest) error

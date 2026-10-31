@@ -213,6 +213,572 @@ func TestCreateLateRequestForStudentLeaving(t *testing.T) {
 	})
 }
 
+func TestDecideLateRequestForStudentLeaving(t *testing.T) {
+	for _, approve := range []bool{true, false} {
+		name := "menolak"
+		if approve {
+			name = "menyetujui"
+		}
+		t.Run(name, func(t *testing.T) {
+			f := newInternalLeavingCancelFixture(t)
+			cleanupLinkedLateRequests(t, f.db, f.account.ID, f.request.ID, f.waliActor.UserID)
+			creator := linkedLateCreator(f, f.manager)
+			created, err := creator.createForStudentLeavingRequest(context.Background(), linkedLateInput(f, f.waliActor, f.year.StartDate, "DECIDE-"+uuid.NewString()))
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			before := linkedLateFinancialSnapshot(t, f)
+			input := decideForStudentLeavingRequestInput{
+				Actor: f.adminActor, StudentLeavingRequestID: f.request.ID,
+				LeavingTransactionRequestID: created.Request.ID, Approve: approve, Reason: "Hasil pemeriksaan bukti",
+			}
+			for _, role := range []domain.UserRole{domain.RoleWaliKelas, domain.RoleSiswa} {
+				unauthorized := input
+				unauthorized.Actor.Role = role
+				if err := creator.decideForStudentLeavingRequest(context.Background(), unauthorized); !errors.Is(err, ErrForbidden) {
+					t.Fatalf("Decide dengan role %s error=%v, want ErrForbidden", role, err)
+				}
+			}
+			wrongProcess := input
+			wrongProcess.StudentLeavingRequestID = uuid.New()
+			if err := creator.decideForStudentLeavingRequest(context.Background(), wrongProcess); !errors.Is(err, domain.ErrInvalidTransition) && !errors.Is(err, repository.ErrNotFound) {
+				t.Fatalf("Decide dengan ID proses salah error=%v, want penolakan", err)
+			}
+			if err := creator.decideForStudentLeavingRequest(context.Background(), input); err != nil {
+				t.Fatalf("decideForStudentLeavingRequest(): %v", err)
+			}
+			if after := linkedLateFinancialSnapshot(t, f); !reflect.DeepEqual(before, after) {
+				t.Fatal("keputusan mengubah ledger atau saldo rekening")
+			}
+			stored, err := f.repos.LeavingTransactionRequests.GetLeavingTransactionRequest(context.Background(), created.Request.ID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			wantStatus := domain.LeavingTransactionRejected
+			if approve {
+				wantStatus = domain.LeavingTransactionApproved
+			}
+			if stored.Status != wantStatus || stored.DecidedBy == nil || *stored.DecidedBy != f.adminActor.UserID || stored.DecidedAt == nil || stored.DecisionReason != input.Reason {
+				t.Fatalf("keputusan tersimpan tidak sesuai: %+v", stored)
+			}
+
+			var auditCount int
+			var payload []byte
+			if err := f.db.QueryRow(`SELECT count(*), (array_agg(after_data))[1] FROM audit_logs WHERE action='DECIDE_FOR_STUDENT_LEAVING' AND entity_id=$1`, stored.ID).Scan(&auditCount, &payload); err != nil {
+				t.Fatal(err)
+			}
+			if auditCount != 1 {
+				t.Fatalf("audit keputusan=%d, want 1", auditCount)
+			}
+			var audit map[string]any
+			if err := json.Unmarshal(payload, &audit); err != nil {
+				t.Fatal(err)
+			}
+			for _, key := range []string{"request_id", "student_leaving_request_id", "student_id", "savings_account_id", "academic_year_id", "status_before", "status_after", "approve", "reason", "actor_id", "occurred_at"} {
+				if _, ok := audit[key]; !ok {
+					t.Fatalf("audit tidak memiliki %q: %s", key, payload)
+				}
+			}
+			occurredAt, ok := audit["occurred_at"].(string)
+			parsedAt, parseErr := time.Parse(time.RFC3339Nano, occurredAt)
+			if !ok || parseErr != nil || parsedAt.Location() != time.UTC {
+				t.Fatalf("waktu audit harus RFC3339 UTC, occurred_at=%v parse error=%v", audit["occurred_at"], parseErr)
+			}
+
+			// Jalur Decide historis tidak boleh mengubah request yang tertaut.
+			legacy := &leavingTransactionRequestService{deps: Dependencies{Repositories: f.repos, UOW: f.manager}}
+			if err := legacy.Decide(context.Background(), DecideLeavingTransactionRequestInput{Actor: f.adminActor, RequestID: stored.ID, Approve: !approve, Reason: "Keputusan kedua"}); !errors.Is(err, domain.ErrInvalidTransition) {
+				t.Fatalf("Decide historis error=%v, want ErrInvalidTransition", err)
+			}
+			if err := creator.decideForStudentLeavingRequest(context.Background(), input); !errors.Is(err, domain.ErrInvalidTransition) {
+				t.Fatalf("keputusan kedua error=%v, want ErrInvalidTransition", err)
+			}
+			if err := f.db.QueryRow(`SELECT count(*) FROM audit_logs WHERE action='DECIDE_FOR_STUDENT_LEAVING' AND entity_id=$1`, stored.ID).Scan(&auditCount); err != nil || auditCount != 1 {
+				t.Fatalf("audit keputusan ganda=%d err=%v", auditCount, err)
+			}
+
+			_, cancelErr := f.cancelService.Cancel(context.Background(), CancelStudentLeavingRequestInput{Actor: f.adminActor, StudentLeavingRequestID: f.request.ID, Reason: "Uji keputusan tertaut"})
+			if approve && !errors.Is(cancelErr, domain.ErrInvalidTransition) {
+				t.Fatalf("Cancel untuk APPROVED error=%v, want ErrInvalidTransition", cancelErr)
+			}
+			if !approve && cancelErr != nil {
+				t.Fatalf("Cancel setelah REJECTED: %v", cancelErr)
+			}
+		})
+	}
+}
+
+func TestDecideLinkedLateRequestVsCancel(t *testing.T) {
+	for _, decideFirst := range []bool{true, false} {
+		name := "Cancel lebih dahulu"
+		if decideFirst {
+			name = "Decide lebih dahulu"
+		}
+		t.Run(name, func(t *testing.T) {
+			f := newInternalLeavingCancelFixture(t)
+			cleanupLinkedLateRequests(t, f.db, f.account.ID, f.request.ID, f.waliActor.UserID)
+			created, err := linkedLateCreator(f, f.manager).createForStudentLeavingRequest(context.Background(), linkedLateInput(f, f.waliActor, f.year.StartDate, "DECIDE-CANCEL-"+uuid.NewString()))
+			if err != nil {
+				t.Fatal(err)
+			}
+			ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+			defer cancel()
+			gate := newInternalCancelGate()
+			defer gate.release()
+			manager := linkedLatePauseManager{UnitOfWorkManager: f.manager, pauseAt: "account", gate: gate}
+			decider := linkedLateCreator(f, manager)
+			canceller, err := NewStudentLeavingRequestService(Dependencies{Repositories: f.repos, UOW: manager})
+			if err != nil {
+				t.Fatal(err)
+			}
+			runDecide := func() error {
+				return decider.decideForStudentLeavingRequest(ctx, decideForStudentLeavingRequestInput{
+					Actor: f.adminActor, StudentLeavingRequestID: f.request.ID,
+					LeavingTransactionRequestID: created.Request.ID, Approve: true, Reason: "Keputusan uji konkurensi",
+				})
+			}
+			runCancel := func() error {
+				_, err := canceller.Cancel(ctx, CancelStudentLeavingRequestInput{Actor: f.adminActor, StudentLeavingRequestID: f.request.ID, Reason: "Uji Decide bersamaan Cancel"})
+				return err
+			}
+			firstName, secondName := "cancel", "decide"
+			first, second := runCancel, runDecide
+			if decideFirst {
+				firstName, secondName = "decide", "cancel"
+				first, second = runDecide, runCancel
+			}
+			firstResult, secondResult := make(chan error, 1), make(chan error, 1)
+			go func() { firstResult <- first() }()
+			waitInternalCancelGate(t, gate)
+			blockerPID := internalCancelIdleTransactionPID(t, f.db)
+			go func() { secondResult <- second() }()
+			waitInternalCancelBlocker(t, f.db, blockerPID)
+			gate.release()
+			results := map[string]error{firstName: <-firstResult, secondName: <-secondResult}
+			if results["decide"] != nil || !errors.Is(results["cancel"], domain.ErrInvalidTransition) {
+				t.Fatalf("Cancel dengan request PENDING/APPROVED harus ditolak, hasil=%v", results)
+			}
+			stored, err := f.repos.LeavingTransactionRequests.GetLeavingTransactionRequest(ctx, created.Request.ID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			process, err := f.repos.StudentLeavingRequests.GetByID(ctx, f.request.ID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			wantProcess, wantStatus := domain.StudentLeavingInProgress, domain.LeavingTransactionApproved
+			if process.Status != wantProcess || stored.Status != wantStatus {
+				t.Fatalf("hasil serialisasi tidak konsisten: process=%s request=%s", process.Status, stored.Status)
+			}
+			var audits int
+			if err := f.db.QueryRowContext(ctx, `SELECT count(*) FROM audit_logs WHERE action='DECIDE_FOR_STUDENT_LEAVING' AND entity_id=$1`, stored.ID).Scan(&audits); err != nil {
+				t.Fatal(err)
+			}
+			if audits != 1 {
+				t.Fatalf("audit Decide=%d, decideFirst=%t", audits, decideFirst)
+			}
+		})
+	}
+}
+
+func TestDecideLinkedLateRequestConcurrency(t *testing.T) {
+	for _, operation := range []string{"finalize", "settlement", "execute", "year closing", "second decide", "create linked"} {
+		for _, decideFirst := range []bool{true, false} {
+			name := operation + "/operation lebih dahulu"
+			if decideFirst {
+				name = operation + "/Decide lebih dahulu"
+			}
+			t.Run(name, func(t *testing.T) {
+				f := newInternalLeavingCancelFixture(t)
+				cleanupLinkedLateRequests(t, f.db, f.account.ID, f.request.ID, f.waliActor.UserID)
+				creator := linkedLateCreator(f, f.manager)
+				created, err := creator.createForStudentLeavingRequest(context.Background(), linkedLateInput(f, f.waliActor, f.year.StartDate, "DECIDE-RACE-"+uuid.NewString()))
+				if err != nil {
+					t.Fatal(err)
+				}
+				before := linkedLateFinancialSnapshot(t, f)
+				ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+				defer cancel()
+				gate := newInternalCancelGate()
+				defer gate.release()
+				pauseAt := "account"
+				if operation == "year closing" {
+					pauseAt = "year"
+				}
+				manager := linkedLatePauseManager{UnitOfWorkManager: f.manager, pauseAt: pauseAt, gate: gate}
+				service := linkedLateCreator(f, manager)
+				finalizer, err := NewStudentLeavingRequestService(Dependencies{Repositories: f.repos, UOW: manager})
+				if err != nil {
+					t.Fatal(err)
+				}
+				decision := func(approve bool) error {
+					return service.decideForStudentLeavingRequest(ctx, decideForStudentLeavingRequestInput{
+						Actor: f.adminActor, StudentLeavingRequestID: f.request.ID,
+						LeavingTransactionRequestID: created.Request.ID, Approve: approve, Reason: "Uji serialisasi keputusan",
+					})
+				}
+				competitor := func() error {
+					switch operation {
+					case "finalize":
+						_, err := finalizer.Finalize(ctx, FinalizeStudentLeavingRequestInput{Actor: f.adminActor, StudentLeavingRequestID: f.request.ID})
+						return err
+					case "settlement":
+						_, err := (&settlementService{deps: Dependencies{Repositories: f.repos, UOW: manager}}).settleForStudentLeavingRequest(ctx, settleForStudentLeavingRequestInput{Actor: f.waliActor, StudentLeavingRequestID: f.request.ID, SavingsAccountID: f.account.ID, ExpectedBalance: 50_000})
+						return err
+					case "execute":
+						_, err := (&leavingTransactionRequestService{deps: Dependencies{Repositories: f.repos, UOW: manager}}).Execute(ctx, ExecuteLeavingTransactionRequestInput{Actor: f.waliActor, RequestID: created.Request.ID})
+						return err
+					case "year closing":
+						_, err := (&academicYearService{deps: Dependencies{Repositories: f.repos, UOW: manager}}).StartClosing(ctx, StartClosingAcademicYearInput{Actor: f.adminActor, AcademicYearID: f.year.ID})
+						return err
+					case "second decide":
+						return decision(false)
+					case "create linked":
+						_, err := service.createForStudentLeavingRequest(ctx, linkedLateInput(f, f.waliActor, f.year.StartDate, "DECIDE-RACE-SECOND-"+uuid.NewString()))
+						return err
+					default:
+						return fmt.Errorf("unknown competitor %q", operation)
+					}
+				}
+				firstName, secondName := operation, "decide"
+				first, second := competitor, func() error { return decision(true) }
+				if decideFirst {
+					firstName, secondName = "decide", operation
+					first, second = func() error { return decision(true) }, competitor
+				}
+				firstResult, secondResult := make(chan error, 1), make(chan error, 1)
+				go func() { firstResult <- first() }()
+				waitInternalCancelGate(t, gate)
+				blockerPID := internalCancelIdleTransactionPID(t, f.db)
+				go func() { secondResult <- second() }()
+				waitInternalCancelBlocker(t, f.db, blockerPID)
+				gate.release()
+				results := map[string]error{firstName: <-firstResult, secondName: <-secondResult}
+				if operation == "second decide" {
+					firstDecision, secondDecision := results[operation], results["decide"]
+					if decideFirst {
+						firstDecision, secondDecision = results["decide"], results[operation]
+					}
+					if firstDecision != nil || !errors.Is(secondDecision, domain.ErrInvalidTransition) {
+						t.Fatalf("dua keputusan tidak terserialisasi: %v", results)
+					}
+				} else if results["decide"] != nil {
+					t.Fatalf("Decide gagal: %v", results)
+				}
+				if operation != "create linked" && operation != "second decide" && operation != "year closing" && results[operation] == nil {
+					t.Fatalf("operasi %s seharusnya ditolak oleh blocker/status, hasil=%v", operation, results)
+				}
+				if operation == "year closing" && results[operation] != nil {
+					t.Fatalf("StartClosing gagal: %v", results[operation])
+				}
+				if after := linkedLateFinancialSnapshot(t, f); !reflect.DeepEqual(before, after) {
+					t.Fatalf("race %s mengubah ledger atau saldo", operation)
+				}
+				stored, err := f.repos.LeavingTransactionRequests.GetLeavingTransactionRequest(ctx, created.Request.ID)
+				wantStatus := domain.LeavingTransactionApproved
+				if operation == "second decide" && !decideFirst {
+					wantStatus = domain.LeavingTransactionRejected
+				}
+				if err != nil || stored.Status != wantStatus {
+					t.Fatalf("request utama setelah race=%+v err=%v", stored, err)
+				}
+				var decisionAudits int
+				if err := f.db.QueryRowContext(ctx, `SELECT count(*) FROM audit_logs WHERE action='DECIDE_FOR_STUDENT_LEAVING' AND entity_id=$1`, stored.ID).Scan(&decisionAudits); err != nil || decisionAudits != 1 {
+					t.Fatalf("audit keputusan=%d err=%v", decisionAudits, err)
+				}
+				if operation == "create linked" {
+					var pending int
+					if err := f.db.QueryRowContext(ctx, `SELECT count(*) FROM leaving_transaction_requests WHERE student_leaving_request_id=$1 AND status='PENDING'`, f.request.ID).Scan(&pending); err != nil || pending != 1 {
+						t.Fatalf("request tambahan PENDING=%d err=%v", pending, err)
+					}
+				}
+				if operation == "year closing" {
+					var status string
+					if err := f.db.QueryRowContext(ctx, `SELECT status FROM academic_years WHERE id=$1`, f.year.ID).Scan(&status); err != nil || status != string(domain.AcademicYearClosing) {
+						t.Fatalf("status tahun setelah race=%s err=%v", status, err)
+					}
+				}
+			})
+		}
+	}
+}
+
+func TestDecideLinkedLateRequestRejectsTerminalLeavingProcess(t *testing.T) {
+	for _, status := range []domain.StudentLeavingRequestStatus{domain.StudentLeavingCancelled, domain.StudentLeavingFinalized} {
+		t.Run(string(status), func(t *testing.T) {
+			f := newInternalLeavingCancelFixture(t)
+			cleanupLinkedLateRequests(t, f.db, f.account.ID, f.request.ID, f.waliActor.UserID)
+			created, err := linkedLateCreator(f, f.manager).createForStudentLeavingRequest(context.Background(), linkedLateInput(f, f.waliActor, f.year.StartDate, "TERMINAL-"+uuid.NewString()))
+			if err != nil {
+				t.Fatal(err)
+			}
+			process := f.request
+			switch status {
+			case domain.StudentLeavingCancelled:
+				err = process.Cancel(f.adminActor.UserID, time.Now().UTC(), "Fixture proses terminal")
+			case domain.StudentLeavingFinalized:
+				err = process.Finalize(f.adminActor.UserID, time.Now().UTC())
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := f.repos.StudentLeavingRequests.Update(context.Background(), process); err != nil {
+				t.Fatal(err)
+			}
+			err = linkedLateCreator(f, f.manager).decideForStudentLeavingRequest(context.Background(), decideForStudentLeavingRequestInput{
+				Actor: f.adminActor, StudentLeavingRequestID: process.ID,
+				LeavingTransactionRequestID: created.Request.ID, Approve: false, Reason: "Tidak diproses",
+			})
+			if !errors.Is(err, domain.ErrInvalidTransition) {
+				t.Fatalf("Decide pada proses %s error=%v, want ErrInvalidTransition", status, err)
+			}
+			stored, err := f.repos.LeavingTransactionRequests.GetLeavingTransactionRequest(context.Background(), created.Request.ID)
+			if err != nil || stored.Status != domain.LeavingTransactionPending {
+				t.Fatalf("request setelah penolakan=%+v err=%v", stored, err)
+			}
+			var auditCount int
+			if err := f.db.QueryRow(`SELECT count(*) FROM audit_logs WHERE action='DECIDE_FOR_STUDENT_LEAVING' AND entity_id=$1`, stored.ID).Scan(&auditCount); err != nil || auditCount != 0 {
+				t.Fatalf("audit setelah keputusan ditolak=%d err=%v", auditCount, err)
+			}
+		})
+	}
+}
+
+func TestDecideLinkedLateRequestRejectsClosedYearAndInvalidDate(t *testing.T) {
+	for _, tc := range []struct {
+		name       string
+		closeYear  bool
+		invalidDay bool
+	}{
+		{name: "tahun CLOSED", closeYear: true},
+		{name: "tanggal pada hari efektif pindah", invalidDay: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			f := newInternalLeavingCancelFixture(t)
+			cleanupLinkedLateRequests(t, f.db, f.account.ID, f.request.ID, f.waliActor.UserID)
+			input := linkedLateInput(f, f.waliActor, f.year.StartDate, "DECIDE-INVALID-"+uuid.NewString())
+			created, err := linkedLateCreator(f, f.manager).createForStudentLeavingRequest(context.Background(), input)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if tc.invalidDay {
+				if _, err := f.db.Exec(`UPDATE leaving_transaction_requests SET transaction_date=$1 WHERE id=$2`, f.request.EffectiveLeavingDate, created.Request.ID); err != nil {
+					t.Fatal(err)
+				}
+			}
+			manager := f.manager
+			if tc.closeYear {
+				manager = linkedLateClosedYearManager{UnitOfWorkManager: f.manager}
+			}
+			err = linkedLateCreator(f, manager).decideForStudentLeavingRequest(context.Background(), decideForStudentLeavingRequestInput{
+				Actor: f.adminActor, StudentLeavingRequestID: f.request.ID,
+				LeavingTransactionRequestID: created.Request.ID, Approve: true, Reason: "Keputusan dengan prasyarat tidak sah",
+			})
+			if !errors.Is(err, domain.ErrInvalidTransition) {
+				t.Fatalf("Decide error=%v, want ErrInvalidTransition", err)
+			}
+			stored, err := f.repos.LeavingTransactionRequests.GetLeavingTransactionRequest(context.Background(), created.Request.ID)
+			if err != nil || stored.Status != domain.LeavingTransactionPending {
+				t.Fatalf("request after rejected decision=%+v err=%v", stored, err)
+			}
+		})
+	}
+}
+
+func TestDecideLinkedLateRequestRejectsSettledAndForeignAccount(t *testing.T) {
+	t.Run("rekening SETTLED", func(t *testing.T) {
+		f := newInternalLeavingCancelFixture(t)
+		cleanupLinkedLateRequests(t, f.db, f.account.ID, f.request.ID, f.waliActor.UserID)
+		settlement, err := f.settlementService.settleForStudentLeavingRequest(context.Background(), settleForStudentLeavingRequestInput{
+			Actor: f.waliActor, StudentLeavingRequestID: f.request.ID, SavingsAccountID: f.account.ID, ExpectedBalance: 50_000,
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := f.settlementService.ConfirmHandover(context.Background(), ConfirmSettlementHandoverInput{
+			Actor: f.waliActor, SettlementID: settlement.Settlement.ID, Confirm: true, ReceiptReference: stringPointer("DECIDE-SETTLED-" + uuid.NewString()),
+		}); err != nil {
+			t.Fatal(err)
+		}
+		request, err := domain.NewLeavingTransactionRequest(f.account.ID, f.year.ID, domain.TransactionDeposit, 1_000, f.year.StartDate, "Setelah settlement", "DECIDE-SETTLED-REQUEST-"+uuid.NewString(), f.waliActor.UserID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := f.repos.LeavingTransactionRequests.CreateLeavingTransactionRequest(context.Background(), request); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := f.db.Exec(`UPDATE leaving_transaction_requests SET student_leaving_request_id=$1 WHERE id=$2`, f.request.ID, request.ID); err != nil {
+			t.Fatal(err)
+		}
+		if err := linkedLateCreator(f, f.manager).decideForStudentLeavingRequest(context.Background(), decideForStudentLeavingRequestInput{
+			Actor: f.adminActor, StudentLeavingRequestID: f.request.ID, LeavingTransactionRequestID: request.ID, Approve: true, Reason: "Tidak boleh pada rekening selesai",
+		}); !errors.Is(err, domain.ErrInvalidTransition) {
+			t.Fatalf("Decide pada rekening SETTLED error=%v, want ErrInvalidTransition", err)
+		}
+	})
+
+	t.Run("rekening siswa lain", func(t *testing.T) {
+		f := newInternalLeavingCancelFixture(t)
+		secondaryStudent, err := domain.NewStudent("Siswa rekening lain "+uuid.NewString(), nil, stringPointer("nis-"+uuid.NewString()), stringPointer("nisn-"+uuid.NewString()))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := f.repos.Students.Create(context.Background(), secondaryStudent); err != nil {
+			t.Fatal(err)
+		}
+		secondaryAccount, err := domain.NewSavingsAccount(secondaryStudent.ID, f.year.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := f.repos.SavingsAccounts.Create(context.Background(), secondaryAccount); err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() {
+			if _, err := f.db.Exec(`DELETE FROM savings_accounts WHERE id=$1`, secondaryAccount.ID); err != nil {
+				t.Errorf("delete foreign account fixture: %v", err)
+			}
+			if _, err := f.db.Exec(`DELETE FROM students WHERE id=$1`, secondaryStudent.ID); err != nil {
+				t.Errorf("delete foreign student fixture: %v", err)
+			}
+		})
+		created, err := linkedLateCreator(f, f.manager).createForStudentLeavingRequest(context.Background(), linkedLateInput(f, f.waliActor, f.year.StartDate, "FOREIGN-ACCOUNT-"+uuid.NewString()))
+		if err != nil {
+			t.Fatal(err)
+		}
+		cleanupLinkedLateRequests(t, f.db, f.account.ID, f.request.ID, f.waliActor.UserID)
+		if _, err := f.db.Exec(`UPDATE leaving_transaction_requests SET savings_account_id=$1 WHERE id=$2`, secondaryAccount.ID, created.Request.ID); err != nil {
+			t.Fatal(err)
+		}
+		if err := linkedLateCreator(f, f.manager).decideForStudentLeavingRequest(context.Background(), decideForStudentLeavingRequestInput{
+			Actor: f.adminActor, StudentLeavingRequestID: f.request.ID, LeavingTransactionRequestID: created.Request.ID, Approve: true, Reason: "Rekening siswa berbeda",
+		}); !errors.Is(err, domain.ErrInvalidTransition) {
+			t.Fatalf("Decide dengan rekening siswa lain error=%v, want ErrInvalidTransition", err)
+		}
+	})
+}
+
+func TestDecideLinkedLateRequestRollback(t *testing.T) {
+	for _, stage := range []string{"update", "audit", "commit"} {
+		t.Run(stage, func(t *testing.T) {
+			f := newInternalLeavingCancelFixture(t)
+			cleanupLinkedLateRequests(t, f.db, f.account.ID, f.request.ID, f.waliActor.UserID)
+			created, err := linkedLateCreator(f, f.manager).createForStudentLeavingRequest(context.Background(), linkedLateInput(f, f.waliActor, f.year.StartDate, "ROLLBACK-DECIDE-"+uuid.NewString()))
+			if err != nil {
+				t.Fatal(err)
+			}
+			before := linkedLateFullSnapshot(t, f)
+			injected := errors.New("injected linked decision failure")
+			manager := leavingSettlementTestUOWManager{
+				base: f.manager,
+				commitError: func() error {
+					if stage == "commit" {
+						return injected
+					}
+					return nil
+				}(),
+				wrap: func(repos repository.RepositorySet) repository.RepositorySet {
+					if stage == "update" {
+						repos.LeavingTransactionRequests = linkedDecideUpdateFailureRepository{LeavingTransactionRequestRepository: repos.LeavingTransactionRequests, failure: injected}
+					}
+					if stage == "audit" {
+						repos.AuditLogs = linkedDecideAuditFailureRepository{AuditRepository: repos.AuditLogs, failure: injected}
+					}
+					return repos
+				},
+			}
+			service := linkedLateCreator(f, manager)
+			err = service.decideForStudentLeavingRequest(context.Background(), decideForStudentLeavingRequestInput{
+				Actor: f.adminActor, StudentLeavingRequestID: f.request.ID,
+				LeavingTransactionRequestID: created.Request.ID, Approve: true, Reason: "Uji atomicity keputusan",
+			})
+			if !errors.Is(err, injected) {
+				t.Fatalf("decision error=%v, want injected failure", err)
+			}
+			if after := linkedLateFullSnapshot(t, f); !reflect.DeepEqual(before, after) {
+				t.Fatalf("kegagalan %s meninggalkan perubahan parsial\nbefore=%v\nafter=%v", stage, before, after)
+			}
+		})
+	}
+}
+
+func TestStudentLeavingCancelAfterCompletedLinkedLateRequest(t *testing.T) {
+	f := newInternalLeavingCancelFixture(t)
+	cleanupLinkedLateRequests(t, f.db, f.account.ID, f.request.ID, f.waliActor.UserID)
+	created, err := linkedLateCreator(f, f.manager).createForStudentLeavingRequest(context.Background(), linkedLateInput(f, f.waliActor, f.year.StartDate, "CANCEL-COMPLETED-"+uuid.NewString()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := linkedLateCreator(f, f.manager).decideForStudentLeavingRequest(context.Background(), decideForStudentLeavingRequestInput{
+		Actor: f.adminActor, StudentLeavingRequestID: f.request.ID,
+		LeavingTransactionRequestID: created.Request.ID, Approve: true, Reason: "Bukti transaksi diverifikasi",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	transaction, err := domain.NewTransaction(f.account.ID, created.Request.Type, created.Request.Amount, created.Request.TransactionDate, f.waliActor.UserID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	transaction.LateRequestID = &created.Request.ID
+	if err := f.repos.Transactions.Create(context.Background(), transaction); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if _, err := f.db.Exec(`DELETE FROM transactions WHERE id=$1`, transaction.ID); err != nil {
+			t.Errorf("delete completed transaction fixture: %v", err)
+		}
+	})
+	if _, err := f.db.Exec(`UPDATE leaving_transaction_requests SET status='COMPLETED', completed_at=now() WHERE id=$1`, created.Request.ID); err != nil {
+		t.Fatal(err)
+	}
+	financialSnapshot := func() map[string]string {
+		snapshot := linkedLateFinancialSnapshot(t, f)
+		delete(snapshot, "process")
+		return snapshot
+	}
+	before := financialSnapshot()
+	if _, err := f.cancelService.Cancel(context.Background(), CancelStudentLeavingRequestInput{
+		Actor: f.adminActor, StudentLeavingRequestID: f.request.ID, Reason: "Membatalkan proses setelah transaksi selesai",
+	}); err != nil {
+		t.Fatalf("Cancel setelah request COMPLETED: %v", err)
+	}
+	if after := financialSnapshot(); !reflect.DeepEqual(before, after) {
+		t.Fatal("Cancel mengubah ledger atau saldo yang telah dicatat")
+	}
+	stored, err := f.repos.LeavingTransactionRequests.GetLeavingTransactionRequest(context.Background(), created.Request.ID)
+	if err != nil || stored.Status != domain.LeavingTransactionCompleted {
+		t.Fatalf("request completed setelah Cancel=%+v err=%v", stored, err)
+	}
+	process, err := f.repos.StudentLeavingRequests.GetByID(context.Background(), f.request.ID)
+	if err != nil || process.Status != domain.StudentLeavingCancelled {
+		t.Fatalf("proses setelah Cancel=%+v err=%v", process, err)
+	}
+}
+
+type linkedDecideUpdateFailureRepository struct {
+	repository.LeavingTransactionRequestRepository
+	failure error
+}
+
+func (r linkedDecideUpdateFailureRepository) UpdateLeavingTransactionRequest(ctx context.Context, request domain.LeavingTransactionRequest) error {
+	if err := r.LeavingTransactionRequestRepository.UpdateLeavingTransactionRequest(ctx, request); err != nil {
+		return err
+	}
+	return r.failure
+}
+
+type linkedDecideAuditFailureRepository struct {
+	repository.AuditRepository
+	failure error
+}
+
+func (r linkedDecideAuditFailureRepository) Create(ctx context.Context, audit domain.AuditLog) error {
+	if err := r.AuditRepository.Create(ctx, audit); err != nil {
+		return err
+	}
+	return r.failure
+}
+
 func TestCreateLateRequestRepositoryRejectsMismatchedProcessAccount(t *testing.T) {
 	f := newInternalLeavingCancelFixture(t)
 	cleanupLinkedLateRequests(t, f.db, f.account.ID, f.request.ID, f.waliActor.UserID)
@@ -492,6 +1058,14 @@ type linkedLateClosedYearRepository struct {
 
 func (r linkedLateClosedYearRepository) GetByIDForShare(ctx context.Context, id uuid.UUID) (domain.AcademicYear, error) {
 	year, err := r.AcademicYearRepository.GetByIDForShare(ctx, id)
+	if err == nil {
+		year.Status = domain.AcademicYearClosed
+	}
+	return year, err
+}
+
+func (r linkedLateClosedYearRepository) GetByID(ctx context.Context, id uuid.UUID) (domain.AcademicYear, error) {
+	year, err := r.AcademicYearRepository.GetByID(ctx, id)
 	if err == nil {
 		year.Status = domain.AcademicYearClosed
 	}
@@ -799,7 +1373,8 @@ func assertLateCreateRaceState(t *testing.T, f internalLeavingCancelFixture, ope
 	}
 	switch operation {
 	case "cancel":
-		if createFirst && (requestCount != 1 || results["cancel"] != nil) || !createFirst && (requestCount != 0 || results["create"] == nil) {
+		if createFirst && (requestCount != 1 || !errors.Is(results["cancel"], domain.ErrInvalidTransition)) ||
+			!createFirst && (requestCount != 0 || results["create"] == nil || results["cancel"] != nil) {
 			t.Fatalf("cancel race state requests=%d results=%v", requestCount, results)
 		}
 	case "finalize":

@@ -139,6 +139,16 @@ func (s *leavingTransactionRequestService) Decide(ctx context.Context, in Decide
 	if in.RequestID == uuid.Nil {
 		return domain.ErrInvalidID
 	}
+	if s.deps.Repositories.LeavingTransactionRequests == nil {
+		return ErrInvalidDependency
+	}
+	studentLeavingRequestID, err := s.deps.Repositories.LeavingTransactionRequests.GetStudentLeavingRequestID(ctx, in.RequestID)
+	if err != nil {
+		return err
+	}
+	if studentLeavingRequestID != nil {
+		return domain.ErrInvalidTransition
+	}
 	uow, repos, txCtx, owns, err := beginTransaction(ctx, s.deps.UOW)
 	if err != nil {
 		return err
